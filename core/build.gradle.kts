@@ -1,6 +1,6 @@
 // Plain Kotlin, no Android dependency, so the iOS SDK can reuse it later through KMP.
 plugins {
-    kotlin("jvm") version "2.1.0"
+    kotlin("jvm")
 }
 
 group = "ai.fanak"

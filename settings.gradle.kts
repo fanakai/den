@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 rootProject.name = "den"
 
 include(":core")
+include(":backends:llamacpp")
