@@ -1,6 +1,7 @@
 package ai.fanak.den.testapp
 
 import ai.fanak.den.Den
+import ai.fanak.den.DenMode
 import ai.fanak.den.DenModel
 import ai.fanak.den.core.backend.ChatMessage
 import ai.fanak.den.core.backend.GenEvent
@@ -25,7 +26,10 @@ import kotlinx.coroutines.launch
 // Drive from adb: am start -n ai.fanak.den.testapp/.MainActivity --es model qwen3-0.6b --es prompt "..." --ez autorun true
 class MainActivity : Activity() {
     private val scope = MainScope()
-    private val den by lazy { testDen(intent.getBooleanExtra("mmap", true)) }
+    private val den by lazy {
+        val mode = intent.getStringExtra("mode")?.let { DenMode.valueOf(it.uppercase()) } ?: DenMode.AUTO
+        testDen(intent.getBooleanExtra("mmap", true), mode)
+    }
 
     private lateinit var model: String
     private var loaded: DenModel? = null
@@ -96,7 +100,7 @@ class MainActivity : Activity() {
                 val t0 = System.currentTimeMillis()
                 val m = loaded ?: den.model(model).also { loaded = it }
                 m.failures.forEach { log("failed: ${it.candidate.accel} ${it.candidate.variant.quant}: ${it.error.message}") }
-                log("using ${m.backend} ${m.accel} ${m.quant} (${m.source}), load ${System.currentTimeMillis() - t0} ms, free ${den.device().availRamMb} MB")
+                log("using ${m.backend} ${m.accel} ${m.quant} (${m.source}), connected ${m.connected}, load ${System.currentTimeMillis() - t0} ms, free ${den.device().availRamMb} MB")
 
                 val req = GenRequest(listOf(ChatMessage(Role.USER, prompt.text.toString())), maxTokens = 128, temperature = 0f)
                 repeat(intent.getIntExtra("repeat", 1)) {
@@ -128,6 +132,7 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         scope.cancel()
         loaded?.close()
+        den.close()
         super.onDestroy()
     }
 
