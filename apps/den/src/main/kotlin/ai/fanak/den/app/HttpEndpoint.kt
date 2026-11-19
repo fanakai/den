@@ -67,7 +67,7 @@ private class HttpError(val code: Int, message: String) : Exception(message)
 internal class HttpEndpoint(
     private val scope: CoroutineScope,
     private val models: () -> List<String>,
-    private val model: suspend (String) -> DenModel,
+    private val use: suspend (String, suspend (DenModel) -> Unit) -> Unit,
     private val client: (String) -> String?,
     private val log: (String) -> Unit,
 ) {
@@ -167,8 +167,21 @@ internal class HttpEndpoint(
             req["top_p"]?.jsonPrimitive?.floatOrNull ?: 0.95f,
             stop,
         )
-        val m = try { model(name) } catch (e: Exception) { throw HttpError(503, "cannot load $name: ${e.message}") }
+        val stream = req["stream"]?.jsonPrimitive?.booleanOrNull == true
+        var loaded = false
+        try {
+            use(name) { m ->
+                loaded = true
+                reply(m, name, gen, stream, out)
+            }
+        } catch (e: Exception) {
+            if (loaded || e is HttpError || e is IOException || e is kotlinx.coroutines.CancellationException) throw e
+            throw HttpError(503, "cannot load $name: ${e.message}")
+        }
+    }
 
+    private suspend fun reply(m: DenModel, name: String, gen: GenRequest, stream: Boolean, out: OutputStream) {
+        val maxTokens = gen.maxTokens
         val id = "chatcmpl-" + System.nanoTime().toString(36)
         val created = System.currentTimeMillis() / 1000
         fun chunk(delta: JsonObject, finish: String?) = buildJsonObject {
@@ -178,7 +191,7 @@ internal class HttpEndpoint(
             }
         }
 
-        if (req["stream"]?.jsonPrimitive?.booleanOrNull == true) {
+        if (stream) {
             out.write(head(200, "text/event-stream", "Cache-Control: no-cache\r\n"))
             out.event(chunk(buildJsonObject { put("role", "assistant"); put("content", "") }, null).toString())
             // A failed write (client gone) throws here, which cancels the generation.

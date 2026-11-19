@@ -3,7 +3,6 @@ package ai.fanak.den.app
 import ai.fanak.den.Den
 import ai.fanak.den.DenConfig
 import ai.fanak.den.DenMode
-import ai.fanak.den.DenModel
 import ai.fanak.den.IDenService
 import ai.fanak.den.IGenCallback
 import ai.fanak.den.IOpenCallback
@@ -20,6 +19,7 @@ import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.util.Log
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -30,9 +30,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 // Hosts the engine for every app on the phone: one loaded copy of each model, shared by all callers.
 class DenService : Service() {
@@ -45,11 +44,16 @@ class DenService : Service() {
         Den.connect(this, config)
     }
 
-    private class Loaded(val model: DenModel, var refs: Int)
-    private class Session(val model: String, val uid: Int, var job: Job? = null)
+    // Holds the client's binder: a death link on a binder that is garbage-collected never fires.
+    private class Session(val model: String, val uid: Int, val client: IBinder, var death: IBinder.DeathRecipient? = null, var job: Job? = null)
 
-    private val loaded = mutableMapOf<String, Loaded>()
-    private val lock = Mutex()
+    private val pool = ModelPool(
+        load = { den.model(it) },
+        need = { name, avail -> den.plan(name, den.device().copy(availRamMb = avail)).firstOrNull()?.variant?.minRamMb },
+        availMb = { den.device().availRamMb },
+        now = SystemClock::elapsedRealtime,
+        log = ::log,
+    )
     private val sessions = ConcurrentHashMap<Long, Session>()
     private val nextId = AtomicLong(1)
 
@@ -67,14 +71,13 @@ class DenService : Service() {
                     return@launch callback.onError("$pkg is not allowed to use Den; allow it in the Den app")
                 }
                 try {
-                    val m = lock.withLock {
-                        loaded.getOrPut(model) { Loaded(den.model(model), 0) }.also { it.refs++ }.model
-                    }
+                    val m = pool.acquire(model)
                     val id = nextId.getAndIncrement()
-                    sessions[id] = Session(model, uid)
                     // A client that dies releases its sessions.
-                    callback.asBinder().linkToDeath({ scope.launch { release(id) } }, 0)
-                    log("open $model for ${caller(uid)}: session $id, ${m.backend} ${m.accel} ${m.quant}, refs ${refs(model)}")
+                    val session = Session(model, uid, callback.asBinder())
+                    sessions[id] = session
+                    session.death = IBinder.DeathRecipient { scope.launch { release(id) } }.also { session.client.linkToDeath(it, 0) }
+                    log("open $model for ${caller(uid)}: session $id, ${m.backend} ${m.accel} ${m.quant}, sessions ${pool.sessions(model)}")
                     callback.onOpened(id, m.backend, m.accel.name, m.quant, m.source.name)
                 } catch (e: Exception) {
                     log("open $model for ${caller(uid)} failed: $e")
@@ -95,9 +98,8 @@ class DenService : Service() {
             val messages = roles.zip(contents) { r, c -> ChatMessage(Role.valueOf(r.uppercase()), c) }
             s.job = scope.launch {
                 val t0 = System.currentTimeMillis()
-                val m = lock.withLock { loaded[s.model]?.model } ?: return@launch callback.onError("model unloaded")
                 try {
-                    m.chat(GenRequest(messages, maxTokens, temperature, topP, stop.toList())).collect { e ->
+                    pool.use(s.model) { m -> m.chat(GenRequest(messages, maxTokens, temperature, topP, stop.toList())).collect { e ->
                         when (e) {
                             is GenEvent.Text -> callback.onText(e.text)
                             is GenEvent.Done -> e.stats.run {
@@ -107,7 +109,7 @@ class DenService : Service() {
                                 callback.onDone(longArrayOf(promptTokens.toLong(), outputTokens.toLong(), prefillMs, decodeMs))
                             }
                         }
-                    }
+                    } }
                 } catch (e: CancellationException) {
                     callback.onError("cancelled")
                 } catch (e: Exception) {
@@ -127,32 +129,16 @@ class DenService : Service() {
 
     private suspend fun release(id: Long) {
         val s = sessions.remove(id) ?: return
+        s.death?.let { runCatching { s.client.unlinkToDeath(it, 0) } }
         s.job?.cancel()
-        lock.withLock { unref(s.model) }
-        log("close session $id (${s.model}), refs ${refs(s.model)}")
+        pool.release(s.model)
+        log("close session $id (${s.model}), sessions ${pool.sessions(s.model)}")
     }
-
-    private fun unref(model: String) {
-        val l = loaded[model] ?: return
-        if (--l.refs == 0) {
-            l.model.close()
-            loaded.remove(model)
-        }
-    }
-
-    // The HTTP endpoint holds one ref per model it used, until it is turned off.
-    private val httpModels = mutableSetOf<String>()
 
     private val http = HttpEndpoint(
         scope,
         models = { den.models },
-        model = { name ->
-            lock.withLock {
-                val l = loaded.getOrPut(name) { Loaded(den.model(name), 0) }
-                if (httpModels.add(name)) l.refs++
-                l.model
-            }
-        },
+        use = { name, block -> pool.use(name, block) },
         client = { HttpSettings.name(this, it) },
         log = ::log,
     )
@@ -162,17 +148,32 @@ class DenService : Service() {
             runCatching { http.start() }.onFailure { log("http failed to start: $it") }
         } else {
             http.stop()
-            scope.launch { lock.withLock { httpModels.forEach(::unref); httpModels.clear() } }
         }
     }
-
-    private fun refs(model: String) = loaded[model]?.refs ?: 0
 
     private fun caller(uid: Int) = packageManager.getNameForUid(uid) ?: uid.toString()
 
     private fun callerPackage(uid: Int) = packageManager.getPackagesForUid(uid)?.firstOrNull() ?: uid.toString()
 
     private var bound = false
+
+    override fun onCreate() {
+        super.onCreate()
+        scope.launch {
+            while (true) {
+                delay(60_000)
+                pool.unloadIdle(IDLE_MS)
+            }
+        }
+    }
+
+    // Levels below RUNNING_LOW are not worth giving up a loaded model for.
+    override fun onTrimMemory(level: Int) {
+        if (level >= TRIM_MEMORY_RUNNING_LOW) {
+            log("trim memory, level $level")
+            scope.launch { pool.trim() }
+        }
+    }
 
     override fun onBind(intent: Intent): IBinder {
         onRebind(intent)
@@ -222,10 +223,13 @@ class DenService : Service() {
     override fun onDestroy() {
         http.stop()
         scope.cancel()
-        loaded.values.forEach { it.model.close() }
-        loaded.clear()
+        pool.closeAll()
         super.onDestroy()
     }
 
     private fun log(msg: String) = Log.i("DenService", msg)
+
+    private companion object {
+        const val IDLE_MS = 5 * 60_000L
+    }
 }

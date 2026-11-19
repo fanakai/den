@@ -30,8 +30,19 @@ for chunk in stream:
 
 A leading `<think>...</think>` block (Qwen3) is returned in `reasoning_content`, as llama.cpp's server does, and an empty one is dropped. When a client disconnects, its generation stops.
 
+## Memory
+
+Den keeps a model loaded while it is in use, and unloads it:
+- when its last session closes;
+- after 5 minutes without a request (HTTP included);
+- when Android reports low memory;
+- to make room for another model, least recently used first, keeping 512 MB free on top of what the router asks for.
+
+A session whose model was unloaded keeps working; its next request loads the model again.
+
 ## Current limits
 
 - Requests on one model run one at a time, in order (see #11).
+- While a model loads or downloads, requests for other models wait (one load at a time).
 - The endpoint does not come back by itself after a reboot or an update of the Den app; opening the Den app brings it back.
 - To test from a PC: `adb forward tcp:8000 tcp:8000`. The adb forward adds a delay of a few seconds before a disconnected generation stops.
