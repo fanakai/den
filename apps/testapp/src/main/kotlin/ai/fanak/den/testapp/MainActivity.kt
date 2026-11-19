@@ -64,6 +64,7 @@ class MainActivity : Activity() {
         if (intent.getBooleanExtra("soak", false)) {
             startForegroundService(android.content.Intent(this, SoakService::class.java).putExtras(intent))
         }
+        if (intent.getBooleanExtra("remote", false)) remoteCheck(model, prompt.text.toString())
     }
 
     private fun select(m: String) {
