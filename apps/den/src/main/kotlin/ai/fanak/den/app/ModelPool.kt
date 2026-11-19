@@ -12,6 +12,8 @@ import kotlinx.coroutines.withContext
  */
 internal class ModelPool(
     private val load: suspend (String) -> DenModel,
+    // Gets the file on disk (download) before the load; runs outside both locks, so downloads do not block loads.
+    private val prepare: suspend (String) -> Unit = {},
     // RAM the router would need to load this model, given this much free RAM; null when nothing fits.
     private val need: (name: String, availMb: Int) -> Int?,
     private val availMb: () -> Int,
@@ -29,16 +31,15 @@ internal class ModelPool(
     }
 
     private val slots = mutableMapOf<String, Slot>()
+
+    // Guards the slots; never held during a load, so requests on loaded models go on while another one downloads.
     private val lock = Mutex()
 
+    // One load at a time, so two loads do not both count on the same free RAM.
+    private val loading = Mutex()
+
     // An AIDL session keeps its slot; the model may still be unloaded while the session is idle.
-    suspend fun acquire(name: String): DenModel = lock.withLock {
-        val s = slots.getOrPut(name) { Slot(name) }
-        val m = loaded(s)
-        s.sessions++
-        s.lastUsed = now()
-        m
-    }
+    suspend fun acquire(name: String): DenModel = hold(name) { it.sessions++ }
 
     suspend fun release(name: String) = lock.withLock {
         val s = slots[name] ?: return@withLock
@@ -46,12 +47,8 @@ internal class ModelPool(
     }
 
     suspend fun <T> use(name: String, block: suspend (DenModel) -> T): T {
-        val (s, m) = lock.withLock {
-            val s = slots.getOrPut(name) { Slot(name) }
-            val m = loaded(s)
-            s.busy++
-            s to m
-        }
+        val m = hold(name) { it.busy++ }
+        val s = lock.withLock { slots.getValue(name) }
         try {
             return block(m)
         } finally {
@@ -83,17 +80,45 @@ internal class ModelPool(
         slots.clear()
     }
 
-    private suspend fun loaded(s: Slot): DenModel {
-        s.model?.let { return it }
-        makeRoom(s)
-        val before = availMb()
-        val t0 = now()
-        val m = load(s.name)
-        s.model = m
-        s.ramMb = (before - availMb()).coerceAtLeast(0)
-        s.lastUsed = now()
-        log("load ${s.name}: ${m.backend} ${m.accel} ${m.quant}, ${s.ramMb} MB, ${now() - t0} ms")
-        return m
+    // Loads the model if needed, then marks it held under the lock, so it cannot be unloaded in between.
+    private suspend fun hold(name: String, mark: (Slot) -> Unit): DenModel {
+        while (true) {
+            lock.withLock {
+                val s = slots.getOrPut(name) { Slot(name) }
+                s.model?.let { m ->
+                    mark(s)
+                    s.lastUsed = now()
+                    return m
+                }
+            }
+            prepare(name)
+            loading.withLock {
+                val ready = lock.withLock {
+                    val s = slots.getOrPut(name) { Slot(name) }
+                    if (s.model == null) makeRoom(s)
+                    s.model != null
+                }
+                if (!ready) {
+                    val before = availMb()
+                    val t0 = now()
+                    val m = try {
+                        load(name)
+                    } catch (e: Throwable) {
+                        withContext(NonCancellable) {
+                            lock.withLock { slots[name]?.takeIf { it.model == null && it.sessions <= 0 && it.busy == 0 }?.let { slots.remove(name) } }
+                        }
+                        throw e
+                    }
+                    lock.withLock {
+                        val s = slots.getOrPut(name) { Slot(name) }
+                        s.model = m
+                        s.ramMb = (before - availMb()).coerceAtLeast(0)
+                        s.lastUsed = now()
+                        log("load $name: ${m.backend} ${m.accel} ${m.quant}, ${s.ramMb} MB, ${now() - t0} ms")
+                    }
+                }
+            }
+        }
     }
 
     // Unloads idle models, least recently used first, until the file the router would pick fits in free RAM.

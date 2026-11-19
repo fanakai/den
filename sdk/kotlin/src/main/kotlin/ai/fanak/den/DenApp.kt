@@ -4,6 +4,7 @@ import ai.fanak.den.core.backend.GenEvent
 import ai.fanak.den.core.backend.GenRequest
 import ai.fanak.den.core.backend.GenStats
 import ai.fanak.den.core.device.Accel
+import ai.fanak.den.core.model.DownloadProgress
 import ai.fanak.den.core.router.Source
 import android.content.ComponentName
 import android.content.Context
@@ -25,7 +26,7 @@ internal const val DEN_PACKAGE = "ai.fanak.den"
 private const val DEN_BIND = "ai.fanak.den.BIND"
 
 // Binding to the Den app's service (connected mode).
-internal class DenAppConnection(private val context: Context) {
+internal class DenAppConnection(private val context: Context, private val onDownload: (DownloadProgress) -> Unit) {
     private val lock = Mutex()
     private var service: IDenService? = null
     private var conn: ServiceConnection? = null
@@ -66,7 +67,7 @@ internal class DenAppConnection(private val context: Context) {
     suspend fun open(model: String): DenModel {
         val svc = service()
         return suspendCancellableCoroutine { cont ->
-            svc.open(model, object : IOpenCallback.Stub() {
+            val callback = object : IOpenCallback.Stub() {
                 override fun onOpened(session: Long, backend: String, accel: String, quant: String, source: String) {
                     val m = RemoteModel(model, svc, session, backend, Accel.valueOf(accel), quant, Source.valueOf(source))
                     if (cont.isActive) cont.resume(m) else m.close()
@@ -75,7 +76,13 @@ internal class DenAppConnection(private val context: Context) {
                 override fun onError(message: String) {
                     if (cont.isActive) cont.resumeWithException(IOException("Den app: $message"))
                 }
-            })
+
+                override fun onProgress(file: String, bytes: Long, total: Long) {
+                    if (cont.isActive) onDownload(DownloadProgress(file, bytes, total))
+                }
+            }
+            cont.invokeOnCancellation { runCatching { svc.cancelOpen(callback) } }
+            svc.open(model, callback)
         }
     }
 

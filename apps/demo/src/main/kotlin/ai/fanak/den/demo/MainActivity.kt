@@ -19,12 +19,19 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 // A second app that uses only the SDK, always through the Den app.
-// am start -n ai.fanak.den.demo/.MainActivity --es prompt "..." --ez autorun true --ei repeat 3
+// am start -n ai.fanak.den.demo/.MainActivity --es prompt "..." --ez autorun true --ei repeat 3 [--ei openTimeout 30]
 class MainActivity : Activity() {
     private val scope = MainScope()
-    private val den by lazy { Den.connect(this, DenConfig(mode = DenMode.CONNECTED)) }
+    private val den by lazy {
+        Den.connect(this, DenConfig(mode = DenMode.CONNECTED, onDownload = { p ->
+            val line = "downloading ${p.fileName}: ${p.bytes shr 20}/${p.total shr 20} MB"
+            log(line)
+            runOnUiThread { output.text = line }
+        }))
+    }
     private var model: DenModel? = null
     private var job: Job? = null
 
@@ -51,7 +58,9 @@ class MainActivity : Activity() {
         job = scope.launch {
             try {
                 val t0 = System.currentTimeMillis()
-                val m = model ?: den.model(name).also { model = it }
+                // For tests: give up opening after this many seconds (cancels the download in the Den app).
+                val limit = intent.getIntExtra("openTimeout", 0)
+                val m = model ?: (if (limit > 0) withTimeout(limit * 1000L) { den.model(name) } else den.model(name)).also { model = it }
                 log("using ${m.backend} ${m.accel} ${m.quant} via the Den app, open ${System.currentTimeMillis() - t0} ms")
                 repeat(intent.getIntExtra("repeat", 1)) {
                     val start = System.currentTimeMillis()

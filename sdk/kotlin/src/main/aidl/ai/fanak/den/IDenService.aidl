@@ -18,4 +18,7 @@ interface IDenService {
     oneway void cancel(long session);
 
     oneway void close(long session);
+
+    // Version 2: stops an open still in progress, and the download it started (another waiting app resumes it).
+    oneway void cancelOpen(IOpenCallback callback);
 }

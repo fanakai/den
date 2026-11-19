@@ -34,7 +34,7 @@ model.close()
 2) the repository `recipes/`, bundled under `assets/den/recipes`;
 3) `BuiltinCatalog`: Qwen3 0.6B and 1.7B in Q4_0 and Q4_K_M, with their Hugging Face URL and SHA-256;
 4) the llama.cpp backend (CPU, and Adreno GPU through OpenCL);
-5) the download of the chosen file on first use, checked against its SHA-256;
+5) the download of the chosen file on first use, checked against its SHA-256; `DenConfig.onDownload` reports its progress in both modes, and cancelling `model()` stops it (in connected mode, another app waiting for the same model then resumes it);
 6) the AIDL client of the Den app.
 
 ## Current limits
