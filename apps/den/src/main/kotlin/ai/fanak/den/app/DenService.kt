@@ -24,6 +24,7 @@ import android.util.Log
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -35,7 +36,10 @@ import kotlinx.coroutines.sync.withLock
 
 // Hosts the engine for every app on the phone: one loaded copy of each model, shared by all callers.
 class DenService : Service() {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // One failing client must not take down the process that serves the others.
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> Log.e("DenService", "uncaught", e) },
+    )
     private val den by lazy {
         val config = DenConfig(mode = DenMode.EMBEDDED, onDownload = { log("download ${it.fileName} ${it.bytes shr 20}/${it.total shr 20} MB") })
         Den.connect(this, config)
@@ -124,14 +128,42 @@ class DenService : Service() {
     private suspend fun release(id: Long) {
         val s = sessions.remove(id) ?: return
         s.job?.cancel()
-        lock.withLock {
-            val l = loaded[s.model] ?: return
-            if (--l.refs == 0) {
-                l.model.close()
-                loaded.remove(s.model)
-            }
-        }
+        lock.withLock { unref(s.model) }
         log("close session $id (${s.model}), refs ${refs(s.model)}")
+    }
+
+    private fun unref(model: String) {
+        val l = loaded[model] ?: return
+        if (--l.refs == 0) {
+            l.model.close()
+            loaded.remove(model)
+        }
+    }
+
+    // The HTTP endpoint holds one ref per model it used, until it is turned off.
+    private val httpModels = mutableSetOf<String>()
+
+    private val http = HttpEndpoint(
+        scope,
+        models = { den.models },
+        model = { name ->
+            lock.withLock {
+                val l = loaded.getOrPut(name) { Loaded(den.model(name), 0) }
+                if (httpModels.add(name)) l.refs++
+                l.model
+            }
+        },
+        client = { HttpSettings.name(this, it) },
+        log = ::log,
+    )
+
+    private fun applyHttp() {
+        if (HttpSettings.enabled(this)) {
+            runCatching { http.start() }.onFailure { log("http failed to start: $it") }
+        } else {
+            http.stop()
+            scope.launch { lock.withLock { httpModels.forEach(::unref); httpModels.clear() } }
+        }
     }
 
     private fun refs(model: String) = loaded[model]?.refs ?: 0
@@ -140,19 +172,28 @@ class DenService : Service() {
 
     private fun callerPackage(uid: Int) = packageManager.getPackagesForUid(uid)?.firstOrNull() ?: uid.toString()
 
+    private var bound = false
+
     override fun onBind(intent: Intent): IBinder {
-        // Keeps the process and its cores when the calling app goes to the background (see #7).
-        runCatching { startForegroundService(Intent(this, DenService::class.java)) }
-            .onFailure { log("cannot start in foreground: $it") }
+        onRebind(intent)
         return binder
     }
 
+    override fun onRebind(intent: Intent) {
+        bound = true
+        // Keeps the process and its cores when the calling app goes to the background (see #7).
+        runCatching { startForegroundService(Intent(this, DenService::class.java)) }
+            .onFailure { log("cannot start in foreground: $it") }
+    }
+
+    // Also sent by the Den screen when the HTTP endpoint is turned on or off.
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel("den", "Fanak Den", NotificationManager.IMPORTANCE_LOW))
+        val text = if (HttpSettings.enabled(this)) "Serving models to apps and on 127.0.0.1:${HttpSettings.PORT}" else "Serving models to apps"
         val n = Notification.Builder(this, "den")
             .setContentTitle("Fanak Den")
-            .setContentText("Serving models to apps")
+            .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .build()
         if (Build.VERSION.SDK_INT >= 34) {
@@ -160,17 +201,26 @@ class DenService : Service() {
         } else {
             startForeground(1, n)
         }
+        applyHttp()
+        stopIfIdle()
         return START_NOT_STICKY
     }
 
     override fun onUnbind(intent: Intent): Boolean {
         log("all clients unbound")
+        bound = false
+        stopIfIdle()
+        return true
+    }
+
+    private fun stopIfIdle() {
+        if (bound || HttpSettings.enabled(this)) return
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
-        return false
     }
 
     override fun onDestroy() {
+        http.stop()
         scope.cancel()
         loaded.values.forEach { it.model.close() }
         loaded.clear()
