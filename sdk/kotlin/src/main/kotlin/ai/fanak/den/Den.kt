@@ -7,6 +7,8 @@ import ai.fanak.den.core.backend.GenRequest
 import ai.fanak.den.core.backend.Role
 import ai.fanak.den.core.device.Accel
 import ai.fanak.den.core.device.DeviceProfile
+import ai.fanak.den.core.model.DownloadProgress
+import ai.fanak.den.core.model.HttpModelStore
 import ai.fanak.den.core.recipe.InMemoryRecipeStore
 import ai.fanak.den.core.recipe.Recipe
 import ai.fanak.den.core.recipe.RecipeFiles
@@ -27,6 +29,9 @@ data class DenConfig(
     val modelDir: File? = null,
     val contextLength: Int = 4096,
     val useMmap: Boolean = true,
+    // Download the chosen file on first use, checked against its SHA-256.
+    val download: Boolean = true,
+    val onDownload: (DownloadProgress) -> Unit = {},
 )
 
 /**
@@ -41,7 +46,11 @@ class Den private constructor(context: Context, private val config: DenConfig) {
         listOf(LlamaCppBackend(config.useMmap)),
         InMemoryRecipeStore(recipes),
         BuiltinCatalog,
-        FileModelStore(modelDir),
+        if (config.download) {
+            HttpModelStore(modelDir, BuiltinCatalog::remote, config.onDownload, online = { hasNetwork(context) })
+        } else {
+            FileModelStore(modelDir)
+        },
     )
 
     val models: List<String> get() = BuiltinCatalog.models
@@ -88,3 +97,10 @@ internal fun AssetManager.recipes(path: String): List<Recipe> =
             else -> emptyList()
         }
     }
+
+// activeNetwork is null when the default network is blocked for this app (Doze, battery saver, data saver).
+private fun hasNetwork(context: Context): Boolean {
+    val cm = context.getSystemService(android.net.ConnectivityManager::class.java) ?: return true
+    val caps = cm.getNetworkCapabilities(cm.activeNetwork ?: return false) ?: return false
+    return caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+}

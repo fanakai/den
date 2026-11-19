@@ -38,6 +38,10 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         model = intent.getStringExtra("model") ?: den.models.first()
+        intent.getStringExtra("delete")?.let { name ->
+            listOf(name, "$name.sha256", "$name.part").forEach { java.io.File(den.modelDir, it).delete() }
+            log("deleted $name")
+        }
 
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(32, 32, 32, 32) }
         info = TextView(this).apply { textSize = 12f }
