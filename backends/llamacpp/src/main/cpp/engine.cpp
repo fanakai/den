@@ -5,6 +5,7 @@
 #include <mutex>
 
 #include "llama.h"
+#include "threads.h"
 
 namespace den {
 
@@ -54,11 +55,13 @@ std::unique_ptr<Engine> Engine::load(const std::string &path, int n_ctx, int n_t
         return nullptr;
     }
 
+    e->threads_ = n_threads;
+    Threads t = n_threads > 0 ? Threads{n_threads, n_threads} : pick_threads();
     auto cp = llama_context_default_params();
     cp.n_ctx = n_ctx;
     cp.n_batch = std::min(n_ctx, 512);
-    cp.n_threads = n_threads;
-    cp.n_threads_batch = n_threads;
+    cp.n_threads = t.decode;
+    cp.n_threads_batch = t.batch;
     e->ctx_ = llama_init_from_model(e->model_, cp);
     if (!e->ctx_) {
         err = "failed to create context";
@@ -111,6 +114,11 @@ bool Engine::generate(const Messages &messages, const GenParams &params, const O
         return false;
     }
     const int max_new = std::min(params.max_tokens, n_ctx - n);
+
+    Threads t = threads_ > 0 ? Threads{threads_, threads_} : pick_threads();
+    llama_set_n_threads(ctx_, t.decode, t.batch);
+    stats.threads = t.decode;
+    stats.threads_batch = t.batch;
 
     llama_memory_clear(llama_get_memory(ctx_), true);
     stats.prompt_tokens = n;

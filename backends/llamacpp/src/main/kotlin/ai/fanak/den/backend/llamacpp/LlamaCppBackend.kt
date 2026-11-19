@@ -38,7 +38,8 @@ class LlamaCppBackend : DenBackend {
 
     override suspend fun load(artifact: Artifact, opts: LoadOptions): Session {
         require(opts.accel == Accel.CPU) { "llamacpp: ${opts.accel} not supported yet" }
-        val threads = opts.threads ?: Runtime.getRuntime().availableProcessors()
+        // 0 = native picks from the cores Android allows right now; availableProcessors() ignores that.
+        val threads = opts.threads ?: 0
         val handle = withContext(Dispatchers.IO) {
             try {
                 LlamaNative.load(artifact.path, opts.contextLength, threads, 0)
