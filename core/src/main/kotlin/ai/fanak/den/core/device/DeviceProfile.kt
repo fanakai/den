@@ -1,8 +1,16 @@
 package ai.fanak.den.core.device
 
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
 enum class Platform { ANDROID, IOS }
 
-enum class Accel { CPU, GPU, NPU }
+@Serializable
+enum class Accel {
+    @SerialName("cpu") CPU,
+    @SerialName("gpu") GPU,
+    @SerialName("npu") NPU,
+}
 
 // Same levels as Android PowerManager thermal status.
 enum class ThermalState { NONE, LIGHT, MODERATE, SEVERE, CRITICAL, EMERGENCY, SHUTDOWN }
