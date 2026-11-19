@@ -48,7 +48,7 @@ class Engine {
 public:
     // n_threads <= 0 picks threads automatically before each generation.
     static std::unique_ptr<Engine> load(const std::string &path, int n_ctx, int n_threads,
-                                        int n_gpu_layers, std::string &err);
+                                        int n_gpu_layers, bool use_mmap, std::string &err);
     ~Engine();
 
     bool generate(const Messages &messages, const GenParams &params, const OnText &on_text,

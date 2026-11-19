@@ -25,7 +25,7 @@ import kotlinx.coroutines.launch
 // Drive from adb: am start -n ai.fanak.den.testapp/.MainActivity --es model qwen3-0.6b --es prompt "..." --ez autorun true
 class MainActivity : Activity() {
     private val scope = MainScope()
-    private val den by lazy { testDen() }
+    private val den by lazy { testDen(intent.getBooleanExtra("mmap", true)) }
 
     private lateinit var model: String
     private var loaded: DenModel? = null
@@ -88,11 +88,13 @@ class MainActivity : Activity() {
         job = scope.launch {
             output.text = ""
             try {
+                val t0 = System.currentTimeMillis()
                 val m = loaded ?: den.model(model).also { loaded = it }
                 m.failures.forEach { log("failed: ${it.candidate.accel} ${it.candidate.variant.quant}: ${it.error.message}") }
-                log("using ${m.backend} ${m.accel} ${m.quant} (${m.source})")
+                log("using ${m.backend} ${m.accel} ${m.quant} (${m.source}), load ${System.currentTimeMillis() - t0} ms, free ${den.device().availRamMb} MB")
 
                 val req = GenRequest(listOf(ChatMessage(Role.USER, prompt.text.toString())), maxTokens = 128, temperature = 0f)
+                repeat(intent.getIntExtra("repeat", 1)) {
                 val sb = StringBuilder()
                 m.chat(req).collect { e ->
                     when (e) {
@@ -106,6 +108,7 @@ class MainActivity : Activity() {
                             log(line)
                         }
                     }
+                }
                 }
             } catch (e: NoUsableBackendException) {
                 output.text = "error: ${e.message}"

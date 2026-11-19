@@ -6,4 +6,5 @@ import android.content.Context
 import java.io.File
 
 // The models were copied into <filesDir>/models with adb run-as before the SDK existed.
-fun Context.testDen() = Den.connect(this, DenConfig(modelDir = File(filesDir, "models")))
+fun Context.testDen(useMmap: Boolean = true) =
+    Den.connect(this, DenConfig(modelDir = File(filesDir, "models"), useMmap = useMmap))

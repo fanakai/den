@@ -22,7 +22,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class LlamaCppBackend : DenBackend {
+// useMmap = false reads the weights into RAM, so the OS cannot drop them under memory pressure.
+class LlamaCppBackend(private val useMmap: Boolean = true) : DenBackend {
     override val id = "llamacpp"
 
     @Volatile
@@ -46,9 +47,10 @@ class LlamaCppBackend : DenBackend {
         val threads = opts.threads ?: 0
         val handle = withContext(Dispatchers.IO) {
             try {
-                LlamaNative.load(artifact.path, opts.contextLength, threads, gpuLayers).also { h ->
-                    // Warm-up: the first prefill pages the weights in from storage (2.9 vs 124 tok/s on the A52s).
-                    LlamaNative.generate(h, arrayOf("user"), arrayOf("hi"), 1, 0f, 1f, emptyArray()) { true }
+                LlamaNative.load(artifact.path, opts.contextLength, threads, gpuLayers, useMmap).also { h ->
+                    // Warm-up with a prompt as long as a real one: a 1-token "hi" left the first request at
+                    // 3.8 tok/s prefill on the A52s, against ~75 for the next ones.
+                    LlamaNative.generate(h, arrayOf("user"), arrayOf(WARMUP), 2, 0f, 1f, emptyArray()) { true }
                 }
             } catch (e: EngineException) {
                 lastError = e.message
@@ -97,3 +99,7 @@ private class LlamaSession(private var handle: Long) : Session {
         }
     }
 }
+
+private const val WARMUP =
+    "The fennec fox lives in the Sahara and digs dens in the sand to escape the heat of the day. " +
+        "It hunts at night for insects, small rodents and birds, and gets most of its water from food."

@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
     }
 
     std::string err;
-    auto engine = den::Engine::load(argv[1], 2048, threads, gpu_layers, err);
+    auto engine = den::Engine::load(argv[1], 2048, threads, gpu_layers, std::getenv("DEN_NO_MMAP") == nullptr, err);
     if (!engine) {
         std::fprintf(stderr, "load: %s\n", err.c_str());
         return 1;
