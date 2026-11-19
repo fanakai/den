@@ -4,6 +4,7 @@ import ai.fanak.den.core.model.Artifact
 import ai.fanak.den.core.model.ModelCatalog
 import ai.fanak.den.core.model.ModelFormat
 import ai.fanak.den.core.model.ModelStore
+import ai.fanak.den.core.model.RemoteFile
 import ai.fanak.den.core.model.Variant
 import java.io.File
 import java.io.FileNotFoundException
@@ -41,9 +42,11 @@ object BuiltinCatalog : ModelCatalog {
     override fun variants(model: String) = entries.filter { it.variant.model == model }.map { it.variant }
 
     fun entry(variant: Variant) = entries.first { it.variant == variant }
+
+    fun remote(variant: Variant) = entry(variant).let { RemoteFile(it.fileName, it.url, it.sha256, variant.sizeBytes) }
 }
 
-// Model files already on disk; downloading comes with the model manager (#10).
+// Model files already on disk, with no download (DenConfig.download = false).
 class FileModelStore(val dir: File) : ModelStore {
     override suspend fun fetch(variant: Variant): Artifact {
         val f = File(dir, BuiltinCatalog.entry(variant).fileName)
