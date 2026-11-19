@@ -26,6 +26,7 @@ data class DenConfig(
     // Default: <filesDir>/den/models
     val modelDir: File? = null,
     val contextLength: Int = 4096,
+    val useMmap: Boolean = true,
 )
 
 /**
@@ -37,7 +38,7 @@ class Den private constructor(context: Context, private val config: DenConfig) {
     val modelDir: File = (config.modelDir ?: File(context.filesDir, "den/models")).apply { mkdirs() }
     val recipes: List<Recipe> = context.assets.recipes("den/recipes")
     private val router = Router(
-        listOf(LlamaCppBackend()),
+        listOf(LlamaCppBackend(config.useMmap)),
         InMemoryRecipeStore(recipes),
         BuiltinCatalog,
         FileModelStore(modelDir),

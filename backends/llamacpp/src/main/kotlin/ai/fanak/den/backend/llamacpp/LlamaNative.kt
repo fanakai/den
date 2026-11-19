@@ -14,7 +14,7 @@ internal object LlamaNative {
     // "name\tdescription\tgpu|cpu" per device
     external fun devices(): Array<String>
 
-    external fun load(path: String, nCtx: Int, nThreads: Int, nGpuLayers: Int): Long
+    external fun load(path: String, nCtx: Int, nThreads: Int, nGpuLayers: Int, useMmap: Boolean): Long
 
     // [promptTokens, outputTokens, prefillMs, decodeMs]
     external fun generate(

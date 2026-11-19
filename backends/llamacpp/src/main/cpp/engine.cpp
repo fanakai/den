@@ -62,7 +62,7 @@ std::vector<Device> init_backends(const std::string &lib_dir) {
 }
 
 std::unique_ptr<Engine> Engine::load(const std::string &path, int n_ctx, int n_threads,
-                                     int n_gpu_layers, std::string &err) {
+                                     int n_gpu_layers, bool use_mmap, std::string &err) {
     if (ggml_backend_dev_count() == 0) {
         err = "no ggml backend loaded; call init_backends first";
         return nullptr;
@@ -71,6 +71,7 @@ std::unique_ptr<Engine> Engine::load(const std::string &path, int n_ctx, int n_t
 
     auto mp = llama_model_default_params();
     mp.n_gpu_layers = n_gpu_layers;
+    mp.use_mmap = use_mmap;
     e->model_ = llama_model_load_from_file(path.c_str(), mp);
     if (!e->model_) {
         err = "failed to load model: " + path;
