@@ -17,5 +17,20 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
-      - run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;29.0.14206865" "cmake;3.22.1" > /dev/null
+      - run: echo "SDK=$ANDROID_HOME" >> "$GITHUB_ENV"
+      # The NDK and CMake downloads are slow and sometimes corrupt, so they are cached between runs.
+      - id: sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.SDK }}/ndk/29.0.14206865
+            ${{ env.SDK }}/cmake/3.22.1
+          key: android-ndk-29.0.14206865-cmake-3.22.1
+      - if: steps.sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          for i in 1 2 3; do
+            yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" "ndk;29.0.14206865" "cmake;3.22.1" > /dev/null && exit 0
+            echo "sdkmanager failed, attempt $i"
+          done
+          exit 1
       - run: ./gradlew build --console=plain
