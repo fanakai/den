@@ -1,4 +1,4 @@
-package ai.fanak.den.testapp
+package ai.fanak.den
 
 import ai.fanak.den.core.device.DeviceProbe
 import ai.fanak.den.core.device.DeviceProfile
@@ -10,8 +10,9 @@ import android.content.Context
 import android.os.Build
 import android.os.PowerManager
 
-// Moves to the SDK with #5.
-class AndroidDevice(private val context: Context) : DeviceProbe {
+class AndroidDeviceProbe(context: Context) : DeviceProbe {
+    private val context = context.applicationContext
+
     override fun profile(): DeviceProfile {
         val mem = ActivityManager.MemoryInfo()
         (context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(mem)

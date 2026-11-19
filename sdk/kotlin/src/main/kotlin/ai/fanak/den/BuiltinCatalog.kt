@@ -1,0 +1,53 @@
+package ai.fanak.den
+
+import ai.fanak.den.core.model.Artifact
+import ai.fanak.den.core.model.ModelCatalog
+import ai.fanak.den.core.model.ModelFormat
+import ai.fanak.den.core.model.ModelStore
+import ai.fanak.den.core.model.Variant
+import java.io.File
+import java.io.FileNotFoundException
+
+data class CatalogEntry(
+    val variant: Variant,
+    val fileName: String,
+    val url: String,
+    val sha256: String,
+)
+
+// Until the live catalog (#31). minRamMb is a rough margin until den bench measures peak RAM (#14).
+object BuiltinCatalog : ModelCatalog {
+    private const val HF = "https://huggingface.co/unsloth"
+
+    private fun qwen3(size: String, quant: String, bytes: Long, ramMb: Int, sha256: String): CatalogEntry {
+        val file = "Qwen3-$size-${quant.uppercase()}.gguf"
+        return CatalogEntry(
+            Variant("qwen3-${size.lowercase()}", ModelFormat.GGUF, quant, bytes, ramMb),
+            file,
+            "$HF/Qwen3-$size-GGUF/resolve/main/$file",
+            sha256,
+        )
+    }
+
+    val entries = listOf(
+        qwen3("0.6B", "q4_0", 382_156_480, 700, "33bcc57074ec7b6eada5a90651ee546ec0c2b271002c22baf9f1b2dd1e8f75cb"),
+        qwen3("0.6B", "q4_k_m", 396_705_472, 700, "ac2d97712095a558e31573f62f466a3f9d93990898b0ec79d7c974c1780d524a"),
+        qwen3("1.7B", "q4_0", 1_056_782_912, 1_500, "c876f159707a4e4f70e045106c69db15bfc935a4981706fd4f65c6e7ea1e81c5"),
+        qwen3("1.7B", "q4_k_m", 1_107_409_472, 1_500, "b139949c5bd74937ad8ed8c8cf3d9ffb1e99c866c823204dc42c0d91fa181897"),
+    )
+
+    val models get() = entries.map { it.variant.model }.distinct()
+
+    override fun variants(model: String) = entries.filter { it.variant.model == model }.map { it.variant }
+
+    fun entry(variant: Variant) = entries.first { it.variant == variant }
+}
+
+// Model files already on disk; downloading comes with the model manager (#10).
+class FileModelStore(val dir: File) : ModelStore {
+    override suspend fun fetch(variant: Variant): Artifact {
+        val f = File(dir, BuiltinCatalog.entry(variant).fileName)
+        if (!f.isFile) throw FileNotFoundException("missing ${f.path}")
+        return Artifact(variant, f.path)
+    }
+}

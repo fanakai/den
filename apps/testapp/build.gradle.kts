@@ -21,9 +21,6 @@ android {
         release { signingConfig = signingConfigs.getByName("debug") }
     }
 
-    // Bundle the repository recipes, as the SDK will.
-    sourceSets["main"].assets.srcDir(rootProject.file("recipes"))
-
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -35,6 +32,6 @@ kotlin {
 }
 
 dependencies {
-    implementation(project(":backends:llamacpp"))
+    implementation(project(":sdk:kotlin"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 }
