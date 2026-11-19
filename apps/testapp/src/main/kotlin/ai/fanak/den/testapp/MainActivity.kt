@@ -1,14 +1,11 @@
 package ai.fanak.den.testapp
 
-import ai.fanak.den.backend.llamacpp.LlamaCppBackend
 import ai.fanak.den.core.backend.ChatMessage
 import ai.fanak.den.core.backend.GenEvent
 import ai.fanak.den.core.backend.GenRequest
 import ai.fanak.den.core.backend.Role
-import ai.fanak.den.core.recipe.InMemoryRecipeStore
 import ai.fanak.den.core.router.NoUsableBackendException
 import ai.fanak.den.core.router.Opened
-import ai.fanak.den.core.router.Router
 import android.app.Activity
 import android.os.Bundle
 import android.util.Log
@@ -28,13 +25,8 @@ import kotlinx.coroutines.launch
 class MainActivity : Activity() {
     private val scope = MainScope()
     private val device by lazy { AndroidDevice(this) }
-    private val router by lazy {
-        val recipes = assets.recipes()
-        log("recipes: ${recipes.size}")
-        Router(listOf(LlamaCppBackend()), InMemoryRecipeStore(recipes), Catalog, LocalStore(modelDir))
-    }
-    // Internal storage: the files must be owned by the app; ones moved in by adb shell give EACCES.
-    private val modelDir by lazy { java.io.File(filesDir, "models").apply { mkdirs() } }
+    private val router by lazy { testRouter() }
+    private val modelDir get() = modelDir()
 
     private var model = Catalog.models.first()
     private var opened: Opened? = null
@@ -66,6 +58,9 @@ class MainActivity : Activity() {
 
         showPlan()
         if (intent.getBooleanExtra("autorun", false)) run()
+        if (intent.getBooleanExtra("soak", false)) {
+            startForegroundService(android.content.Intent(this, SoakService::class.java).putExtras(intent))
+        }
     }
 
     private fun select(m: String) {
