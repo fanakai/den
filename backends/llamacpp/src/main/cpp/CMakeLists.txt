@@ -25,7 +25,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../../llama.cpp ${CMAKE_BINARY_D
 set(DEN_SOURCES engine.cpp threads.cpp)
 if(DEN_SMOKE)
     add_executable(den-smoke ${DEN_SOURCES} smoke.cpp)
-    target_link_libraries(den-smoke PRIVATE llama)
+    target_link_libraries(den-smoke PRIVATE llama log)
 else()
     add_library(den_llamacpp SHARED ${DEN_SOURCES} jni.cpp)
     target_link_libraries(den_llamacpp PRIVATE llama log)
