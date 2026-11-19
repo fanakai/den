@@ -20,6 +20,8 @@ struct GenParams {
 };
 
 struct GenStats {
+    int threads = 0;
+    int threads_batch = 0;
     int prompt_tokens = 0;
     int output_tokens = 0;
     int64_t prefill_ms = 0;
@@ -34,6 +36,7 @@ using OnText = std::function<bool(const std::string &)>;
 
 class Engine {
 public:
+    // n_threads <= 0 picks threads automatically before each generation.
     static std::unique_ptr<Engine> load(const std::string &path, int n_ctx, int n_threads,
                                         int n_gpu_layers, std::string &err);
     ~Engine();
@@ -47,6 +50,7 @@ private:
 
     llama_model *model_ = nullptr;
     llama_context *ctx_ = nullptr;
+    int threads_ = 0;
 };
 
 } // namespace den
