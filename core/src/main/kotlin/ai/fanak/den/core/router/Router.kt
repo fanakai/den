@@ -41,6 +41,7 @@ class Router(
     private val recipes: RecipeStore,
     private val catalog: ModelCatalog,
     private val store: ModelStore,
+    private val failures: FailureStore = InMemoryFailureStore(),
 ) {
     private val defaultOrder = listOf(Accel.NPU, Accel.GPU, Accel.CPU)
 
@@ -73,22 +74,33 @@ class Router(
             }
         }
 
-        return (fromRecipes + defaults).distinctBy { Triple(it.backend.id, it.accel, it.variant) }
+        return (fromRecipes + defaults)
+            .distinctBy { Triple(it.backend.id, it.accel, it.variant) }
+            .filterNot { failures.isBlocked(key(device, it)) }
     }
 
     suspend fun open(model: String, device: DeviceProfile, contextLength: Int = 4096): Opened {
-        val failures = mutableListOf<Failure>()
+        val tried = mutableListOf<Failure>()
         for (c in plan(model, device)) {
             try {
                 val artifact = store.fetch(c.variant)
                 val session = c.backend.load(artifact, LoadOptions(c.accel, contextLength))
-                return Opened(session, c, failures)
+                return Opened(session, c, tried)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                failures += Failure(c, e)
+                tried += Failure(c, e)
+                failures.record(key(device, c), e)
             }
         }
-        throw NoUsableBackendException(model, failures)
+        throw NoUsableBackendException(model, tried)
     }
+
+    // For crashes after load, e.g. during generation; the next open() skips this candidate.
+    fun reportFailure(device: DeviceProfile, candidate: Candidate, error: Throwable) =
+        failures.record(key(device, candidate), error)
+
+    private fun key(device: DeviceProfile, c: Candidate) = FailureKey(
+        device.soc, c.backend.id, c.accel, c.variant.model, c.variant.format, c.variant.quant,
+    )
 }

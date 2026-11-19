@@ -42,11 +42,13 @@ class RouterTest {
         override val id: String,
         private val caps: Capabilities,
         private val failOn: Set<Accel> = emptySet(),
+        private val crashOn: Set<Accel> = emptySet(),
     ) : DenBackend {
         val loaded = mutableListOf<Pair<Variant, Accel>>()
         override fun probe(device: DeviceProfile) = caps
         override suspend fun load(artifact: Artifact, opts: LoadOptions): Session {
             loaded += artifact.variant to opts.accel
+            if (opts.accel in crashOn) throw EngineCrashedException("engine died on ${opts.accel}")
             if (opts.accel in failOn) error("load failed on ${opts.accel}")
             return object : Session {
                 override fun generate(req: GenRequest): Flow<GenEvent> = emptyFlow()
@@ -63,11 +65,11 @@ class RouterTest {
         override suspend fun fetch(variant: Variant) = Artifact(variant, "/models/${variant.quant}")
     }
 
-    private fun llama(failOn: Set<Accel> = emptySet()) =
-        FakeBackend("llamacpp", Capabilities(setOf(Accel.CPU, Accel.GPU), setOf(ModelFormat.GGUF)), failOn)
+    private fun llama(failOn: Set<Accel> = emptySet(), crashOn: Set<Accel> = emptySet()) =
+        FakeBackend("llamacpp", Capabilities(setOf(Accel.CPU, Accel.GPU), setOf(ModelFormat.GGUF)), failOn, crashOn)
 
-    private fun litert(failOn: Set<Accel> = emptySet()) =
-        FakeBackend("litert", Capabilities(setOf(Accel.GPU, Accel.NPU), setOf(ModelFormat.LITERTLM)), failOn)
+    private fun litert(failOn: Set<Accel> = emptySet(), crashOn: Set<Accel> = emptySet()) =
+        FakeBackend("litert", Capabilities(setOf(Accel.GPU, Accel.NPU), setOf(ModelFormat.LITERTLM)), failOn, crashOn)
 
     private fun router(backends: List<DenBackend>, recipes: List<Recipe> = emptyList()) =
         Router(backends, InMemoryRecipeStore(recipes), catalog, store)
@@ -116,6 +118,48 @@ class RouterTest {
         assertEquals("llamacpp", opened.candidate.backend.id)
         assertEquals(Accel.GPU, opened.candidate.accel)
         assertTrue(opened.needsBenchmark)
+    }
+
+    @Test
+    fun crashedCandidateIsSkippedNextTime() = runTest {
+        val litert = litert(crashOn = setOf(Accel.NPU))
+        val r = router(listOf(llama(), litert))
+
+        assertEquals(Accel.GPU, r.open(model, device).candidate.accel)
+        assertEquals(Accel.GPU, r.open(model, device).candidate.accel)
+        assertEquals(1, litert.loaded.count { it.second == Accel.NPU })
+    }
+
+    @Test
+    fun ordinaryFailureIsRetriedNextTime() = runTest {
+        val litert = litert(failOn = setOf(Accel.NPU))
+        val r = router(listOf(llama(), litert))
+
+        r.open(model, device)
+        r.open(model, device)
+        assertEquals(2, litert.loaded.count { it.second == Accel.NPU })
+    }
+
+    @Test
+    fun crashDuringGenerationIsReported() = runTest {
+        val r = router(listOf(llama(), litert()))
+        val first = r.open(model, device)
+        assertEquals(Accel.NPU, first.candidate.accel)
+
+        r.reportFailure(device, first.candidate, EngineCrashedException("died while generating"))
+        assertEquals(Accel.GPU, r.open(model, device).candidate.accel)
+    }
+
+    @Test
+    fun crashOnOneSocDoesNotBlockAnother() = runTest {
+        val r = router(listOf(llama()))
+        val first = r.open(model, device)
+        assertEquals(q4km to Accel.GPU, first.candidate.variant to first.candidate.accel)
+        r.reportFailure(device, first.candidate, EngineCrashedException("died"))
+
+        fun hasIt(d: DeviceProfile) = r.plan(model, d).any { it.variant == q4km && it.accel == Accel.GPU }
+        assertTrue(!hasIt(device))
+        assertTrue(hasIt(device.copy(soc = "SM7325")))
     }
 
     @Test
