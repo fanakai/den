@@ -68,7 +68,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
     fun device(): DeviceProfile = probe.profile()
 
     // What the router would try, in order, without loading anything.
-    fun plan(model: String): List<Candidate> = router.plan(model, device())
+    fun plan(model: String, device: DeviceProfile = device()): List<Candidate> = router.plan(model, device)
 
     // Whether model() will use the Den app.
     val connected: Boolean get() = config.mode != DenMode.EMBEDDED && app.installed()
