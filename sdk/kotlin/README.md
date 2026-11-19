@@ -40,4 +40,4 @@ model.close()
 ## Current limits
 
 - Only the built-in catalog; the live catalog comes with #31.
-- Any app can use the Den app for now; per-app approval comes later.
+- The Den app asks the user once per app, by notification, on its first `model()` call; a denied app gets an error (in `AUTO`, it runs in the app process instead).

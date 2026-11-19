@@ -17,7 +17,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Any app can bind for now; per-app approval comes later. -->
+        <!-- Any app can bind; open() asks the user once per app (Approvals). -->
         <service
             android:name=".DenService"
             android:exported="true"
@@ -29,5 +29,9 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="On-device LLM inference shared with other apps" />
         </service>
+
+        <receiver
+            android:name=".ApprovalReceiver"
+            android:exported="false" />
     </application>
 </manifest>
