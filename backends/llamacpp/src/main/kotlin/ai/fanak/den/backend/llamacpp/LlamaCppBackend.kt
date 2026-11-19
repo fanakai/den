@@ -28,21 +28,25 @@ class LlamaCppBackend : DenBackend {
     @Volatile
     private var lastError: String? = null
 
-    // GPU paths come with #4; CPU only for now.
-    override fun probe(device: DeviceProfile): Capabilities =
-        if (device.platform == Platform.ANDROID && device.abi == "arm64-v8a") {
-            Capabilities(setOf(Accel.CPU), setOf(ModelFormat.GGUF))
-        } else {
-            Capabilities.NONE
-        }
+    // GPU is reported only when the OpenCL backend loaded and found a device (Adreno 7xx and newer).
+    private val hasGpu by lazy {
+        runCatching { LlamaNative.devices().any { it.endsWith("\tgpu") } }.getOrDefault(false)
+    }
+
+    override fun probe(device: DeviceProfile): Capabilities {
+        if (device.platform != Platform.ANDROID || device.abi != "arm64-v8a") return Capabilities.NONE
+        val accels = if (hasGpu) setOf(Accel.CPU, Accel.GPU) else setOf(Accel.CPU)
+        return Capabilities(accels, setOf(ModelFormat.GGUF))
+    }
 
     override suspend fun load(artifact: Artifact, opts: LoadOptions): Session {
-        require(opts.accel == Accel.CPU) { "llamacpp: ${opts.accel} not supported yet" }
+        require(opts.accel == Accel.CPU || opts.accel == Accel.GPU) { "llamacpp: ${opts.accel} not supported" }
+        val gpuLayers = if (opts.accel == Accel.GPU) 999 else 0
         // 0 = native picks from the cores Android allows right now; availableProcessors() ignores that.
         val threads = opts.threads ?: 0
         val handle = withContext(Dispatchers.IO) {
             try {
-                LlamaNative.load(artifact.path, opts.contextLength, threads, 0)
+                LlamaNative.load(artifact.path, opts.contextLength, threads, gpuLayers)
             } catch (e: EngineException) {
                 lastError = e.message
                 throw e

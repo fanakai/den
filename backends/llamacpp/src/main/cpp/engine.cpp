@@ -4,6 +4,7 @@
 #include <chrono>
 #include <mutex>
 
+#include "ggml-backend.h"
 #include "llama.h"
 #include "threads.h"
 
@@ -32,19 +33,36 @@ size_t utf8_complete(const std::string &s) {
     return s.size();
 }
 
-void init_backend() {
-    static std::once_flag once;
-    std::call_once(once, [] {
-        llama_log_set([](ggml_log_level, const char *, void *) {}, nullptr);
-        llama_backend_init();
-    });
-}
+std::once_flag g_backends;
 
 } // namespace
 
+std::vector<Device> init_backends(const std::string &lib_dir) {
+    std::call_once(g_backends, [&] {
+        llama_log_set([](ggml_log_level, const char *, void *) {}, nullptr);
+        if (lib_dir.empty()) {
+            // In an APK the libraries are usually not extracted, so load by name; a missing one is skipped.
+            for (const char *name : {"libggml-cpu.so", "libggml-opencl.so"}) ggml_backend_load(name);
+        } else {
+            ggml_backend_load_all_from_path(lib_dir.c_str());
+        }
+        llama_backend_init();
+    });
+    std::vector<Device> out;
+    for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
+        auto *d = ggml_backend_dev_get(i);
+        out.push_back({ggml_backend_dev_name(d), ggml_backend_dev_description(d),
+                       ggml_backend_dev_type(d) == GGML_BACKEND_DEVICE_TYPE_GPU});
+    }
+    return out;
+}
+
 std::unique_ptr<Engine> Engine::load(const std::string &path, int n_ctx, int n_threads,
                                      int n_gpu_layers, std::string &err) {
-    init_backend();
+    if (ggml_backend_dev_count() == 0) {
+        err = "no ggml backend loaded; call init_backends first";
+        return nullptr;
+    }
     std::unique_ptr<Engine> e(new Engine());
 
     auto mp = llama_model_default_params();

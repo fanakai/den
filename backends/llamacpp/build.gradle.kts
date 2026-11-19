@@ -23,6 +23,11 @@ android {
         }
     }
 
+    // Link-time stub only; the vendor libOpenCL.so must be the one loaded on the phone.
+    packaging {
+        jniLibs { excludes += "**/libOpenCL.so" }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

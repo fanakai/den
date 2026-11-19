@@ -34,6 +34,16 @@ using Messages = std::vector<std::pair<std::string, std::string>>;
 // Receives complete UTF-8 text only; return false to stop.
 using OnText = std::function<bool(const std::string &)>;
 
+struct Device {
+    std::string name;
+    std::string description;
+    bool gpu;
+};
+
+// Loads the ggml backend libraries (once) and lists the devices they offer.
+// Empty lib_dir loads them by name, as inside an APK.
+std::vector<Device> init_backends(const std::string &lib_dir);
+
 class Engine {
 public:
     // n_threads <= 0 picks threads automatically before each generation.
