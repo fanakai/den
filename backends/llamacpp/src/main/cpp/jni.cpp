@@ -36,9 +36,24 @@ void throw_engine(JNIEnv *env, const std::string &msg) {
 
 extern "C" {
 
+// Each entry is "name\tdescription\tgpu|cpu".
+JNIEXPORT jobjectArray JNICALL
+Java_ai_fanak_den_backend_llamacpp_LlamaNative_devices(JNIEnv *env, jobject) {
+    auto devices = den::init_backends("");
+    jobjectArray out = env->NewObjectArray((jsize) devices.size(), env->FindClass("java/lang/String"), nullptr);
+    for (size_t i = 0; i < devices.size(); ++i) {
+        std::string s = devices[i].name + "\t" + devices[i].description + "\t" + (devices[i].gpu ? "gpu" : "cpu");
+        jstring js = env->NewStringUTF(s.c_str());
+        env->SetObjectArrayElement(out, (jsize) i, js);
+        env->DeleteLocalRef(js);
+    }
+    return out;
+}
+
 JNIEXPORT jlong JNICALL
 Java_ai_fanak_den_backend_llamacpp_LlamaNative_load(JNIEnv *env, jobject, jstring path, jint n_ctx,
                                                      jint n_threads, jint n_gpu_layers) {
+    den::init_backends("");
     std::string err;
     auto engine = den::Engine::load(str(env, path), n_ctx, n_threads, n_gpu_layers, err);
     if (!engine) {

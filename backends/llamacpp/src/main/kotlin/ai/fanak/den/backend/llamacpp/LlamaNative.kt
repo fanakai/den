@@ -11,6 +11,9 @@ internal object LlamaNative {
         System.loadLibrary("den_llamacpp")
     }
 
+    // "name\tdescription\tgpu|cpu" per device
+    external fun devices(): Array<String>
+
     external fun load(path: String, nCtx: Int, nThreads: Int, nGpuLayers: Int): Long
 
     // [promptTokens, outputTokens, prefillMs, decodeMs]

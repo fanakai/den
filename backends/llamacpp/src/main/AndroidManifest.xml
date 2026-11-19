@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Vendor OpenCL driver; listed in /vendor/etc/public.libraries.txt on Snapdragon phones. -->
+        <uses-native-library android:name="libOpenCL.so" android:required="false" />
+    </application>
+</manifest>
