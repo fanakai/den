@@ -57,6 +57,11 @@ class DenService : Service() {
         override fun open(model: String, callback: IOpenCallback) {
             val uid = Binder.getCallingUid()
             scope.launch {
+                val pkg = callerPackage(uid)
+                if (!Approvals.request(this@DenService, pkg)) {
+                    log("open $model for $pkg: not allowed")
+                    return@launch callback.onError("$pkg is not allowed to use Den; allow it in the Den app")
+                }
                 try {
                     val m = lock.withLock {
                         loaded.getOrPut(model) { Loaded(den.model(model), 0) }.also { it.refs++ }.model
@@ -132,6 +137,8 @@ class DenService : Service() {
     private fun refs(model: String) = loaded[model]?.refs ?: 0
 
     private fun caller(uid: Int) = packageManager.getNameForUid(uid) ?: uid.toString()
+
+    private fun callerPackage(uid: Int) = packageManager.getPackagesForUid(uid)?.firstOrNull() ?: uid.toString()
 
     override fun onBind(intent: Intent): IBinder {
         // Keeps the process and its cores when the calling app goes to the background (see #7).
