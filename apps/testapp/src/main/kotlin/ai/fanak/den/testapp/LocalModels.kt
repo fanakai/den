@@ -1,12 +1,16 @@
 package ai.fanak.den.testapp
 
+import ai.fanak.den.backend.llamacpp.LlamaCppBackend
 import ai.fanak.den.core.model.Artifact
 import ai.fanak.den.core.model.ModelCatalog
 import ai.fanak.den.core.model.ModelFormat
 import ai.fanak.den.core.model.ModelStore
 import ai.fanak.den.core.model.Variant
 import ai.fanak.den.core.recipe.Recipe
+import ai.fanak.den.core.recipe.InMemoryRecipeStore
 import ai.fanak.den.core.recipe.RecipeFiles
+import ai.fanak.den.core.router.Router
+import android.content.Context
 import android.content.res.AssetManager
 import java.io.File
 import java.io.FileNotFoundException
@@ -32,6 +36,12 @@ class LocalStore(private val dir: File) : ModelStore {
         return Artifact(variant, f.path)
     }
 }
+
+// Internal storage: the files must be owned by the app; ones moved in by adb shell give EACCES.
+fun Context.modelDir() = File(filesDir, "models").apply { mkdirs() }
+
+fun Context.testRouter() =
+    Router(listOf(LlamaCppBackend()), InMemoryRecipeStore(assets.recipes()), Catalog, LocalStore(modelDir()))
 
 fun AssetManager.recipes(path: String = ""): List<Recipe> =
     (list(path) ?: emptyArray()).flatMap { name ->
