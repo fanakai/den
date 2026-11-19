@@ -38,6 +38,8 @@ fun Context.remoteCheck(model: String, prompt: String) {
                 }
 
                 override fun onError(message: String) { log("open error: $message") }
+
+                override fun onProgress(file: String, bytes: Long, total: Long) { log("download $file ${bytes shr 20}/${total shr 20} MB") }
             })
         }
 
