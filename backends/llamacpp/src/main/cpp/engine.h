@@ -1,0 +1,52 @@
+#pragma once
+
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+struct llama_model;
+struct llama_context;
+
+namespace den {
+
+struct GenParams {
+    int max_tokens = 512;
+    float temperature = 0.7f;
+    float top_p = 0.95f;
+    std::vector<std::string> stop;
+};
+
+struct GenStats {
+    int prompt_tokens = 0;
+    int output_tokens = 0;
+    int64_t prefill_ms = 0;
+    int64_t decode_ms = 0;
+};
+
+// (role, content)
+using Messages = std::vector<std::pair<std::string, std::string>>;
+
+// Receives complete UTF-8 text only; return false to stop.
+using OnText = std::function<bool(const std::string &)>;
+
+class Engine {
+public:
+    static std::unique_ptr<Engine> load(const std::string &path, int n_ctx, int n_threads,
+                                        int n_gpu_layers, std::string &err);
+    ~Engine();
+
+    bool generate(const Messages &messages, const GenParams &params, const OnText &on_text,
+                  GenStats &stats, std::string &err);
+
+private:
+    Engine() = default;
+    std::string format(const Messages &messages, std::string &err) const;
+
+    llama_model *model_ = nullptr;
+    llama_context *ctx_ = nullptr;
+};
+
+} // namespace den
