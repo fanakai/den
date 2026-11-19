@@ -1,11 +1,12 @@
 package ai.fanak.den.testapp
 
+import ai.fanak.den.Den
+import ai.fanak.den.DenModel
 import ai.fanak.den.core.backend.ChatMessage
 import ai.fanak.den.core.backend.GenEvent
 import ai.fanak.den.core.backend.GenRequest
 import ai.fanak.den.core.backend.Role
 import ai.fanak.den.core.router.NoUsableBackendException
-import ai.fanak.den.core.router.Opened
 import android.app.Activity
 import android.os.Bundle
 import android.util.Log
@@ -24,12 +25,10 @@ import kotlinx.coroutines.launch
 // Drive from adb: am start -n ai.fanak.den.testapp/.MainActivity --es model qwen3-0.6b --es prompt "..." --ez autorun true
 class MainActivity : Activity() {
     private val scope = MainScope()
-    private val device by lazy { AndroidDevice(this) }
-    private val router by lazy { testRouter() }
-    private val modelDir get() = modelDir()
+    private val den by lazy { testDen() }
 
-    private var model = Catalog.models.first()
-    private var opened: Opened? = null
+    private lateinit var model: String
+    private var loaded: DenModel? = null
     private var job: Job? = null
 
     private lateinit var info: TextView
@@ -38,12 +37,12 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        intent.getStringExtra("model")?.let { model = it }
+        model = intent.getStringExtra("model") ?: den.models.first()
 
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(32, 32, 32, 32) }
         info = TextView(this).apply { textSize = 12f }
         val models = LinearLayout(this)
-        Catalog.models.forEach { m -> models.addView(Button(this).apply { text = m; setOnClickListener { select(m) } }) }
+        den.models.forEach { m -> models.addView(Button(this).apply { text = m; setOnClickListener { select(m) } }) }
         prompt = EditText(this).apply {
             setText(intent.getStringExtra("prompt") ?: "Explain in two sentences why foxes live in dens. /no_think")
         }
@@ -65,19 +64,18 @@ class MainActivity : Activity() {
 
     private fun select(m: String) {
         if (m == model) return
-        opened?.session?.unload()
-        opened = null
+        loaded?.close()
+        loaded = null
         model = m
         showPlan()
     }
 
     private fun showPlan() {
-        val p = device.profile()
-        val plan = router.plan(model, p)
+        val p = den.device()
         val text = buildString {
             appendLine("${p.soc} (${p.socFamily}), API ${p.osApi}, RAM ${p.availRamMb}/${p.ramMb} MB free, thermal ${p.thermal}")
-            appendLine("model $model, models in ${modelDir.path}")
-            plan.forEachIndexed { i, c ->
+            appendLine("model $model, ${den.recipes.size} recipes, models in ${den.modelDir.path}")
+            den.plan(model).forEachIndexed { i, c ->
                 appendLine("$i. ${c.backend.id} ${c.accel} ${c.variant.quant} (${c.source})")
             }
         }
@@ -90,13 +88,13 @@ class MainActivity : Activity() {
         job = scope.launch {
             output.text = ""
             try {
-                val o = opened ?: router.open(model, device.profile()).also { opened = it }
-                o.failures.forEach { log("failed: ${it.candidate.backend.id} ${it.candidate.accel} ${it.candidate.variant.quant}: ${it.error.message}") }
-                log("using ${o.candidate.backend.id} ${o.candidate.accel} ${o.candidate.variant.quant} (${o.candidate.source})")
+                val m = loaded ?: den.model(model).also { loaded = it }
+                m.failures.forEach { log("failed: ${it.candidate.accel} ${it.candidate.variant.quant}: ${it.error.message}") }
+                log("using ${m.backend} ${m.accel} ${m.quant} (${m.source})")
 
                 val req = GenRequest(listOf(ChatMessage(Role.USER, prompt.text.toString())), maxTokens = 128, temperature = 0f)
                 val sb = StringBuilder()
-                o.session.generate(req).collect { e ->
+                m.chat(req).collect { e ->
                     when (e) {
                         is GenEvent.Text -> { sb.append(e.text); output.text = sb }
                         is GenEvent.Done -> {
@@ -121,7 +119,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         scope.cancel()
-        opened?.session?.unload()
+        loaded?.close()
         super.onDestroy()
     }
 

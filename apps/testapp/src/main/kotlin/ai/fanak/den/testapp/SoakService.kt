@@ -42,16 +42,15 @@ class SoakService : Service() {
     }
 
     private suspend fun soak(model: String, minutes: Int) {
-        val device = AndroidDevice(this)
-        val opened = try {
-            testRouter().open(model, device.profile())
+        val den = testDen()
+        val m = try {
+            den.model(model)
         } catch (e: Exception) {
             log("open failed: $e")
             stopSelf()
             return
         }
-        val c = opened.candidate
-        log("start model=$model ${c.backend.id} ${c.accel} ${c.variant.quant} minutes=$minutes")
+        log("start model=$model ${m.backend} ${m.accel} ${m.quant} minutes=$minutes")
 
         val power = getSystemService(POWER_SERVICE) as PowerManager
         val req = GenRequest(listOf(ChatMessage(Role.USER, "Write two sentences about desert foxes. /no_think")), 64, 0f)
@@ -60,8 +59,8 @@ class SoakService : Service() {
         while (System.currentTimeMillis() < end) {
             round++
             try {
-                val s = opened.session.generate(req).filterIsInstance<GenEvent.Done>().last().stats
-                val p = device.profile()
+                val s = m.chat(req).filterIsInstance<GenEvent.Done>().last().stats
+                val p = den.device()
                 log(
                     "round=$round screen=${if (power.isInteractive) "on" else "off"} cpuset=${cpuset()} " +
                         "cores=${allowedCores()} thermal=${p.thermal} freeMb=${p.availRamMb} " +
@@ -72,7 +71,7 @@ class SoakService : Service() {
             }
             delay(20_000)
         }
-        opened.session.unload()
+        m.close()
         log("done rounds=$round")
         stopSelf()
     }
