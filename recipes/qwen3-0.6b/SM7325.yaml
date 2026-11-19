@@ -1,0 +1,12 @@
+model: qwen3-0.6b
+soc_family: snapdragon-778g
+soc: SM7325
+choices:
+  - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_0 }
+  - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_k_m }
+measured:
+  prefill_tps: 43.6
+  decode_tps: 30.0
+  device: Galaxy A52s 5G (SM-A528B)
+  date: 2026-11-19
+  protocol: den-smoke, llama.cpp b9590, 300-token prompt, 64 tokens greedy, mean of 2 runs, Termux in background

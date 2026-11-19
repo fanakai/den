@@ -3,7 +3,10 @@ package ai.fanak.den.core.recipe
 import ai.fanak.den.core.device.Accel
 import ai.fanak.den.core.device.DeviceProfile
 import ai.fanak.den.core.model.ModelFormat
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class RecipeChoice(
     val backend: String,
     val accel: Accel,
@@ -11,18 +14,21 @@ data class RecipeChoice(
     val quant: String,
 )
 
+@Serializable
 data class Measurement(
-    val prefillTps: Double,
-    val decodeTps: Double,
-    val peakRamMb: Int,
+    @SerialName("prefill_tps") val prefillTps: Double,
+    @SerialName("decode_tps") val decodeTps: Double,
     val device: String,
     val date: String,
+    @SerialName("peak_ram_mb") val peakRamMb: Int? = null,
+    val protocol: String? = null,
 )
 
 // soc == null means the recipe applies to the whole socFamily.
+@Serializable
 data class Recipe(
     val model: String,
-    val socFamily: String,
+    @SerialName("soc_family") val socFamily: String,
     val choices: List<RecipeChoice>,
     val soc: String? = null,
     val measured: Measurement? = null,

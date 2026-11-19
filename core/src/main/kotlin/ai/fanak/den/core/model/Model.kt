@@ -1,6 +1,15 @@
 package ai.fanak.den.core.model
 
-enum class ModelFormat { GGUF, LITERTLM, PTE, QNN }
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
+@Serializable
+enum class ModelFormat {
+    @SerialName("gguf") GGUF,
+    @SerialName("litertlm") LITERTLM,
+    @SerialName("pte") PTE,
+    @SerialName("qnn") QNN,
+}
 
 // One downloadable file of a model. soc is set only for SoC-specific builds (e.g. NPU).
 data class Variant(
