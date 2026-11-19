@@ -4,6 +4,8 @@
 #include <chrono>
 #include <mutex>
 
+#include <android/log.h>
+
 #include "ggml-backend.h"
 #include "llama.h"
 #include "threads.h"
@@ -39,7 +41,9 @@ std::once_flag g_backends;
 
 std::vector<Device> init_backends(const std::string &lib_dir) {
     std::call_once(g_backends, [&] {
-        llama_log_set([](ggml_log_level, const char *, void *) {}, nullptr);
+        llama_log_set([](ggml_log_level level, const char *text, void *) {
+            if (level >= GGML_LOG_LEVEL_WARN) __android_log_write(ANDROID_LOG_WARN, "den-llama", text);
+        }, nullptr);
         if (lib_dir.empty()) {
             // In an APK the libraries are usually not extracted, so load by name; a missing one is skipped.
             for (const char *name : {"libggml-cpu.so", "libggml-opencl.so"}) ggml_backend_load(name);

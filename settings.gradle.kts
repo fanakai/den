@@ -17,3 +17,4 @@ rootProject.name = "den"
 
 include(":core")
 include(":backends:llamacpp")
+include(":apps:testapp")

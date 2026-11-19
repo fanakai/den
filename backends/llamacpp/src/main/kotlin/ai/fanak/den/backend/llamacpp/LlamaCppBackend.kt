@@ -46,7 +46,10 @@ class LlamaCppBackend : DenBackend {
         val threads = opts.threads ?: 0
         val handle = withContext(Dispatchers.IO) {
             try {
-                LlamaNative.load(artifact.path, opts.contextLength, threads, gpuLayers)
+                LlamaNative.load(artifact.path, opts.contextLength, threads, gpuLayers).also { h ->
+                    // Warm-up: the first prefill pages the weights in from storage (2.9 vs 124 tok/s on the A52s).
+                    LlamaNative.generate(h, arrayOf("user"), arrayOf("hi"), 1, 0f, 1f, emptyArray()) { true }
+                }
             } catch (e: EngineException) {
                 lastError = e.message
                 throw e
