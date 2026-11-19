@@ -2,6 +2,7 @@ package ai.fanak.den.app
 
 import ai.fanak.den.Den
 import ai.fanak.den.DenConfig
+import ai.fanak.den.DenMode
 import ai.fanak.den.DenModel
 import ai.fanak.den.IDenService
 import ai.fanak.den.IGenCallback
@@ -36,7 +37,8 @@ import kotlinx.coroutines.sync.withLock
 class DenService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val den by lazy {
-        Den.connect(this, DenConfig(onDownload = { log("download ${it.fileName} ${it.bytes shr 20}/${it.total shr 20} MB") }))
+        val config = DenConfig(mode = DenMode.EMBEDDED, onDownload = { log("download ${it.fileName} ${it.bytes shr 20}/${it.total shr 20} MB") })
+        Den.connect(this, config)
     }
 
     private class Loaded(val model: DenModel, var refs: Int)
