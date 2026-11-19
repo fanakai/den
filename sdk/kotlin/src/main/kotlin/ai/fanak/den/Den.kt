@@ -48,20 +48,16 @@ enum class DenMode {
  * and runs it in the Den app when installed, so all apps share one copy.
  */
 class Den private constructor(context: Context, private val config: DenConfig) : AutoCloseable {
-    private val app = DenAppConnection(context)
+    private val app = DenAppConnection(context, config.onDownload)
     private val probe = AndroidDeviceProbe(context)
     val modelDir: File = (config.modelDir ?: File(context.filesDir, "den/models")).apply { mkdirs() }
     val recipes: List<Recipe> = context.assets.recipes("den/recipes")
-    private val router = Router(
-        listOf(LlamaCppBackend(config.useMmap)),
-        InMemoryRecipeStore(recipes),
-        BuiltinCatalog,
-        if (config.download) {
-            HttpModelStore(modelDir, BuiltinCatalog::remote, config.onDownload, online = { hasNetwork(context) })
-        } else {
-            FileModelStore(modelDir)
-        },
-    )
+    private val store = if (config.download) {
+        HttpModelStore(modelDir, BuiltinCatalog::remote, config.onDownload, online = { hasNetwork(context) })
+    } else {
+        FileModelStore(modelDir)
+    }
+    private val router = Router(listOf(LlamaCppBackend(config.useMmap)), InMemoryRecipeStore(recipes), BuiltinCatalog, store)
 
     val models: List<String> get() = BuiltinCatalog.models
 
@@ -69,6 +65,13 @@ class Den private constructor(context: Context, private val config: DenConfig) :
 
     // What the router would try, in order, without loading anything.
     fun plan(model: String, device: DeviceProfile = device()): List<Candidate> = router.plan(model, device)
+
+    // The file the router would pick on this phone, and its download without loading it. Runs in this process.
+    fun fileName(model: String): String? = plan(model).firstOrNull()?.let { BuiltinCatalog.entry(it.variant).fileName }
+
+    suspend fun download(model: String) {
+        plan(model).firstOrNull()?.let { store.fetch(it.variant) }
+    }
 
     // Whether model() will use the Den app.
     val connected: Boolean get() = config.mode != DenMode.EMBEDDED && app.installed()

@@ -10,6 +10,7 @@ import ai.fanak.den.core.backend.ChatMessage
 import ai.fanak.den.core.backend.GenEvent
 import ai.fanak.den.core.backend.GenRequest
 import ai.fanak.den.core.backend.Role
+import ai.fanak.den.core.model.DownloadProgress
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -26,6 +27,7 @@ import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -40,15 +42,30 @@ class DenService : Service() {
         SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> Log.e("DenService", "uncaught", e) },
     )
     private val den by lazy {
-        val config = DenConfig(mode = DenMode.EMBEDDED, onDownload = { log("download ${it.fileName} ${it.bytes shr 20}/${it.total shr 20} MB") })
+        val config = DenConfig(mode = DenMode.EMBEDDED, onDownload = ::progress)
         Den.connect(this, config)
     }
 
     // Holds the client's binder: a death link on a binder that is garbage-collected never fires.
     private class Session(val model: String, val uid: Int, val client: IBinder, var death: IBinder.DeathRecipient? = null, var job: Job? = null)
 
+    // Opens still in progress, by the client's callback binder; they get the download progress of their model.
+    private class Pending(val model: String, val uid: Int, val callback: IOpenCallback, var job: Job? = null)
+    private val pending = ConcurrentHashMap<IBinder, Pending>()
+    // File name -> model, for the downloads in progress.
+    private val downloads = ConcurrentHashMap<String, String>()
+
     private val pool = ModelPool(
         load = { den.model(it) },
+        prepare = { name ->
+            val file = den.fileName(name)
+            if (file != null) downloads[file] = name
+            try {
+                den.download(name)
+            } finally {
+                if (file != null) downloads.remove(file)
+            }
+        },
         need = { name, avail -> den.plan(name, den.device().copy(availRamMb = avail)).firstOrNull()?.variant?.minRamMb },
         availMb = { den.device().availRamMb },
         now = SystemClock::elapsedRealtime,
@@ -58,32 +75,49 @@ class DenService : Service() {
     private val nextId = AtomicLong(1)
 
     private val binder = object : IDenService.Stub() {
-        override fun version() = 1
+        override fun version() = 2
 
         override fun models() = den.models.toTypedArray()
 
         override fun open(model: String, callback: IOpenCallback) {
             val uid = Binder.getCallingUid()
-            scope.launch {
-                val pkg = callerPackage(uid)
-                if (!Approvals.request(this@DenService, pkg)) {
-                    log("open $model for $pkg: not allowed")
-                    return@launch callback.onError("$pkg is not allowed to use Den; allow it in the Den app")
-                }
+            val client = callback.asBinder()
+            val p = Pending(model, uid, callback)
+            pending[client] = p
+            // Until the session exists, a client that dies cancels its open (and the download it started).
+            val early = IBinder.DeathRecipient { p.job?.cancel() }
+            runCatching { client.linkToDeath(early, 0) }
+            p.job = scope.launch(start = CoroutineStart.LAZY) {
                 try {
+                    val pkg = callerPackage(uid)
+                    if (!Approvals.request(this@DenService, pkg)) {
+                        log("open $model for $pkg: not allowed")
+                        return@launch callback.onError("$pkg is not allowed to use Den; allow it in the Den app")
+                    }
                     val m = pool.acquire(model)
                     val id = nextId.getAndIncrement()
                     // A client that dies releases its sessions.
-                    val session = Session(model, uid, callback.asBinder())
+                    val session = Session(model, uid, client)
                     sessions[id] = session
-                    session.death = IBinder.DeathRecipient { scope.launch { release(id) } }.also { session.client.linkToDeath(it, 0) }
+                    session.death = IBinder.DeathRecipient { scope.launch { release(id) } }.also { client.linkToDeath(it, 0) }
                     log("open $model for ${caller(uid)}: session $id, ${m.backend} ${m.accel} ${m.quant}, sessions ${pool.sessions(model)}")
                     callback.onOpened(id, m.backend, m.accel.name, m.quant, m.source.name)
+                } catch (e: CancellationException) {
+                    log("open $model for ${caller(uid)} cancelled")
+                    runCatching { callback.onError("cancelled") }
                 } catch (e: Exception) {
                     log("open $model for ${caller(uid)} failed: $e")
-                    callback.onError(e.message ?: e.toString())
+                    runCatching { callback.onError(e.message ?: e.toString()) }
+                } finally {
+                    pending.remove(client)
+                    runCatching { client.unlinkToDeath(early, 0) }
                 }
             }
+            p.job?.start()
+        }
+
+        override fun cancelOpen(callback: IOpenCallback) {
+            pending[callback.asBinder()]?.takeIf { it.uid == Binder.getCallingUid() }?.job?.cancel()
         }
 
         override fun generate(
@@ -149,6 +183,12 @@ class DenService : Service() {
         } else {
             http.stop()
         }
+    }
+
+    private fun progress(p: DownloadProgress) {
+        log("download ${p.fileName} ${p.bytes shr 20}/${p.total shr 20} MB")
+        val model = downloads[p.fileName] ?: return
+        pending.values.filter { it.model == model }.forEach { runCatching { it.callback.onProgress(p.fileName, p.bytes, p.total) } }
     }
 
     private fun caller(uid: Int) = packageManager.getNameForUid(uid) ?: uid.toString()

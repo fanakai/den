@@ -13,6 +13,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 
 class ModelPoolTest {
     // A phone with 2000 MB free; a loaded model takes its size from the free RAM.
@@ -20,6 +21,9 @@ class ModelPoolTest {
     private var free = 2000
     private var clock = 0L
     private val loads = mutableListOf<String>()
+
+    // A load waits on its gate when one is set, like a download in progress.
+    private val gates = mutableMapOf<String, CompletableDeferred<Unit>>()
 
     private inner class Fake(override val name: String) : DenModel() {
         override val backend = "fake"
@@ -35,6 +39,7 @@ class ModelPoolTest {
 
     private val pool = ModelPool(
         load = { name ->
+            gates[name]?.await()
             check(free >= sizes.getValue(name)) { "out of memory loading $name" }
             loads += name
             free -= sizes.getValue(name)
@@ -98,6 +103,33 @@ class ModelPoolTest {
         pool.unloadIdle(idleMs = 300_000)
         assertEquals(emptyList(), pool.loadedNames())
         assertEquals(1, pool.sessions("small"))
+    }
+
+    @Test
+    fun loadDoesNotBlockLoadedModels() = runBlocking {
+        pool.use("small") {}
+        val gate = CompletableDeferred<Unit>().also { gates["big"] = it }
+        free = 4000
+        val loading = async { pool.use("big") {} }
+        yield()
+        var used = false
+        pool.use("small") { used = true }
+        assertTrue(used)
+        assertTrue(!loading.isCompleted)
+        gate.complete(Unit)
+        loading.await()
+        assertEquals(listOf("small", "big"), pool.loadedNames())
+    }
+
+    @Test
+    fun cancelledLoadLeavesNothing() = runBlocking {
+        gates["big"] = CompletableDeferred()
+        val loading = async { pool.use("big") {} }
+        yield()
+        loading.cancel()
+        runCatching { loading.await() }
+        assertEquals(emptyList(), pool.loadedNames())
+        assertEquals(0, pool.sessions("big"))
     }
 
     @Test

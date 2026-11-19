@@ -43,6 +43,6 @@ A session whose model was unloaded keeps working; its next request loads the mod
 ## Current limits
 
 - Requests on one model run one at a time, in order (see #11).
-- While a model loads or downloads, requests for other models wait (one load at a time).
+- Models load into RAM one at a time; downloads run beside loads and requests.
 - The endpoint does not come back by itself after a reboot or an update of the Den app; opening the Den app brings it back.
 - To test from a PC: `adb forward tcp:8000 tcp:8000`. The adb forward adds a delay of a few seconds before a disconnected generation stops.
