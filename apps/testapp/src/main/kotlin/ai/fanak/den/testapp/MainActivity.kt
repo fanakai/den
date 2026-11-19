@@ -105,9 +105,14 @@ class MainActivity : Activity() {
                 val req = GenRequest(listOf(ChatMessage(Role.USER, prompt.text.toString())), maxTokens = 128, temperature = 0f)
                 repeat(intent.getIntExtra("repeat", 1)) {
                 val sb = StringBuilder()
+                val start = System.currentTimeMillis()
                 m.chat(req).collect { e ->
                     when (e) {
-                        is GenEvent.Text -> { sb.append(e.text); output.text = sb }
+                        is GenEvent.Text -> {
+                            if (sb.isEmpty()) log("first token ${System.currentTimeMillis() - start} ms")
+                            sb.append(e.text)
+                            output.text = sb
+                        }
                         is GenEvent.Done -> {
                             val s = e.stats
                             val line = "prompt ${s.promptTokens} tok, %.1f tok/s | output ${s.outputTokens} tok, %.1f tok/s"

@@ -85,12 +85,16 @@ class DenService : Service() {
             }
             val messages = roles.zip(contents) { r, c -> ChatMessage(Role.valueOf(r.uppercase()), c) }
             s.job = scope.launch {
+                val t0 = System.currentTimeMillis()
                 val m = lock.withLock { loaded[s.model]?.model } ?: return@launch callback.onError("model unloaded")
                 try {
                     m.chat(GenRequest(messages, maxTokens, temperature, topP, stop.toList())).collect { e ->
                         when (e) {
                             is GenEvent.Text -> callback.onText(e.text)
                             is GenEvent.Done -> e.stats.run {
+                                // Requests on one model run one at a time; wait is the time spent queued.
+                                val wait = System.currentTimeMillis() - t0 - prefillMs - decodeMs
+                                log("gen session $session for ${caller(s.uid)}: wait $wait ms, prefill $prefillMs ms, decode $decodeMs ms")
                                 callback.onDone(longArrayOf(promptTokens.toLong(), outputTokens.toLong(), prefillMs, decodeMs))
                             }
                         }
