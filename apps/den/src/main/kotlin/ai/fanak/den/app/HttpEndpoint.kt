@@ -19,6 +19,8 @@ import java.security.SecureRandom
 import kotlin.concurrent.thread
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -62,6 +64,11 @@ internal object HttpSettings {
 }
 
 private class HttpError(val code: Int, message: String) : Exception(message)
+
+private const val KEEPALIVE_MS = 3_000L
+
+// A write to the client failed; other IOExceptions (a hub, a download) are errors to report to the client.
+private class ClientGone(cause: IOException) : IOException(cause)
 
 // Minimal OpenAI-compatible server on 127.0.0.1: GET /v1/models and POST /v1/chat/completions (with streaming).
 internal class HttpEndpoint(
@@ -168,22 +175,29 @@ internal class HttpEndpoint(
             req["top_p"]?.jsonPrimitive?.floatOrNull ?: 0.95f,
             stop,
         )
-        val stream = req["stream"]?.jsonPrimitive?.booleanOrNull == true
+        if (req["stream"]?.jsonPrimitive?.booleanOrNull == true) {
+            stream(name, gen, out)
+            return
+        }
         var loaded = false
         try {
             use(name) { m ->
                 loaded = true
-                reply(m, name, gen, stream, out)
+                reply(m, name, gen, out)
             }
         } catch (e: Exception) {
-            if (loaded || e is HttpError || e is IOException || e is kotlinx.coroutines.CancellationException) throw e
+            // Before the load nothing is written, so an IOException here comes from the hub, not from the client.
+            if (loaded || e is HttpError || e is kotlinx.coroutines.CancellationException) throw e
             throw HttpError(503, "cannot load $name: ${e.message}")
         }
     }
 
-    private suspend fun reply(m: DenModel, name: String, gen: GenRequest, stream: Boolean, out: OutputStream) {
-        val maxTokens = gen.maxTokens
-        val id = "chatcmpl-" + System.nanoTime().toString(36)
+    private fun completionId() = "chatcmpl-" + System.nanoTime().toString(36)
+
+    // The header goes out before the model loads, and a comment every few seconds until the first token: a first
+    // load takes 10 to 35 s on a phone, and HTTP clients give up on a silent connection.
+    private suspend fun stream(name: String, gen: GenRequest, out: OutputStream): Unit = coroutineScope {
+        val id = completionId()
         val created = System.currentTimeMillis() / 1000
         fun chunk(delta: JsonObject, finish: String?) = buildJsonObject {
             put("id", id); put("object", "chat.completion.chunk"); put("created", created); put("model", name)
@@ -191,57 +205,92 @@ internal class HttpEndpoint(
                 add(buildJsonObject { put("index", 0); put("delta", delta); put("finish_reason", finish) })
             }
         }
-
-        if (stream) {
-            out.write(head(200, "text/event-stream", "Cache-Control: no-cache\r\n"))
-            out.event(chunk(buildJsonObject { put("role", "assistant"); put("content", "") }, null).toString())
-            // A failed write (client gone) throws here, which cancels the generation.
-            val split = ThinkSplitter()
-            fun send(p: Pair<String, String>) {
-                if (p.first.isNotEmpty()) out.event(chunk(buildJsonObject { put("reasoning_content", p.first) }, null).toString())
-                if (p.second.isNotEmpty()) out.event(chunk(buildJsonObject { put("content", p.second) }, null).toString())
+        val lock = Any()
+        // A failed write (client gone) throws, which cancels the load or the generation.
+        fun write(text: String) = synchronized(lock) {
+            try {
+                out.write(text.toByteArray())
+                out.flush()
+            } catch (e: IOException) {
+                throw ClientGone(e)
             }
-            m.chat(gen).collect { e ->
-                when (e) {
-                    is GenEvent.Text -> send(split.feed(e.text))
-                    is GenEvent.Done -> {
-                        send(split.flush())
-                        out.event(chunk(JsonObject(emptyMap()), finish(e, maxTokens)).toString())
+        }
+        fun event(data: String) = write("data: $data\n\n")
+
+        out.write(head(200, "text/event-stream", "Cache-Control: no-cache\r\n"))
+        event(chunk(buildJsonObject { put("role", "assistant"); put("content", "") }, null).toString())
+        var phase = "loading"
+        val beat = launch(Dispatchers.IO) {
+            while (true) {
+                delay(KEEPALIVE_MS)
+                write(": $phase\n\n")
+            }
+        }
+        try {
+            use(name) { m ->
+                phase = "prefilling"
+                val split = ThinkSplitter()
+                fun send(p: Pair<String, String>) {
+                    if (p.first.isNotEmpty()) event(chunk(buildJsonObject { put("reasoning_content", p.first) }, null).toString())
+                    if (p.second.isNotEmpty()) event(chunk(buildJsonObject { put("content", p.second) }, null).toString())
+                }
+                m.chat(gen).collect { e ->
+                    beat.cancel()
+                    when (e) {
+                        is GenEvent.Text -> send(split.feed(e.text))
+                        is GenEvent.Done -> {
+                            send(split.flush())
+                            event(chunk(JsonObject(emptyMap()), finish(e, gen.maxTokens)).toString())
+                        }
                     }
                 }
             }
-            out.event("[DONE]")
-        } else {
-            val split = ThinkSplitter()
-            val reasoning = StringBuilder()
-            val content = StringBuilder()
-            var done: GenEvent.Done? = null
-            m.chat(gen).collect { e ->
-                val p = if (e is GenEvent.Text) split.feed(e.text) else split.flush().also { done = e as GenEvent.Done }
-                reasoning.append(p.first)
-                content.append(p.second)
-            }
-            val s = done!!.stats
-            out.json(200, buildJsonObject {
-                put("id", id); put("object", "chat.completion"); put("created", created); put("model", name)
-                putJsonArray("choices") {
-                    add(buildJsonObject {
-                        put("index", 0)
-                        putJsonObject("message") {
-                            put("role", "assistant")
-                            put("content", content.toString())
-                            if (reasoning.isNotBlank()) put("reasoning_content", reasoning.toString().trim())
-                        }
-                        put("finish_reason", finish(done!!, maxTokens))
-                    })
-                }
-                putJsonObject("usage") {
-                    put("prompt_tokens", s.promptTokens)
-                    put("completion_tokens", s.outputTokens)
-                    put("total_tokens", s.promptTokens + s.outputTokens)
-                }
-            })
+            event("[DONE]")
+        } catch (e: ClientGone) {
+            throw e
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // The status line is already sent; the error goes in the stream, as OpenAI does.
+            log("http stream error: $e")
+            val msg = e.message ?: e.toString()
+            runCatching { event(error(if (phase == "loading") "cannot load $name: $msg" else msg).toString()) }
+        } finally {
+            beat.cancel()
         }
+    }
+
+    private suspend fun reply(m: DenModel, name: String, gen: GenRequest, out: OutputStream) {
+        val split = ThinkSplitter()
+        val reasoning = StringBuilder()
+        val content = StringBuilder()
+        var done: GenEvent.Done? = null
+        m.chat(gen).collect { e ->
+            val p = if (e is GenEvent.Text) split.feed(e.text) else split.flush().also { done = e as GenEvent.Done }
+            reasoning.append(p.first)
+            content.append(p.second)
+        }
+        val s = done!!.stats
+        out.json(200, buildJsonObject {
+            put("id", completionId()); put("object", "chat.completion"); put("created", System.currentTimeMillis() / 1000)
+            put("model", name)
+            putJsonArray("choices") {
+                add(buildJsonObject {
+                    put("index", 0)
+                    putJsonObject("message") {
+                        put("role", "assistant")
+                        put("content", content.toString())
+                        if (reasoning.isNotBlank()) put("reasoning_content", reasoning.toString().trim())
+                    }
+                    put("finish_reason", finish(done!!, gen.maxTokens))
+                })
+            }
+            putJsonObject("usage") {
+                put("prompt_tokens", s.promptTokens)
+                put("completion_tokens", s.outputTokens)
+                put("total_tokens", s.promptTokens + s.outputTokens)
+            }
+        })
     }
 
     private fun finish(d: GenEvent.Done, maxTokens: Int) = if (d.stats.outputTokens >= maxTokens) "length" else "stop"
@@ -350,10 +399,5 @@ private fun reason(code: Int) = when (code) {
 private fun OutputStream.json(code: Int, body: JsonObject) {
     write(head(code, "application/json"))
     write(body.toString().toByteArray())
-    flush()
-}
-
-private fun OutputStream.event(data: String) {
-    write("data: $data\n\n".toByteArray())
     flush()
 }
