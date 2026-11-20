@@ -25,6 +25,9 @@ data class RemoteFile(
     val path: String = fileName,
 )
 
+// The platform reports no usable network for this app (Doze, battery saver, data saver, no connection).
+class OfflineException(message: String) : IOException(message)
+
 data class DownloadProgress(val fileName: String, val bytes: Long, val total: Long)
 
 /**
@@ -93,7 +96,7 @@ class HttpModelStore(
             part.delete()
             have = 0
         }
-        if (!online()) throw IOException("no network for this app; ${r.fileName} not downloaded")
+        if (!online()) throw OfflineException("no network for this app; ${r.fileName} not downloaded")
         if (dir.usableSpace - (r.sizeBytes - have) < minFreeBytes) {
             throw IOException("not enough space for ${r.fileName}: need ${(r.sizeBytes - have) shr 20} MB")
         }

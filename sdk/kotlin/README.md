@@ -37,6 +37,15 @@ model.close()
 5) the download of the chosen file on first use, checked against its SHA-256; `DenConfig.onDownload` reports its progress in both modes, and cancelling `model()` stops it (in connected mode, another app waiting for the same model then resumes it);
 6) the AIDL client of the Den app.
 
+## Model names
+
+`den.model(name)` accepts:
+- a built-in name (`qwen3-0.6b`, `qwen3-1.7b`), with files and checksums pinned in the SDK;
+- a name from the curated index in `models/` (`qwen3-4b`), resolved through its source;
+- any Hugging Face repository of GGUF files, `hf:owner/repo` or `hf:owner/repo@revision`.
+
+Hugging Face names are looked up when the app asks for them: the file tree gives each file's size and SHA-256, downloads are pinned to the commit, and the result is cached for offline use. Without a recipe, Den prefers 4-bit files (Q4_K_M, then Q4_0) and never picks 1- or 2-bit files. Gated repositories are refused, since their terms must be accepted first. When nothing fits, the error says why (unknown model, not enough free RAM).
+
 ## Your own parts
 
 In embedded mode, the backend, the catalog, the file store and extra recipes can come from the app, through `DenConfig`; the defaults are llama.cpp, the built-in catalog, the downloader and the bundled recipes.

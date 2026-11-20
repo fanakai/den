@@ -21,4 +21,5 @@ kotlin {
 tasks.test {
     useJUnitPlatform()
     systemProperty("den.recipes", rootProject.file("recipes").absolutePath)
+    systemProperty("den.models", rootProject.file("models").absolutePath)
 }

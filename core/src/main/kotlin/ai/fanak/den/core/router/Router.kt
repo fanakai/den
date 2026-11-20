@@ -9,6 +9,7 @@ import ai.fanak.den.core.model.ModelCatalog
 import ai.fanak.den.core.model.ModelStore
 import ai.fanak.den.core.model.Variant
 import ai.fanak.den.core.recipe.RecipeStore
+import java.io.IOException
 import kotlin.coroutines.cancellation.CancellationException
 
 enum class Source { RECIPE_SOC, RECIPE_FAMILY, DEFAULT }
@@ -34,7 +35,9 @@ data class Opened(
 class NoUsableBackendException(
     val model: String,
     val failures: List<Failure>,
-) : Exception("No backend could load $model (${failures.size} attempts)")
+    // Why nothing was tried, when the plan was empty.
+    val reason: String? = null,
+) : Exception(reason ?: "No backend could load $model (${failures.size} attempts)")
 
 class Router(
     private val backends: List<DenBackend>,
@@ -69,8 +72,8 @@ class Router(
 
         val defaults = defaultOrder.flatMap { accel ->
             backends.flatMap { backend ->
-                variants.filter { usable(backend, accel, it) }
-                    .sortedByDescending { it.sizeBytes }
+                variants.filter { usable(backend, accel, it) && !lowBit(it.quant) }
+                    .sortedWith(compareBy<Variant> { quantRank(it.quant) }.thenByDescending { it.sizeBytes })
                     .map { Candidate(backend, accel, it, Source.DEFAULT) }
             }
         }
@@ -81,13 +84,23 @@ class Router(
     }
 
     suspend fun open(model: String, device: DeviceProfile, contextLength: Int = 4096): Opened {
+        catalog.resolve(model)
         val tried = mutableListOf<Failure>()
+        if (plan(model, device).isEmpty()) throw NoUsableBackendException(model, tried, emptyPlanReason(model, device))
         for (c in plan(model, device)) {
             try {
-                val artifact = store.fetch(c.variant)
+                val artifact = try {
+                    store.fetch(c.variant)
+                } catch (e: IOException) {
+                    // Without network every other file fails the same way, after its own timeout.
+                    if (e.isNetwork()) throw NoUsableBackendException(model, tried + Failure(c, e))
+                    throw e
+                }
                 val session = c.backend.load(artifact, LoadOptions(c.accel, contextLength))
                 return Opened(session, c, tried)
             } catch (e: CancellationException) {
+                throw e
+            } catch (e: NoUsableBackendException) {
                 throw e
             } catch (e: Throwable) {
                 tried += Failure(c, e)
@@ -97,6 +110,17 @@ class Router(
         throw NoUsableBackendException(model, tried)
     }
 
+    private fun emptyPlanReason(model: String, device: DeviceProfile): String {
+        val all = catalog.variants(model).filter { it.soc == null || it.soc == device.soc }
+        val fits = all.filter { it.minRamMb <= device.availRamMb }
+        return when {
+            all.isEmpty() -> "unknown model $model: no catalog has a file for it"
+            fits.isEmpty() -> "no file of $model fits in free RAM: ${device.availRamMb} MB free, the smallest needs ${all.minOf { it.minRamMb }} MB"
+            fits.all { lowBit(it.quant) } -> "only 1- or 2-bit files of $model fit in free RAM (${device.availRamMb} MB); they are not used without a recipe"
+            else -> "no backend on this device runs $model (${fits.map { it.format }.distinct().joinToString()})"
+        }
+    }
+
     // For crashes after load, e.g. during generation; the next open() skips this candidate.
     fun reportFailure(device: DeviceProfile, candidate: Candidate, error: Throwable) =
         failures.record(key(device, candidate), error)
@@ -104,4 +128,27 @@ class Router(
     private fun key(device: DeviceProfile, c: Candidate) = FailureKey(
         device.soc, c.backend.id, c.accel, c.variant.model, c.variant.format, c.variant.quant,
     )
+
+    private companion object {
+        // Without a recipe: the usual 4-bit quants first (quality per byte on a phone), then larger ones,
+        // 3-bit last but one, F16 and BF16 last. Size breaks ties within a rank.
+        val PREFERRED = listOf("q4_k_m", "q4_0", "q4_k_s", "iq4_xs", "iq4_nl", "q5_k_m", "q5_k_s", "q4_1", "q6_k", "q8_0")
+
+        // 1- and 2-bit files lose too much quality to be picked without a recipe that measured them.
+        fun lowBit(quant: String) = quant.lowercase().removePrefix("ud-").matches(Regex("i?q[12](_.*)?"))
+
+        fun quantRank(quant: String): Int {
+            val q = quant.lowercase().removePrefix("ud-")
+            PREFERRED.indexOf(q).let { if (it >= 0) return it }
+            return when {
+                q == "f16" || q == "bf16" || q == "f32" -> PREFERRED.size + 2
+                q.matches(Regex("i?q3.*")) -> PREFERRED.size + 1
+                else -> PREFERRED.size
+            }
+        }
+    }
 }
+
+private fun IOException.isNetwork() =
+    this is java.net.UnknownHostException || this is java.net.SocketTimeoutException ||
+        this is java.net.ConnectException || this is ai.fanak.den.core.model.OfflineException

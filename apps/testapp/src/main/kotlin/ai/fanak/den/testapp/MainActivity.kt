@@ -126,6 +126,7 @@ class MainActivity : Activity() {
                 }
             } catch (e: NoUsableBackendException) {
                 output.text = "error: ${e.message}"
+                log("error: ${e.message}")
                 e.failures.forEach { log("failed: ${it.candidate.accel} ${it.candidate.variant.quant}: ${it.error}") }
             } catch (e: Exception) {
                 output.text = "error: ${e.message}"

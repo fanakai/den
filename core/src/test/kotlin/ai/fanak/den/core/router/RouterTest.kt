@@ -92,6 +92,48 @@ class RouterTest {
     }
 
     @Test
+    fun defaultsPreferFourBitQuantsOverLargerFiles() {
+        val q8 = Variant(model, ModelFormat.GGUF, "q8_0", 1_900, 2_000)
+        val bf16 = Variant(model, ModelFormat.GGUF, "bf16", 2_400, 2_500)
+        val q2 = Variant(model, ModelFormat.GGUF, "q2_k", 700, 800)
+        val cat = object : ModelCatalog {
+            override fun variants(model: String) = listOf(bf16, q8, q2, q40, q4km)
+        }
+        val plan = Router(listOf(llama()), InMemoryRecipeStore(emptyList()), cat, store).plan(model, device)
+        // q2_k is never picked without a recipe.
+        assertEquals(listOf("q4_k_m", "q4_0", "q8_0", "bf16"), plan.filter { it.accel == Accel.CPU }.map { it.variant.quant })
+    }
+
+    @Test
+    fun networkFailureStopsBeforeOtherFiles() = runTest {
+        var fetches = 0
+        val offline = object : ModelStore {
+            override suspend fun fetch(variant: Variant): Artifact {
+                fetches++
+                throw ai.fanak.den.core.model.OfflineException("no network")
+            }
+        }
+        val r = Router(listOf(llama()), InMemoryRecipeStore(emptyList()), catalog, offline)
+        val e = assertFailsWith<NoUsableBackendException> { r.open(model, device) }
+        assertEquals(1, fetches)
+        assertEquals(1, e.failures.size)
+    }
+
+    @Test
+    fun emptyPlanSaysWhy() = runTest {
+        val r = router(listOf(llama()))
+        val tooSmall = assertFailsWith<NoUsableBackendException> { r.open(model, device.copy(availRamMb = 500)) }
+        assertTrue(tooSmall.message!!.startsWith("no file of $model fits in free RAM: 500 MB free"))
+        val empty = object : ModelCatalog {
+            override fun variants(model: String) = emptyList<Variant>()
+        }
+        val unknown = assertFailsWith<NoUsableBackendException> {
+            Router(listOf(llama()), InMemoryRecipeStore(emptyList()), empty, store).open("other", device)
+        }
+        assertTrue(unknown.message!!.startsWith("unknown model other"))
+    }
+
+    @Test
     fun dropsVariantsThatDoNotFitInRam() {
         val plan = router(listOf(llama())).plan(model, device)
         assertTrue(plan.none { it.variant == huge })

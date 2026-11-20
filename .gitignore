@@ -41,3 +41,5 @@ google-services.json
 *.pte
 *.bin
 models/
+# The curated model index (YAML only; model files stay ignored by extension).
+!/models/
