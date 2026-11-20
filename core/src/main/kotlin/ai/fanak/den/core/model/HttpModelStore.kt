@@ -48,6 +48,7 @@ class HttpModelStore(
     override suspend fun fetch(variant: Variant): Artifact {
         val r = locate(variant)
         val file = File(dir, r.path)
+        mirror(r, file)?.let { return Artifact(variant, it.path) }
         locks.getOrPut(r.path) { Mutex() }.withLock {
             withContext(Dispatchers.IO) {
                 adoptLegacy(r, file)
@@ -59,6 +60,13 @@ class HttpModelStore(
             }
         }
         return Artifact(variant, file.path)
+    }
+
+    // The same content (same SHA-256) already downloaded from another source: a mirror, used as it is.
+    private fun mirror(r: RemoteFile, file: File): File? {
+        if (file.isFile) return null
+        return manifest.entries().firstOrNull { it.complete && it.sha256 == r.sha256 && it.path != r.path }
+            ?.let { File(dir, it.path) }?.takeIf { it.isFile && it.length() == r.sizeBytes }
     }
 
     private fun entry(v: Variant, r: RemoteFile, complete: Boolean) =
@@ -104,6 +112,7 @@ class HttpModelStore(
         val conn = URL(r.url).openConnection() as HttpURLConnection
         conn.connectTimeout = 10_000
         conn.readTimeout = 30_000
+        conn.setRequestProperty("User-Agent", DEN_USER_AGENT)
         if (have > 0) conn.setRequestProperty("Range", "bytes=$have-")
         try {
             val append = when (conn.responseCode) {

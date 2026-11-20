@@ -45,7 +45,8 @@ data class DenConfig(
     // downloads (or files on disk when download = false), and the recipes bundled with the SDK.
     val backends: List<DenBackend>? = null,
     // Merged in order: the first catalog that serves a variant gives its file. Default: the built-in models, the
-    // curated index (short names) and Hugging Face (hf:owner/repo).
+    // curated index (short names) and Hugging Face (hf:owner/repo). ModelScopeCatalog can be added here; it
+    // needs access that anonymous clients do not get (#90).
     val catalogs: List<ModelCatalog>? = null,
     val store: ModelStore? = null,
     // Added to the bundled recipes.

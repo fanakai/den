@@ -55,6 +55,16 @@ class HttpModelStoreTest {
     }
 
     @Test
+    fun sameFileFromAnotherSourceIsNotDownloadedAgain() = runTest {
+        storeWithPath().fetch(variant)
+        val fromMirror = HttpModelStore(dir, {
+            RemoteFile("m.gguf", "http://127.0.0.1:${server.address.port}/m.gguf", sha, data.size.toLong(), "ms/owner/repo/m.gguf")
+        }, minFreeBytes = 0).fetch(variant)
+        assertEquals(1, requests.size)
+        assertEquals(File(dir, "hf/owner/repo/m.gguf").path, fromMirror.path)
+    }
+
+    @Test
     fun adoptsAFileStoredBeforePaths() = runTest {
         File(dir, "m.gguf").writeBytes(data)
         File(dir, "m.gguf.sha256").writeText(sha)

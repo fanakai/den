@@ -44,7 +44,9 @@ model.close()
 - a name from the curated index in `models/` (`qwen3-4b`), resolved through its source;
 - any Hugging Face repository of GGUF files, `hf:owner/repo` or `hf:owner/repo@revision`.
 
-Hugging Face names are looked up when the app asks for them: the file tree gives each file's size and SHA-256, downloads are pinned to the commit, and the result is cached for offline use. Without a recipe, Den prefers 4-bit files (Q4_K_M, then Q4_0) and never picks 1- or 2-bit files. Gated repositories are refused, since their terms must be accepted first. When nothing fits, the error says why (unknown model, not enough free RAM).
+`ModelScopeCatalog` (`ms:owner/repo`) exists but is not on by default: ModelScope refuses anonymous clients the file list (HTTP 403 from a phone, and a strict rate limit), so it needs an access token first (#90).
+
+Hub names are looked up when the app asks for them: the file tree gives each file's size and SHA-256, downloads are pinned to the commit, and the result is cached for offline use. Without a recipe, Den prefers 4-bit files (Q4_K_M, then Q4_0) and never picks 1- or 2-bit files. Gated repositories are refused, since their terms must be accepted first. A file with the same SHA-256 as one already downloaded from another hub is used as it is, not downloaded again. When nothing fits, the error says why (unknown model, not enough free RAM).
 
 ## Your own parts
 
