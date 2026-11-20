@@ -26,6 +26,8 @@ struct GenStats {
     int output_tokens = 0;
     int64_t prefill_ms = 0;
     int64_t decode_ms = 0;
+    // 0: end of text or stop string, 1: max_tokens, 2: context full.
+    int finish = 0;
 };
 
 // (role, content)

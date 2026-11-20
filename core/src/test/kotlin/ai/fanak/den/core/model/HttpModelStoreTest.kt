@@ -23,11 +23,18 @@ class HttpModelStoreTest {
     private val variant = Variant("m", ModelFormat.GGUF, "q4_0", data.size.toLong(), 100)
 
     private var honorRange = true
+    private var serverErrors = 0
     private val requests = mutableListOf<String?>()
     private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
         createContext("/m.gguf") { ex ->
             val range = ex.requestHeaders.getFirst("Range")
             requests += range
+            if (serverErrors > 0) {
+                serverErrors--
+                ex.sendResponseHeaders(503, -1)
+                ex.close()
+                return@createContext
+            }
             val from = range?.takeIf { honorRange }?.removePrefix("bytes=")?.removeSuffix("-")?.toInt() ?: 0
             val body = data.copyOfRange(from, data.size)
             ex.sendResponseHeaders(if (from > 0) 206 else 200, body.size.toLong())
@@ -78,6 +85,26 @@ class HttpModelStoreTest {
     fun failedDownloadStaysIncompleteInTheManifest() = runTest {
         assertFailsWith<IOException> { store(sha256 = "0".repeat(64)).fetch(variant) }
         assertFalse(ModelManifest(dir).entries().single().complete)
+    }
+
+    @Test
+    fun retriesAfterAServerError() = runTest {
+        serverErrors = 1
+        val s = HttpModelStore(dir, {
+            RemoteFile("m.gguf", "http://127.0.0.1:${server.address.port}/m.gguf", sha, data.size.toLong())
+        }, minFreeBytes = 0, retryDelayMs = 10)
+        assertContentEquals(data, File(s.fetch(variant).path).readBytes())
+        assertEquals(2, requests.size)
+    }
+
+    @Test
+    fun givesUpAfterThreeServerErrors() = runTest {
+        serverErrors = 5
+        val s = HttpModelStore(dir, {
+            RemoteFile("m.gguf", "http://127.0.0.1:${server.address.port}/m.gguf", sha, data.size.toLong())
+        }, minFreeBytes = 0, retryDelayMs = 10)
+        assertFailsWith<IOException> { s.fetch(variant) }
+        assertEquals(3, requests.size)
     }
 
     @AfterTest

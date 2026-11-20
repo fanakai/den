@@ -17,7 +17,7 @@ interface IEngine {
     oneway void generate(long session, in String[] roles, in String[] contents, int maxTokens,
             float temperature, float topP, in String[] stop, IGenCallback callback);
 
-    oneway void cancel(long session);
+    oneway void cancel(IGenCallback callback);
 
     void unload(long session);
 }

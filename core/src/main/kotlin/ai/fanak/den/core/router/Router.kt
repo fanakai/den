@@ -86,8 +86,9 @@ class Router(
     suspend fun open(model: String, device: DeviceProfile, contextLength: Int = 4096, mmap: Boolean = true): Opened {
         catalog.resolve(model)
         val tried = mutableListOf<Failure>()
-        if (plan(model, device).isEmpty()) throw NoUsableBackendException(model, tried, emptyPlanReason(model, device))
-        for (c in plan(model, device)) {
+        val plan = plan(model, device)
+        if (plan.isEmpty()) throw NoUsableBackendException(model, tried, emptyPlanReason(model, device))
+        for (c in plan) {
             try {
                 val artifact = try {
                     store.fetch(c.variant)

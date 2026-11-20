@@ -19,6 +19,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -35,7 +36,8 @@ class EngineService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> Log.e(TAG, "uncaught", e) })
     private val backends = ConcurrentHashMap<String, DenBackend>()
     private val sessions = ConcurrentHashMap<Long, Session>()
-    private val jobs = ConcurrentHashMap<Long, Job>()
+    // Request callback -> (session, job).
+    private val jobs = ConcurrentHashMap<IBinder, Pair<Long, Job>>()
     private val nextId = AtomicLong(1)
 
     // An exception other than these few would crash this process on the way back to the caller.
@@ -70,16 +72,16 @@ class EngineService : Service() {
             session: Long, roles: Array<String>, contents: Array<String>, maxTokens: Int,
             temperature: Float, topP: Float, stop: Array<String>, callback: IGenCallback,
         ) {
-            val s = sessions[session] ?: return callback.onError("unknown session $session")
-            val messages = roles.zip(contents) { r, c -> ChatMessage(Role.valueOf(r), c) }
-            jobs[session] = scope.launch {
+            val s = sessions[session] ?: return run { runCatching { callback.onError("unknown session $session") } }
+            // Keyed by the callback: several requests of a shared model can wait on one session.
+            val key = callback.asBinder()
+            val job = scope.launch(start = CoroutineStart.LAZY) {
                 try {
+                    val messages = roles.zip(contents) { r, c -> ChatMessage(Role.valueOf(r), c) }
                     s.generate(GenRequest(messages, maxTokens, temperature, topP, stop.toList())).collect { e ->
                         when (e) {
                             is GenEvent.Text -> callback.onText(e.text)
-                            is GenEvent.Done -> e.stats.run {
-                                callback.onDone(longArrayOf(promptTokens.toLong(), outputTokens.toLong(), prefillMs, decodeMs))
-                            }
+                            is GenEvent.Done -> callback.onDone(e.stats.toLongs())
                         }
                     }
                 } catch (e: kotlinx.coroutines.CancellationException) {
@@ -87,17 +89,19 @@ class EngineService : Service() {
                 } catch (e: Exception) {
                     runCatching { callback.onError(e.message ?: e.toString()) }
                 } finally {
-                    jobs.remove(session)
+                    jobs.remove(key)
                 }
             }
+            jobs[key] = session to job
+            job.start()
         }
 
-        override fun cancel(session: Long) {
-            jobs[session]?.cancel()
+        override fun cancel(callback: IGenCallback) {
+            jobs[callback.asBinder()]?.second?.cancel()
         }
 
         override fun unload(session: Long) = guard {
-            jobs.remove(session)?.cancel()
+            jobs.values.filter { it.first == session }.forEach { it.second.cancel() }
             sessions.remove(session)?.unload()
             Unit
         }

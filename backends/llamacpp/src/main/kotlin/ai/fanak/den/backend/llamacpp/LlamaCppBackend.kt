@@ -52,13 +52,14 @@ class LlamaCppBackend : DenBackend {
                 LlamaNative.load(artifact.path, opts.contextLength, threads, gpuLayers, opts.mmap).also { h ->
                     // Warm-up with a prompt as long as a real one: a 1-token "hi" left the first request at
                     // 3.8 tok/s prefill on the A52s, against ~75 for the next ones.
-                    LlamaNative.generate(h, arrayOf("user"), arrayOf(WARMUP), 2, 0f, 1f, emptyArray()) { true }
+                    LlamaNative.generate(h, arrayOf("user"), arrayOf(WARMUP.encodeToByteArray()), 2, 0f, 1f, emptyArray()) { true }
                 }
             } catch (e: EngineException) {
                 lastError = e.message
                 throw e
             }
         }
+        lastError = null
         return LlamaSession(handle)
     }
 
@@ -76,16 +77,16 @@ private class LlamaSession(private var handle: Long) : Session {
                     LlamaNative.generate(
                         handle,
                         req.messages.map { it.role.name.lowercase() }.toTypedArray(),
-                        req.messages.map { it.content }.toTypedArray(),
+                        req.messages.map { it.content.encodeToByteArray() }.toTypedArray(),
                         req.maxTokens,
                         req.temperature,
                         req.topP,
-                        req.stop.toTypedArray(),
+                        req.stop.map { it.encodeToByteArray() }.toTypedArray(),
                     ) { utf8 ->
                         trySendBlocking(GenEvent.Text(utf8.decodeToString())).isSuccess && isActive
                     }
                 }
-                send(GenEvent.Done(GenStats(s[0].toInt(), s[1].toInt(), s[2], s[3])))
+                send(GenEvent.Done(GenStats.of(s)))
                 close()
             } catch (e: Throwable) {
                 close(e)

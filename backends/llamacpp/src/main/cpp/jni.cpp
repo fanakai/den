@@ -29,6 +29,21 @@ std::vector<std::string> strs(JNIEnv *env, jobjectArray a) {
     return out;
 }
 
+// Strings sent as UTF-8 bytes: GetStringUTFChars gives modified UTF-8, which splits characters outside the BMP
+// (emoji) into two surrogates that the tokenizer does not read.
+std::vector<std::string> utf8s(JNIEnv *env, jobjectArray a) {
+    std::vector<std::string> out;
+    for (jsize i = 0; i < env->GetArrayLength(a); ++i) {
+        auto b = (jbyteArray) env->GetObjectArrayElement(a, i);
+        jsize n = env->GetArrayLength(b);
+        std::string s((size_t) n, '\0');
+        env->GetByteArrayRegion(b, 0, n, reinterpret_cast<jbyte *>(s.data()));
+        out.push_back(std::move(s));
+        env->DeleteLocalRef(b);
+    }
+    return out;
+}
+
 void throw_engine(JNIEnv *env, const std::string &msg) {
     env->ThrowNew(env->FindClass("ai/fanak/den/backend/llamacpp/EngineException"), msg.c_str());
 }
@@ -66,7 +81,7 @@ Java_ai_fanak_den_backend_llamacpp_LlamaNative_load(JNIEnv *env, jobject, jstrin
     return reinterpret_cast<jlong>(h);
 }
 
-// Returns [promptTokens, outputTokens, prefillMs, decodeMs].
+// Returns [promptTokens, outputTokens, prefillMs, decodeMs, finish].
 JNIEXPORT jlongArray JNICALL
 Java_ai_fanak_den_backend_llamacpp_LlamaNative_generate(JNIEnv *env, jobject, jlong ptr,
                                                          jobjectArray roles, jobjectArray contents,
@@ -76,7 +91,7 @@ Java_ai_fanak_den_backend_llamacpp_LlamaNative_generate(JNIEnv *env, jobject, jl
     std::lock_guard<std::mutex> guard(h->lock);
 
     auto r = strs(env, roles);
-    auto c = strs(env, contents);
+    auto c = utf8s(env, contents);
     den::Messages messages;
     for (size_t i = 0; i < r.size(); ++i) messages.emplace_back(r[i], c[i]);
 
@@ -84,7 +99,7 @@ Java_ai_fanak_den_backend_llamacpp_LlamaNative_generate(JNIEnv *env, jobject, jl
     params.max_tokens = max_tokens;
     params.temperature = temperature;
     params.top_p = top_p;
-    params.stop = strs(env, stop);
+    params.stop = utf8s(env, stop);
 
     // Bytes, not a jstring: NewStringUTF uses modified UTF-8 and breaks 4-byte characters.
     jmethodID on_text = env->GetMethodID(env->GetObjectClass(callback), "onText", "([B)Z");
@@ -104,9 +119,9 @@ Java_ai_fanak_den_backend_llamacpp_LlamaNative_generate(JNIEnv *env, jobject, jl
         throw_engine(env, err);
         return nullptr;
     }
-    jlong out[4] = {stats.prompt_tokens, stats.output_tokens, stats.prefill_ms, stats.decode_ms};
-    jlongArray arr = env->NewLongArray(4);
-    env->SetLongArrayRegion(arr, 0, 4, out);
+    jlong out[5] = {stats.prompt_tokens, stats.output_tokens, stats.prefill_ms, stats.decode_ms, stats.finish};
+    jlongArray arr = env->NewLongArray(5);
+    env->SetLongArrayRegion(arr, 0, 5, out);
     return arr;
 }
 
