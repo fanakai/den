@@ -9,11 +9,14 @@ import android.content.ClipboardManager
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.text.InputType
+import android.view.Gravity
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
@@ -125,32 +128,51 @@ class MainActivity : Activity() {
         http.removeAllViews()
         val on = HttpSettings.enabled(this)
         http.addView(TextView(this).apply { text = "\nHTTP endpoint (OpenAI-compatible)"; textSize = 18f })
+        val port = HttpSettings.port(this)
         http.addView(TextView(this).apply {
-            text = if (on) "On: http://127.0.0.1:${HttpSettings.PORT}/v1, for apps on this phone only" else "Off"
+            text = if (on) "On: http://127.0.0.1:$port/v1, for apps on this phone only" else "Off"
         })
         http.addView(button(if (on) "Turn off" else "Turn on") {
             HttpSettings.setEnabled(this, !on)
             startForegroundService(Intent(this, DenService::class.java))
         })
+        val portField = EditText(this).apply { hint = "port"; setText(port.toString()); inputType = InputType.TYPE_CLASS_NUMBER }
+        http.addView(LinearLayout(this).apply {
+            addView(portField, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(button("Set port") {
+                runCatching { HttpSettings.setPort(context, portField.text.toString().toInt()) }
+                    .onFailure { Toast.makeText(context, "port must be between 1024 and 65535", Toast.LENGTH_SHORT).show() }
+                if (HttpSettings.enabled(context)) startForegroundService(Intent(context, DenService::class.java))
+            })
+        })
         http.addView(TextView(this).apply { text = "Each client sends its token as the API key (Authorization: Bearer)." })
         val name = EditText(this).apply { hint = "client name" }
         http.addView(name)
         http.addView(button("New token") {
-            HttpSettings.create(this, name.text.toString().ifBlank { "client" })
+            val client = name.text.toString().ifBlank { "client" }
+            fresh = client to HttpSettings.create(this, client)
         })
-        HttpSettings.all(this).forEach { (token, client) ->
+        // Shown once: only its hash is stored.
+        fresh?.let { (client, token) ->
             http.addView(TextView(this).apply {
-                text = "$client: $token"
+                text = "New token for $client, shown only now:\n$token"
                 setTextIsSelectable(true)
             })
+            http.addView(button("Copy") {
+                getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Den token", token))
+            })
+        }
+        HttpSettings.all(this).forEach { (key, client) ->
             http.addView(LinearLayout(this).apply {
-                addView(button("Copy") {
-                    getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Den token", token))
-                })
-                addView(button("Revoke") { HttpSettings.revoke(context, token) })
+                gravity = Gravity.CENTER_VERTICAL
+                addView(TextView(context).apply { text = client }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                addView(button("Revoke") { HttpSettings.revoke(context, key) })
             })
         }
     }
+
+    // The token made on this screen, until the screen closes.
+    private var fresh: Pair<String, String>? = null
 
     private fun button(label: String, onClick: () -> Unit) = Button(this).apply {
         text = label

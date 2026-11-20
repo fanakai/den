@@ -96,6 +96,13 @@ internal class DenAppConnection(
         }
     }
 
+    // The Den app's OpenAI-compatible endpoint, or null when it is off or the Den app is older than version 4.
+    suspend fun httpEndpoint(): String? {
+        val svc = service()
+        if (svc.version() < 4) return null
+        return svc.httpPort().takeIf { it > 0 }?.let { "http://127.0.0.1:$it/v1" }
+    }
+
     suspend fun open(model: String): DenModel {
         val svc = service()
         return suspendCancellableCoroutine { cont ->

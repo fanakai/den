@@ -16,6 +16,7 @@ dependencyResolutionManagement {
 rootProject.name = "den"
 
 include(":core")
+include(":service")
 include(":backends:llamacpp")
 include(":sdk:kotlin")
 include(":apps:testapp")

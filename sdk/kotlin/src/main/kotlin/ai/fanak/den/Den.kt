@@ -165,6 +165,13 @@ class Den private constructor(context: Context, private val config: DenConfig) :
     // Whether model() will use the Den app.
     val connected: Boolean get() = config.mode != DenMode.EMBEDDED && app.status() == DenAppStatus.OK
 
+    /**
+     * The Den app's OpenAI-compatible endpoint (`http://127.0.0.1:<port>/v1`), for code that speaks HTTP; null when the
+     * Den app is missing, not trusted, older, or has the endpoint off. Each client still needs a token from the Den app.
+     */
+    suspend fun httpEndpoint(): String? =
+        if (app.status() == DenAppStatus.OK) runCatching { app.httpEndpoint() }.getOrNull() else null
+
     suspend fun model(name: String): DenModel {
         val status = if (config.mode == DenMode.EMBEDDED) DenAppStatus.MISSING else app.status()
         if (status == DenAppStatus.OK) {

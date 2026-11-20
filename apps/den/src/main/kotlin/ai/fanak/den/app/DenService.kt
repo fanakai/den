@@ -12,6 +12,7 @@ import ai.fanak.den.core.backend.GenEvent
 import ai.fanak.den.core.backend.GenRequest
 import ai.fanak.den.core.backend.Role
 import ai.fanak.den.core.model.DownloadProgress
+import ai.fanak.den.service.OpenAiServer
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -77,7 +78,9 @@ class DenService : Service() {
     private val nextId = AtomicLong(1)
 
     private val binder = object : IDenService.Stub() {
-        override fun version() = 3
+        override fun version() = 4
+
+        override fun httpPort() = if (HttpSettings.enabled(this@DenService)) http.port else -1
 
         override fun models() = den.models.toTypedArray()
 
@@ -183,20 +186,21 @@ class DenService : Service() {
         log("close session $id (${s.model}), sessions ${pool.sessions(s.model)}")
     }
 
-    private val http = HttpEndpoint(
+    private val http = OpenAiServer(
         scope,
         models = { den.models },
-        use = { name, block -> pool.use(name, block) },
+        use = { name, block -> pool.use(name) { m -> block { req -> m.chat(req) } } },
         client = { HttpSettings.name(this, it) },
         log = ::log,
     )
 
+    // Starts, stops, or moves the endpoint to the port set on the Den screen.
     private fun applyHttp() {
-        if (HttpSettings.enabled(this)) {
-            runCatching { http.start() }.onFailure { log("http failed to start: $it") }
-        } else {
-            http.stop()
-        }
+        val port = HttpSettings.port(this)
+        if (!HttpSettings.enabled(this)) return http.stop()
+        if (http.port == port) return
+        http.stop()
+        runCatching { http.start(port) }.onFailure { log("http failed to start on $port: $it") }
     }
 
     private suspend fun deleteModel(name: String): String = when {
@@ -252,7 +256,7 @@ class DenService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel("den", "Fanak Den", NotificationManager.IMPORTANCE_LOW))
-        val text = if (HttpSettings.enabled(this)) "Serving models to apps and on 127.0.0.1:${HttpSettings.PORT}" else "Serving models to apps"
+        val text = if (HttpSettings.enabled(this)) "Serving models to apps and on 127.0.0.1:${HttpSettings.port(this)}" else "Serving models to apps"
         val n = Notification.Builder(this, "den")
             .setContentTitle("Fanak Den")
             .setContentText(text)

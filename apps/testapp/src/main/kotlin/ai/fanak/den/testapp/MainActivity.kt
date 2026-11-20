@@ -105,6 +105,7 @@ class MainActivity : Activity() {
                 val m = loaded ?: den.model(model).also { loaded = it }
                 m.failures.forEach { log("failed: ${it.candidate.accel} ${it.candidate.variant.quant}: ${it.error.message}") }
                 log("using ${m.backend} ${m.accel} ${m.quant} (${m.source}), connected ${m.connected}, load ${System.currentTimeMillis() - t0} ms, free ${den.device().availRamMb} MB")
+                if (m.connected) log("http endpoint ${den.httpEndpoint()}")
 
                 val req = GenRequest(listOf(ChatMessage(Role.USER, prompt.text.toString())), maxTokens = 128, temperature = 0f)
                 repeat(intent.getIntExtra("repeat", 1)) { i ->
