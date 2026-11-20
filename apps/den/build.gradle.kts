@@ -16,8 +16,29 @@ android {
         ndk { abiFilters += "arm64-v8a" }
     }
 
+    // The release key lives outside the repository. ~/.gradle/gradle.properties names it:
+    //   den.release.storeFile, den.release.keyAlias, den.release.passwordFile (a file holding the password).
+    // Without them (CI, other machines), or with -Pden.release.storeFile= , release builds use the debug key.
+    val store = providers.gradleProperty("den.release.storeFile").orNull?.takeIf { it.isNotBlank() }
+    val passwordFile = providers.gradleProperty("den.release.passwordFile").orNull
+    signingConfigs {
+        if (store != null && passwordFile != null) {
+            create("release") {
+                storeFile = file(store)
+                // The first line, as keytool reads it with -storepass:file.
+                storePassword = file(passwordFile).readLines().first()
+                keyAlias = providers.gradleProperty("den.release.keyAlias").getOrElse("den")
+                keyPassword = storePassword
+            }
+        }
+    }
+
     buildTypes {
-        release { signingConfig = signingConfigs.getByName("debug") }
+        release {
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug").also {
+                logger.warn("Den app: no release key configured, release build signed with the debug key")
+            }
+        }
     }
 
     compileOptions {

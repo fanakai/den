@@ -10,6 +10,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.content.pm.PackageManager
 import android.os.IBinder
 import java.io.IOException
 import kotlin.coroutines.resume
@@ -28,15 +29,39 @@ import kotlinx.coroutines.withTimeout
 internal const val DEN_PACKAGE = "ai.fanak.den"
 private const val DEN_BIND = "ai.fanak.den.BIND"
 
+/**
+ * SHA-256 of the certificates the Den app may be signed with: the release key, and the debug key of the maintainer's
+ * machine for test builds. Any app can be installed under the name `ai.fanak.den` on a phone without Den.
+ */
+val DEN_CERTIFICATES = listOf(
+    "18cceb3706589de26a13391755582a0b73db2b6770073296a9794a71a50124a9", // release, CN=Fanak Den, 2026-11-20
+    "963cb88f53be718d5942b2f86eaaaea3da0f2035ead12c33a6b3ff796220c05c", // debug
+)
+
+internal enum class DenAppStatus { MISSING, UNTRUSTED, OK }
+
 // Binding to the Den app's service (connected mode).
-internal class DenAppConnection(private val context: Context, private val onDownload: (DownloadProgress) -> Unit) {
+internal class DenAppConnection(
+    private val context: Context,
+    private val onDownload: (DownloadProgress) -> Unit,
+    private val certificates: List<String> = DEN_CERTIFICATES,
+) {
     private val lock = Mutex()
     private var service: IDenService? = null
     private var conn: ServiceConnection? = null
 
     private fun intent() = Intent(DEN_BIND).setPackage(DEN_PACKAGE)
 
-    fun installed() = context.packageName != DEN_PACKAGE && context.packageManager.resolveService(intent(), 0) != null
+    fun status(): DenAppStatus {
+        val pm = context.packageManager
+        if (context.packageName == DEN_PACKAGE || pm.resolveService(intent(), 0) == null) return DenAppStatus.MISSING
+        // Checks the whole signing history, so a release key rotated later still matches.
+        val signed = certificates.any { sha ->
+            runCatching { pm.hasSigningCertificate(DEN_PACKAGE, sha.hexBytes(), PackageManager.CERT_INPUT_SHA256) }
+                .getOrDefault(false)
+        }
+        return if (signed) DenAppStatus.OK else DenAppStatus.UNTRUSTED
+    }
 
     private suspend fun service(): IDenService = lock.withLock {
         service?.takeIf { it.asBinder().isBinderAlive }?.let { return it }
@@ -141,3 +166,5 @@ internal class RemoteModel(
         runCatching { svc.close(session) }
     }
 }
+
+internal fun String.hexBytes() = chunked(2).map { it.toInt(16).toByte() }.toByteArray()
