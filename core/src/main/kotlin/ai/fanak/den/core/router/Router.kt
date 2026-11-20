@@ -43,7 +43,8 @@ class Router(
     private val store: ModelStore,
     private val failures: FailureStore = InMemoryFailureStore(),
 ) {
-    private val defaultOrder = listOf(Accel.NPU, Accel.GPU, Accel.CPU)
+    // Without a recipe the CPU comes first: a GPU or NPU that is present is not always faster (A52s) and can crash.
+    private val defaultOrder = listOf(Accel.CPU, Accel.GPU, Accel.NPU)
 
     fun plan(model: String, device: DeviceProfile): List<Candidate> {
         val caps = backends.associateWith { runCatching { it.probe(device) }.getOrNull() }

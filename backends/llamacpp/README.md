@@ -29,10 +29,10 @@ Requires Android SDK platform 36, NDK 29.0.14206865, CMake 3.22.1 and Python 3 (
 cmake -S src/main/cpp -B build-smoke -G Ninja -DDEN_SMOKE=ON -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
   -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28 -DANDROID_STL=c++_shared
-ninja -C build-smoke den-smoke ggml-cpu ggml-opencl
+ninja -C build-smoke
 ```
 
-Copy `den-smoke`, `bin/*.so` and the NDK `libc++_shared.so` into one folder on the phone.
+Copy `den-smoke`, `bin/*.so` (one `libggml-cpu-android_*.so` per instruction set; the best one for the phone is picked at run time) and the NDK `libc++_shared.so` into one folder on the phone.
 Termux cannot load the vendor OpenCL driver from `/vendor`, so copy `/vendor/lib64/libOpenCL*.so` into a folder of its own first:
 
 ```

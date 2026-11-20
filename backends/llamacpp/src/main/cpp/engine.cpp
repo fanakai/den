@@ -5,6 +5,7 @@
 #include <mutex>
 
 #include <android/log.h>
+#include <dlfcn.h>
 
 #include "ggml-backend.h"
 #include "llama.h"
@@ -39,6 +40,29 @@ std::once_flag g_backends;
 
 } // namespace
 
+// CPU variants built with GGML_CPU_ALL_VARIANTS. Each one scores itself on this CPU (0 when it cannot run here),
+// the way ggml picks a variant from a folder, which an APK does not have.
+static void load_best_cpu() {
+    std::string best;
+    int best_score = 0;
+    for (const char *tag : {"android_armv9.2_2", "android_armv9.2_1", "android_armv9.0_1", "android_armv8.6_1",
+                            "android_armv8.2_2", "android_armv8.2_1", "android_armv8.0_1"}) {
+        std::string name = std::string("libggml-cpu-") + tag + ".so";
+        void *h = dlopen(name.c_str(), RTLD_NOW | RTLD_LOCAL);
+        if (!h) continue;
+        auto score = reinterpret_cast<int (*)()>(dlsym(h, "ggml_backend_score"));
+        int s = score ? score() : 0;
+        dlclose(h);
+        if (s > best_score) {
+            best_score = s;
+            best = name;
+        }
+    }
+    if (best.empty()) best = "libggml-cpu.so";
+    ggml_backend_load(best.c_str());
+    __android_log_print(ANDROID_LOG_INFO, "den-llama", "cpu backend %s (score %d)", best.c_str(), best_score);
+}
+
 std::vector<Device> init_backends(const std::string &lib_dir) {
     std::call_once(g_backends, [&] {
         llama_log_set([](ggml_log_level level, const char *text, void *) {
@@ -46,7 +70,8 @@ std::vector<Device> init_backends(const std::string &lib_dir) {
         }, nullptr);
         if (lib_dir.empty()) {
             // In an APK the libraries are usually not extracted, so load by name; a missing one is skipped.
-            for (const char *name : {"libggml-cpu.so", "libggml-opencl.so"}) ggml_backend_load(name);
+            load_best_cpu();
+            ggml_backend_load("libggml-opencl.so");
         } else {
             ggml_backend_load_all_from_path(lib_dir.c_str());
         }

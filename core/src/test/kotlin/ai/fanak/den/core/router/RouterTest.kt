@@ -104,17 +104,16 @@ class RouterTest {
     }
 
     @Test
-    fun defaultsPreferNpuThenGpuThenCpu() {
+    fun defaultsPreferCpuThenGpuThenNpu() {
         val accels = router(listOf(llama(), litert())).plan(model, device).map { it.accel }.distinct()
-        assertEquals(listOf(Accel.NPU, Accel.GPU, Accel.CPU), accels)
+        assertEquals(listOf(Accel.CPU, Accel.GPU, Accel.NPU), accels)
     }
 
     @Test
     fun fallsBackWhenLoadFails() = runTest {
-        val litert = litert(failOn = setOf(Accel.NPU, Accel.GPU))
-        val opened = router(listOf(llama(), litert)).open(model, device)
+        val opened = router(listOf(llama(failOn = setOf(Accel.CPU)), litert())).open(model, device)
 
-        assertEquals(1, opened.failures.size)
+        assertEquals(2, opened.failures.size)
         assertEquals("llamacpp", opened.candidate.backend.id)
         assertEquals(Accel.GPU, opened.candidate.accel)
         assertTrue(opened.needsBenchmark)
@@ -122,42 +121,43 @@ class RouterTest {
 
     @Test
     fun crashedCandidateIsSkippedNextTime() = runTest {
-        val litert = litert(crashOn = setOf(Accel.NPU))
-        val r = router(listOf(llama(), litert))
+        val llama = llama(crashOn = setOf(Accel.CPU))
+        val r = router(listOf(llama, litert()))
 
         assertEquals(Accel.GPU, r.open(model, device).candidate.accel)
         assertEquals(Accel.GPU, r.open(model, device).candidate.accel)
-        assertEquals(1, litert.loaded.count { it.second == Accel.NPU })
+        assertEquals(2, llama.loaded.count { it.second == Accel.CPU })
     }
 
     @Test
     fun ordinaryFailureIsRetriedNextTime() = runTest {
-        val litert = litert(failOn = setOf(Accel.NPU))
-        val r = router(listOf(llama(), litert))
+        val llama = llama(failOn = setOf(Accel.CPU))
+        val r = router(listOf(llama, litert()))
 
         r.open(model, device)
         r.open(model, device)
-        assertEquals(2, litert.loaded.count { it.second == Accel.NPU })
+        assertEquals(4, llama.loaded.count { it.second == Accel.CPU })
     }
 
     @Test
     fun crashDuringGenerationIsReported() = runTest {
         val r = router(listOf(llama(), litert()))
         val first = r.open(model, device)
-        assertEquals(Accel.NPU, first.candidate.accel)
+        assertEquals(q4km to Accel.CPU, first.candidate.variant to first.candidate.accel)
 
         r.reportFailure(device, first.candidate, EngineCrashedException("died while generating"))
-        assertEquals(Accel.GPU, r.open(model, device).candidate.accel)
+        val next = r.open(model, device).candidate
+        assertEquals(q40 to Accel.CPU, next.variant to next.accel)
     }
 
     @Test
     fun crashOnOneSocDoesNotBlockAnother() = runTest {
         val r = router(listOf(llama()))
         val first = r.open(model, device)
-        assertEquals(q4km to Accel.GPU, first.candidate.variant to first.candidate.accel)
+        assertEquals(q4km to Accel.CPU, first.candidate.variant to first.candidate.accel)
         r.reportFailure(device, first.candidate, EngineCrashedException("died"))
 
-        fun hasIt(d: DeviceProfile) = r.plan(model, d).any { it.variant == q4km && it.accel == Accel.GPU }
+        fun hasIt(d: DeviceProfile) = r.plan(model, d).any { it.variant == q4km && it.accel == Accel.CPU }
         assertTrue(!hasIt(device))
         assertTrue(hasIt(device.copy(soc = "SM7325")))
     }

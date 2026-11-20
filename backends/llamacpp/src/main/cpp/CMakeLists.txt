@@ -10,8 +10,9 @@ foreach(opt LLAMA_BUILD_COMMON LLAMA_BUILD_TESTS LLAMA_BUILD_TOOLS LLAMA_BUILD_E
             LLAMA_BUILD_APP LLAMA_BUILD_UI LLAMA_OPENSSL GGML_NATIVE GGML_OPENMP)
     set(${opt} OFF CACHE BOOL "" FORCE)
 endforeach()
-# dotprod and fp16 are available on every arm64 SoC we target (Snapdragon 7xx and newer).
-set(GGML_CPU_ARM_ARCH "armv8.2-a+dotprod+fp16" CACHE STRING "" FORCE)
+# One CPU library per instruction set (armv8.0 up to armv9.2 with SME); the engine loads the best one this CPU runs.
+set(GGML_CPU_ALL_VARIANTS ON CACHE BOOL "" FORCE)
+set(GGML_CPU_ARM_ARCH "" CACHE STRING "" FORCE)
 
 # Adreno GPU through OpenCL. ggml skips GPUs it does not support at run time.
 option(DEN_OPENCL "Build the OpenCL backend" ON)
