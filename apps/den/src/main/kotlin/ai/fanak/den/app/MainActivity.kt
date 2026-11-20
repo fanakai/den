@@ -31,6 +31,7 @@ class MainActivity : Activity() {
     private var status: String? = null
     private lateinit var apps: LinearLayout
     private lateinit var http: LinearLayout
+    private lateinit var downloads: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,11 +52,13 @@ class MainActivity : Activity() {
         models = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         apps = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         http = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        downloads = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(32, 32, 32, 32)
             addView(TextView(context).apply { this.text = text })
             addView(models)
+            addView(downloads)
             addView(apps)
             addView(http)
         }
@@ -67,8 +70,46 @@ class MainActivity : Activity() {
         // The endpoint does not survive a reboot or update; opening the Den app brings it back.
         if (HttpSettings.enabled(this)) startForegroundService(Intent(this, DenService::class.java))
         showModels()
+        showDownloads()
         showApps()
         showHttp()
+    }
+
+    private fun showDownloads() {
+        downloads.removeAllViews()
+        downloads.addView(TextView(this).apply { text = "\nDownloads"; textSize = 18f })
+        val used = ModelFiles(File(filesDir, "den/models")).usedBytes
+        val quota = Downloads.quotaGb(this)
+        downloads.addView(TextView(this).apply { text = "Quota: ${used shr 20} of ${quota.toLong() shl 10} MB used" })
+        val field = EditText(this).apply { hint = "GB"; setText(quota.toString()); inputType = InputType.TYPE_CLASS_NUMBER }
+        downloads.addView(LinearLayout(this).apply {
+            addView(field, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(button("Set quota (GB)") {
+                runCatching { Downloads.setQuotaGb(context, field.text.toString().toInt()) }
+                    .onFailure { Toast.makeText(context, "quota must be between 1 and 1024 GB", Toast.LENGTH_SHORT).show() }
+            })
+        })
+        val mobile = Downloads.mobileData(this)
+        downloads.addView(TextView(this).apply {
+            text = if (mobile) "Large files download over mobile data too." else "Large files wait for Wi-Fi or another unmetered network."
+        })
+        Downloads.waitingForWifi.forEach { f -> downloads.addView(TextView(this).apply { text = "$f: waiting for Wi-Fi" }) }
+        downloads.addView(button(if (mobile) "Wait for Wi-Fi" else "Allow mobile data") { Downloads.setMobileData(this, !mobile) })
+        downloads.addView(TextView(this).apply { text = "Hub repositories (hf:, ms:) are downloaded only once you approve them." })
+        Downloads.pending.forEach { a ->
+            downloads.addView(TextView(this).apply { text = "${a.model} for ${a.by}: ${Downloads.describe(a)}, waiting" })
+            downloads.addView(LinearLayout(this).apply {
+                addView(button("Download") { Downloads.answer(context, a.model, true) })
+                addView(button("Deny") { Downloads.answer(context, a.model, false) })
+            })
+        }
+        Downloads.approved(this).forEach { m ->
+            downloads.addView(LinearLayout(this).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                addView(TextView(context).apply { text = "$m: approved" }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                addView(button("Forget") { Downloads.forget(context, m) })
+            })
+        }
     }
 
     private fun showApps() {
@@ -176,6 +217,6 @@ class MainActivity : Activity() {
 
     private fun button(label: String, onClick: () -> Unit) = Button(this).apply {
         text = label
-        setOnClickListener { onClick(); showModels(); showApps(); showHttp() }
+        setOnClickListener { onClick(); showModels(); showDownloads(); showApps(); showHttp() }
     }
 }

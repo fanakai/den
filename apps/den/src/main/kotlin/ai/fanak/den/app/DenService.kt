@@ -12,6 +12,8 @@ import ai.fanak.den.core.backend.GenEvent
 import ai.fanak.den.core.backend.GenRequest
 import ai.fanak.den.core.backend.Role
 import ai.fanak.den.core.model.DownloadProgress
+import ai.fanak.den.core.model.RemoteFile
+import ai.fanak.den.core.model.Variant
 import ai.fanak.den.service.OpenAiServer
 import android.app.Notification
 import android.app.NotificationChannel
@@ -44,7 +46,7 @@ class DenService : Service() {
         SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> Log.e("DenService", "uncaught", e) },
     )
     private val den by lazy {
-        val config = DenConfig(mode = DenMode.EMBEDDED, onDownload = ::progress)
+        val config = DenConfig(mode = DenMode.EMBEDDED, onDownload = ::progress, beforeDownload = ::beforeDownload)
         Den.connect(this, config)
     }
 
@@ -208,6 +210,14 @@ class DenService : Service() {
         !pool.evict(name) -> "$name is generating; try again when it is idle"
         else -> "deleted $name, ${den.files.delete(name) shr 20} MB"
     }.also(::log)
+
+    // The user approves hub repositories; the clients waiting for this model get the approval screen.
+    private suspend fun beforeDownload(v: Variant, r: RemoteFile) {
+        val waiting = pending.values.filter { it.model == v.model }
+        val by = waiting.map { Approvals.label(this, callerPackage(it.uid)) }.distinct().joinToString().ifEmpty { "an HTTP client" }
+        val used = den.files.list().filter { it.path != r.path }.sumOf { it.bytes }
+        Downloads.check(this, v, r, used, by) { screen -> waiting.forEach { runCatching { it.callback.onApproval(screen) } } }
+    }
 
     private fun progress(p: DownloadProgress) {
         log("download ${p.fileName} ${p.bytes shr 20}/${p.total shr 20} MB")

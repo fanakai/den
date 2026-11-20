@@ -143,6 +143,7 @@ internal object Approvals {
 // Not exported: only Den's own notification can send it.
 class ApprovalReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        intent.getStringExtra("repo")?.let { return Downloads.answer(context, it, intent.getBooleanExtra("allow", false)) }
         val pkg = intent.getStringExtra("pkg") ?: return
         Approvals.set(context, pkg, intent.getBooleanExtra("allow", false))
     }
