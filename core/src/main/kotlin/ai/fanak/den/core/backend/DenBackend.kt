@@ -29,8 +29,13 @@ interface Session {
 data class Capabilities(
     val accels: Set<Accel>,
     val formats: Set<ModelFormat>,
+    // GGUF architectures the engine loads; null when the backend does not say.
+    val architectures: Set<String>? = null,
 ) {
     fun supports(accel: Accel, format: ModelFormat) = accel in accels && format in formats
+
+    // A file of unknown architecture is tried: only a known one that the engine lacks is refused.
+    fun loads(arch: String?) = arch == null || architectures == null || arch in architectures
 
     companion object {
         val NONE = Capabilities(emptySet(), emptySet())

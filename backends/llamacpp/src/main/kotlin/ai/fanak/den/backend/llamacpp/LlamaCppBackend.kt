@@ -39,7 +39,7 @@ class LlamaCppBackend : DenBackend {
     override fun probe(device: DeviceProfile): Capabilities {
         if (device.platform != Platform.ANDROID || device.abi != "arm64-v8a") return Capabilities.NONE
         val accels = if (hasGpu) setOf(Accel.CPU, Accel.GPU) else setOf(Accel.CPU)
-        return Capabilities(accels, setOf(ModelFormat.GGUF))
+        return Capabilities(accels, setOf(ModelFormat.GGUF), ARCHITECTURES)
     }
 
     override suspend fun load(artifact: Artifact, opts: LoadOptions): Session {

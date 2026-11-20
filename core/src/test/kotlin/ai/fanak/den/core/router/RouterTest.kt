@@ -128,6 +128,30 @@ class RouterTest {
     }
 
     @Test
+    fun unknownArchitectureIsRefusedBeforeDownload() = runTest {
+        var fetches = 0
+        val counting = object : ModelStore {
+            override suspend fun fetch(variant: Variant): Artifact = Artifact(variant, "/m").also { fetches++ }
+        }
+        val newer = object : ModelCatalog {
+            override fun variants(model: String) = listOf(q4km.copy(arch = "qwen9"), q40.copy(arch = "qwen9"))
+        }
+        val engine = FakeBackend("llamacpp", Capabilities(setOf(Accel.CPU), setOf(ModelFormat.GGUF), setOf("qwen3", "llama")))
+        // Said even when the files would not fit in RAM either: a newer engine is what the user needs first.
+        val e = assertFailsWith<NoUsableBackendException> {
+            Router(listOf(engine), InMemoryRecipeStore(emptyList()), newer, counting).open(model, device.copy(availRamMb = 500))
+        }
+        assertEquals("$model needs a newer engine (architecture qwen9)", e.message)
+        assertEquals(0, fetches)
+
+        // Known or unreported architectures are still tried.
+        val r = Router(listOf(engine), InMemoryRecipeStore(emptyList()), catalog, counting)
+        assertEquals(q4km, r.open(model, device).candidate.variant)
+        val noSet = FakeBackend("llamacpp", Capabilities(setOf(Accel.CPU), setOf(ModelFormat.GGUF)))
+        assertEquals(2, Router(listOf(noSet), InMemoryRecipeStore(emptyList()), newer, counting).plan(model, device).size)
+    }
+
+    @Test
     fun emptyPlanSaysWhy() = runTest {
         val r = router(listOf(llama()))
         val tooSmall = assertFailsWith<NoUsableBackendException> { r.open(model, device.copy(availRamMb = 500)) }
