@@ -83,7 +83,7 @@ class Router(
             .filterNot { failures.isBlocked(key(device, it)) }
     }
 
-    suspend fun open(model: String, device: DeviceProfile, contextLength: Int = 4096): Opened {
+    suspend fun open(model: String, device: DeviceProfile, contextLength: Int = 4096, mmap: Boolean = true): Opened {
         catalog.resolve(model)
         val tried = mutableListOf<Failure>()
         if (plan(model, device).isEmpty()) throw NoUsableBackendException(model, tried, emptyPlanReason(model, device))
@@ -96,7 +96,13 @@ class Router(
                     if (e.isNetwork()) throw NoUsableBackendException(model, tried + Failure(c, e))
                     throw e
                 }
-                val session = c.backend.load(artifact, LoadOptions(c.accel, contextLength))
+                val session = try {
+                    c.backend.load(artifact, LoadOptions(c.accel, contextLength, mmap = mmap))
+                } catch (e: EngineLostException) {
+                    // The engine did not start or the system stopped it: other files would only be downloaded in vain.
+                    if (e !is EngineCrashedException) throw NoUsableBackendException(model, tried + Failure(c, e))
+                    throw e
+                }
                 return Opened(session, c, tried)
             } catch (e: CancellationException) {
                 throw e
@@ -126,7 +132,7 @@ class Router(
         failures.record(key(device, candidate), error)
 
     private fun key(device: DeviceProfile, c: Candidate) = FailureKey(
-        device.soc, c.backend.id, c.accel, c.variant.model, c.variant.format, c.variant.quant,
+        device.soc, c.backend.id, c.accel, c.variant.model, c.variant.format, c.variant.quant, c.backend.version,
     )
 
     private companion object {

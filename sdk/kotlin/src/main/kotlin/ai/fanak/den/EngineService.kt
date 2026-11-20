@@ -1,0 +1,134 @@
+package ai.fanak.den
+
+import ai.fanak.den.core.backend.ChatMessage
+import ai.fanak.den.core.backend.DenBackend
+import ai.fanak.den.core.backend.GenEvent
+import ai.fanak.den.core.backend.GenRequest
+import ai.fanak.den.core.backend.LoadOptions
+import ai.fanak.den.core.backend.Role
+import ai.fanak.den.core.backend.Session
+import ai.fanak.den.core.device.DeviceProfile
+import ai.fanak.den.core.model.Artifact
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.os.IBinder
+import android.os.Process
+import android.util.Log
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+
+/**
+ * Runs the backends in their own process (`:den_engine`), so a native crash, e.g. a GPU driver abort, kills this
+ * process and not the app. Backends are created here again from their class name.
+ */
+class EngineService : Service() {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> Log.e(TAG, "uncaught", e) })
+    private val backends = ConcurrentHashMap<String, DenBackend>()
+    private val sessions = ConcurrentHashMap<Long, Session>()
+    private val jobs = ConcurrentHashMap<Long, Job>()
+    private val nextId = AtomicLong(1)
+
+    // An exception other than these few would crash this process on the way back to the caller.
+    private inline fun <T> guard(block: () -> T): T = try {
+        block()
+    } catch (e: IllegalStateException) {
+        throw e
+    } catch (e: Throwable) {
+        throw IllegalStateException(e.message ?: e.toString())
+    }
+
+    private fun backend(name: String) = backends.getOrPut(name) { create(this, name) }
+
+    private val binder = object : IEngine.Stub() {
+        override fun pid() = Process.myPid()
+
+        override fun probe(backend: String, device: String): Array<String> = guard {
+            val caps = backend(backend).probe(JSON.decodeFromString(DeviceProfile.serializer(), device))
+            (caps.accels.map { "accel:${it.name}" } + caps.formats.map { "format:${it.name}" }).toTypedArray()
+        }
+
+        override fun version(backend: String) = guard { backend(backend).version }
+
+        override fun load(backend: String, artifact: String, options: String): Long = guard {
+            val a = JSON.decodeFromString(Artifact.serializer(), artifact)
+            val o = JSON.decodeFromString(LoadOptions.serializer(), options)
+            val s = runBlocking { backend(backend).load(a, o) }
+            nextId.getAndIncrement().also { sessions[it] = s }
+        }
+
+        override fun generate(
+            session: Long, roles: Array<String>, contents: Array<String>, maxTokens: Int,
+            temperature: Float, topP: Float, stop: Array<String>, callback: IGenCallback,
+        ) {
+            val s = sessions[session] ?: return callback.onError("unknown session $session")
+            val messages = roles.zip(contents) { r, c -> ChatMessage(Role.valueOf(r), c) }
+            jobs[session] = scope.launch {
+                try {
+                    s.generate(GenRequest(messages, maxTokens, temperature, topP, stop.toList())).collect { e ->
+                        when (e) {
+                            is GenEvent.Text -> callback.onText(e.text)
+                            is GenEvent.Done -> e.stats.run {
+                                callback.onDone(longArrayOf(promptTokens.toLong(), outputTokens.toLong(), prefillMs, decodeMs))
+                            }
+                        }
+                    }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    runCatching { callback.onError("cancelled") }
+                } catch (e: Exception) {
+                    runCatching { callback.onError(e.message ?: e.toString()) }
+                } finally {
+                    jobs.remove(session)
+                }
+            }
+        }
+
+        override fun cancel(session: Long) {
+            jobs[session]?.cancel()
+        }
+
+        override fun unload(session: Long) = guard {
+            jobs.remove(session)?.cancel()
+            sessions.remove(session)?.unload()
+            Unit
+        }
+    }
+
+    override fun onBind(intent: Intent): IBinder = binder
+
+    override fun onDestroy() {
+        scope.cancel()
+        sessions.values.forEach { runCatching { it.unload() } }
+        sessions.clear()
+        super.onDestroy()
+    }
+
+    internal companion object {
+        const val TAG = "DenEngine"
+        val JSON = Json { ignoreUnknownKeys = true }
+
+        // A Kotlin object, a constructor taking a Context, or one without arguments.
+        fun create(context: Context, name: String): DenBackend {
+            val c = Class.forName(name)
+            runCatching { return c.getField("INSTANCE").get(null) as DenBackend }
+            runCatching { return c.getConstructor(Context::class.java).newInstance(context) as DenBackend }
+            return c.getConstructor().newInstance() as DenBackend
+        }
+
+        fun creatable(backend: DenBackend): Boolean {
+            val c = backend.javaClass
+            return runCatching { c.getField("INSTANCE").get(null) === backend }.getOrDefault(false) ||
+                runCatching { c.getConstructor(Context::class.java) }.isSuccess ||
+                runCatching { c.getConstructor() }.isSuccess
+        }
+    }
+}

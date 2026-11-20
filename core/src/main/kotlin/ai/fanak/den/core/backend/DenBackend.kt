@@ -5,9 +5,13 @@ import ai.fanak.den.core.device.DeviceProfile
 import ai.fanak.den.core.model.Artifact
 import ai.fanak.den.core.model.ModelFormat
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.Serializable
 
 interface DenBackend {
     val id: String
+
+    // Part of the key of a recorded crash, so an updated backend gets tried again.
+    val version: String get() = ""
 
     fun probe(device: DeviceProfile): Capabilities
 
@@ -33,10 +37,13 @@ data class Capabilities(
     }
 }
 
+@Serializable
 data class LoadOptions(
     val accel: Accel,
     val contextLength: Int = 4096,
     val threads: Int? = null,
+    // Map the weights from the file; false reads them into RAM, so the OS cannot drop them under memory pressure.
+    val mmap: Boolean = true,
 )
 
 sealed interface Health {

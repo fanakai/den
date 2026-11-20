@@ -3,6 +3,7 @@
 #include <mutex>
 
 #include "engine.h"
+#include "ggml.h"
 
 namespace {
 
@@ -114,6 +115,12 @@ Java_ai_fanak_den_backend_llamacpp_LlamaNative_free(JNIEnv *, jobject, jlong ptr
     auto *h = reinterpret_cast<Handle *>(ptr);
     { std::lock_guard<std::mutex> guard(h->lock); }
     delete h;
+}
+
+JNIEXPORT jstring JNICALL
+Java_ai_fanak_den_backend_llamacpp_LlamaNative_version(JNIEnv *env, jobject) {
+    std::string v = std::string(ggml_version()) + "-" + ggml_commit();
+    return env->NewStringUTF(v.c_str());
 }
 
 } // extern "C"

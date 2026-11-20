@@ -3,17 +3,20 @@ package ai.fanak.den.testapp
 import ai.fanak.den.Den
 import ai.fanak.den.DenConfig
 import ai.fanak.den.DenMode
+import ai.fanak.den.backend.llamacpp.LlamaCppBackend
 import android.content.Context
 import android.util.Log
 import java.io.File
 
 // The models were copied into <filesDir>/models with adb run-as before the SDK existed.
-fun Context.testDen(useMmap: Boolean = true, mode: DenMode = DenMode.AUTO) = Den.connect(
+// With `crash`, CrashBackend comes before llama.cpp, so the router tries it first.
+fun Context.testDen(useMmap: Boolean = true, mode: DenMode = DenMode.AUTO, crash: Boolean = false) = Den.connect(
     this,
     DenConfig(
         modelDir = File(filesDir, "models"),
         useMmap = useMmap,
         mode = mode,
+        backends = if (crash) listOf(CrashBackend(this), LlamaCppBackend()) else null,
         onDownload = { Log.i("DenTest", "download ${it.fileName} ${it.bytes shr 20}/${it.total shr 20} MB") },
     ),
 )

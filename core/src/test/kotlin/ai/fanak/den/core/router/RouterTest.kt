@@ -172,6 +172,22 @@ class RouterTest {
     }
 
     @Test
+    fun lostEngineStopsWithoutTryingOtherFiles() = runTest {
+        val lost = object : DenBackend {
+            var loads = 0
+            override val id = "llamacpp"
+            override fun probe(device: DeviceProfile) = Capabilities(setOf(Accel.CPU, Accel.GPU), setOf(ModelFormat.GGUF))
+            override suspend fun load(artifact: Artifact, opts: LoadOptions): Session {
+                loads++
+                throw EngineLostException("the engine process did not start")
+            }
+            override fun health() = Health.Ok
+        }
+        assertFailsWith<NoUsableBackendException> { router(listOf(lost)).open(model, device) }
+        assertEquals(1, lost.loads)
+    }
+
+    @Test
     fun ordinaryFailureIsRetriedNextTime() = runTest {
         val llama = llama(failOn = setOf(Accel.CPU))
         val r = router(listOf(llama, litert()))

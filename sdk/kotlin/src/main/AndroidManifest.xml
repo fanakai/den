@@ -10,4 +10,12 @@
             <action android:name="ai.fanak.den.BIND" />
         </intent>
     </queries>
+
+    <application>
+        <!-- The engine of embedded mode in its own process: a native crash ends this process, not the app. -->
+        <service
+            android:name="ai.fanak.den.EngineService"
+            android:exported="false"
+            android:process=":den_engine" />
+    </application>
 </manifest>

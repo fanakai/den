@@ -41,6 +41,16 @@ model.close()
 
 A model loaded in the app process is unloaded when it is idle and Android reports low memory, when the app moves to the background list (where Android kills processes first), and on `den.close()`, which closes every model the `Den` opened. A model that is generating is never unloaded. An unloaded model loads again on its next request. In connected mode, the Den app does the same for every app.
 
+## Engine crashes
+
+The backends run in a separate process of the app, `:den_engine` (Android 10 and later), declared by the SDK's manifest. A native crash, for example a GPU driver abort, ends that process and not the app:
+- a crash while loading counts as a failed candidate, and the router loads the next one;
+- a crash before the first word of a reply loads the next candidate and replays the request once; after the first word, the request ends with an error;
+- crashed candidates are saved in `<filesDir>/den/failures.json` and skipped after a restart, until the system build or the backend version changes;
+- a process stopped by the system (low memory) is not a crash: the model loads again on its next request.
+
+The engine process creates each backend again from its class (a Kotlin object, a constructor taking a `Context`, or one without arguments), and runs the app's `Application.onCreate` like any process of the app. `DenConfig(isolate = false)` keeps the backends in the app process. The Den app runs its engine the same way, so a crash there does not stop the service.
+
 ## Model names
 
 `den.model(name)` accepts:
