@@ -82,4 +82,4 @@ The Den app uses its own parts, so these settings do not change connected mode. 
 ## Current limits
 
 - Only the built-in catalog; the live catalog comes with #31.
-- The Den app asks the user once per app, by notification, on its first `model()` call; a denied app gets an error (in `AUTO`, it runs in the app process instead).
+- The Den app asks the user once per app, on its first `model()` call: the SDK opens the Den app's approval screen over the app (it must be visible; `DenConfig(approvalScreen = false)` turns this off), and a notification is posted as well. A denied app gets an error (in `AUTO`, it runs in the app process instead); an app whose request was closed without an answer is not asked again for 5 minutes.

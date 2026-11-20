@@ -6,11 +6,14 @@ import ai.fanak.den.core.backend.GenStats
 import ai.fanak.den.core.device.Accel
 import ai.fanak.den.core.model.DownloadProgress
 import ai.fanak.den.core.router.Source
+import android.app.ActivityOptions
+import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.IBinder
 import java.io.IOException
 import kotlin.coroutines.resume
@@ -45,6 +48,7 @@ internal class DenAppConnection(
     private val context: Context,
     private val onDownload: (DownloadProgress) -> Unit,
     private val certificates: List<String> = DEN_CERTIFICATES,
+    private val approvalScreen: Boolean = true,
 ) {
     private val lock = Mutex()
     private var service: IDenService? = null
@@ -108,10 +112,32 @@ internal class DenAppConnection(
                 override fun onProgress(file: String, bytes: Long, total: Long) {
                     if (cont.isActive) onDownload(DownloadProgress(file, bytes, total))
                 }
+
+                override fun onApproval(screen: PendingIntent) {
+                    if (cont.isActive && approvalScreen) showApproval(screen)
+                }
             }
             cont.invokeOnCancellation { runCatching { svc.cancelOpen(callback) } }
             svc.open(model, callback)
         }
+    }
+
+    // Android lets the Den app's screen open only while this app is visible; otherwise the notification remains.
+    private fun showApproval(screen: PendingIntent) {
+        val options = when {
+            Build.VERSION.SDK_INT >= 36 ->
+                ActivityOptions.makeBasic().setPendingIntentBackgroundActivityStartMode(
+                    ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_IF_VISIBLE,
+                ).toBundle()
+            Build.VERSION.SDK_INT >= 34 ->
+                @Suppress("DEPRECATION")
+                ActivityOptions.makeBasic().setPendingIntentBackgroundActivityStartMode(
+                    ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED,
+                ).toBundle()
+            else -> null
+        }
+        runCatching { screen.send(context, 0, null, null, null, null, options) }
+            .onFailure { android.util.Log.w("Den", "cannot open the Den app's approval screen: $it") }
     }
 
     fun close() {

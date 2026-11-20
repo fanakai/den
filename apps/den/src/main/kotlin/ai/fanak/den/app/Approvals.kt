@@ -8,6 +8,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.SystemClock
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CompletableDeferred
@@ -37,16 +38,43 @@ internal object Approvals {
     val pending: Set<String> get() = waiting.keys
 
     fun set(c: Context, pkg: String, allow: Boolean) {
+        quiet.remove(pkg)
         val value = (if (allow) "allow " else "deny ") + (certificate(c, pkg) ?: "")
         prefs(c).edit().putString(pkg, value.trim()).apply()
         c.getSystemService(NotificationManager::class.java).cancel(pkg, 0)
         waiting.remove(pkg)?.complete(allow)
     }
 
-    fun forget(c: Context, pkg: String) = prefs(c).edit().remove(pkg).apply()
+    fun forget(c: Context, pkg: String) {
+        prefs(c).edit().remove(pkg).apply()
+        quiet.remove(pkg)
+    }
 
-    // False when denied, or not answered within a minute.
-    suspend fun request(c: Context, pkg: String): Boolean {
+    // An app whose request was dismissed or not answered is not asked again for a while, so it cannot flood the user.
+    private const val QUIET_MS = 5 * 60_000L
+    private val quiet = ConcurrentHashMap<String, Long>()
+
+    // Apps in their quiet time, listed on the Den screen so the user can still answer them there.
+    val dismissed: Set<String> get() = quiet.filterValues { SystemClock.elapsedRealtime() < it }.keys
+
+    // The user closed the approval screen without answering: no decision is stored.
+    fun dismiss(c: Context, pkg: String) {
+        quiet[pkg] = SystemClock.elapsedRealtime() + QUIET_MS
+        c.getSystemService(NotificationManager::class.java).cancel(pkg, 0)
+        waiting.remove(pkg)?.complete(false)
+    }
+
+    // The approval screen for one app. Not exported: only the Den service, which knows the caller from Binder, opens it.
+    fun screen(c: Context, pkg: String): PendingIntent = PendingIntent.getActivity(
+        c, pkg.hashCode(), Intent(c, ApproveActivity::class.java).putExtra("pkg", pkg),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
+
+    /**
+     * False when denied, dismissed, or not answered within a minute. A new request posts a notification and passes the
+     * approval screen to [show], so a client app in the foreground can open it (no notification permission needed).
+     */
+    suspend fun request(c: Context, pkg: String, show: (PendingIntent) -> Unit = {}): Boolean {
         read(c, pkg)?.let { d ->
             when {
                 // Given before certificates were stored: tied now to the app installed under that name.
@@ -56,9 +84,16 @@ internal object Approvals {
                 else -> forget(c, pkg)
             }
         }
-        val d = waiting.computeIfAbsent(pkg) { CompletableDeferred<Boolean>().also { notify(c, pkg) } }
+        quiet[pkg]?.let { if (SystemClock.elapsedRealtime() < it) return false else quiet.remove(pkg) }
+        val d = waiting.computeIfAbsent(pkg) {
+            CompletableDeferred<Boolean>().also {
+                notify(c, pkg)
+                show(screen(c, pkg))
+            }
+        }
         return withTimeoutOrNull(TIMEOUT_MS) { d.await() } ?: false.also {
             waiting.remove(pkg, d)
+            quiet[pkg] = SystemClock.elapsedRealtime() + QUIET_MS
             c.getSystemService(NotificationManager::class.java).cancel(pkg, 0)
         }
     }
@@ -92,7 +127,7 @@ internal object Approvals {
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
         }
-        val open = PendingIntent.getActivity(c, 0, Intent(c, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+        val open = screen(c, pkg)
         val n = Notification.Builder(c, "approvals")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("Allow ${label(c, pkg)} to use local models?")

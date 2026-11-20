@@ -33,6 +33,14 @@
                 android:value="On-device LLM inference shared with other apps" />
         </service>
 
+        <!-- Opened only through a PendingIntent made by DenService, which knows the calling app. -->
+        <activity
+            android:name=".ApproveActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.DeviceDefault.Dialog" />
+
         <receiver
             android:name=".ApprovalReceiver"
             android:exported="false" />

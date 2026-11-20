@@ -56,6 +56,9 @@ data class DenConfig(
     val mode: DenMode = DenMode.AUTO,
     // SHA-256 of the certificates a Den app may be signed with; prompts go only to a Den app signed with one of them.
     val denCertificates: List<String> = DEN_CERTIFICATES,
+    // When the Den app asks the user whether this app may use it, open its approval screen (this app must be visible);
+    // false leaves it to the Den app's notification.
+    val approvalScreen: Boolean = true,
     // The parts below apply in embedded mode; the Den app uses its own. Defaults: llama.cpp, the built-in catalog,
     // downloads (or files on disk when download = false), and the recipes bundled with the SDK.
     val backends: List<DenBackend>? = null,
@@ -108,7 +111,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         appContext.registerComponentCallbacks(trim)
     }
 
-    private val app = DenAppConnection(context, config.onDownload, config.denCertificates)
+    private val app = DenAppConnection(context, config.onDownload, config.denCertificates, config.approvalScreen)
     private val probe = AndroidDeviceProbe(context)
     val modelDir: File = (config.modelDir ?: File(context.filesDir, "den/models")).apply { mkdirs() }
     val recipes: List<Recipe> = context.assets.recipes("den/recipes") + config.recipes

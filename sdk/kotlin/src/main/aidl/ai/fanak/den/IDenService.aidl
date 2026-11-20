@@ -21,4 +21,6 @@ interface IDenService {
 
     // Version 2: stops an open still in progress, and the download it started (another waiting app resumes it).
     oneway void cancelOpen(IOpenCallback callback);
+
+    // Version 3: open() may call IOpenCallback.onApproval with the approval screen.
 }
