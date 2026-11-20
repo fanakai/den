@@ -1,6 +1,7 @@
 package ai.fanak.den.app
 
 import ai.fanak.den.Den
+import ai.fanak.den.ModelFiles
 import android.Manifest
 import android.app.Activity
 import android.content.ClipData
@@ -13,9 +14,18 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 // What Den sees on this phone, and which apps may use it. Model management UI comes later.
 class MainActivity : Activity() {
+    private val scope = MainScope()
+    private lateinit var models: LinearLayout
+    private var status: String? = null
     private lateinit var apps: LinearLayout
     private lateinit var http: LinearLayout
 
@@ -35,12 +45,14 @@ class MainActivity : Activity() {
                 den.plan(m).forEachIndexed { i, c -> appendLine("  $i. ${c.backend.id} ${c.accel} ${c.variant.quant} (${c.source})") }
             }
         }
+        models = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         apps = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         http = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(32, 32, 32, 32)
             addView(TextView(context).apply { this.text = text })
+            addView(models)
             addView(apps)
             addView(http)
         }
@@ -51,6 +63,7 @@ class MainActivity : Activity() {
         super.onResume()
         // The endpoint does not survive a reboot or update; opening the Den app brings it back.
         if (HttpSettings.enabled(this)) startForegroundService(Intent(this, DenService::class.java))
+        showModels()
         showApps()
         showHttp()
     }
@@ -69,6 +82,39 @@ class MainActivity : Activity() {
                 if (allowed != null) addView(button("Forget") { Approvals.forget(context, pkg) })
             })
         }
+    }
+
+    private fun showModels() {
+        models.removeAllViews()
+        val files = ModelFiles(File(filesDir, "den/models"))
+        models.addView(TextView(this).apply { text = "\nModels"; textSize = 18f })
+        models.addView(TextView(this).apply {
+            text = "${files.usedBytes shr 20} MB used by models, ${files.freeBytes shr 20} MB free on the phone"
+        })
+        status?.let { s -> models.addView(TextView(this).apply { text = s }) }
+        val list = files.list()
+        if (list.isEmpty()) models.addView(TextView(this).apply { text = "No model downloaded yet." })
+        list.forEach { f ->
+            val size = if (f.complete) "${f.bytes shr 20} MB" else "${f.bytes shr 20}/${f.totalBytes shr 20} MB, unfinished"
+            models.addView(TextView(this).apply { text = "${f.model} ${f.quant}: ${f.fileName}, $size" })
+        }
+        list.map { it.model }.distinct().forEach { m ->
+            models.addView(button("Delete $m") { run { DenService.delete(this, m) } })
+        }
+        if (list.any { !it.complete }) models.addView(button("Remove unfinished downloads") { run { DenService.deletePartial(this) } })
+    }
+
+    // Runs a file action off the main thread, then shows its result.
+    private fun run(action: suspend () -> String) {
+        scope.launch {
+            status = withContext(Dispatchers.IO) { action() }
+            showModels()
+        }
+    }
+
+    override fun onDestroy() {
+        scope.cancel()
+        super.onDestroy()
     }
 
     private fun showHttp() {
@@ -104,6 +150,6 @@ class MainActivity : Activity() {
 
     private fun button(label: String, onClick: () -> Unit) = Button(this).apply {
         text = label
-        setOnClickListener { onClick(); showApps(); showHttp() }
+        setOnClickListener { onClick(); showModels(); showApps(); showHttp() }
     }
 }

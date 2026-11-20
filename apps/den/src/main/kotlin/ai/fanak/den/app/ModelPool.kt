@@ -66,6 +66,14 @@ internal class ModelPool(
             .forEach { unload(it, "idle") }
     }
 
+    // Unloads the model so its file can be deleted; false while it generates. Its sessions reload it on next use.
+    suspend fun evict(name: String): Boolean = lock.withLock {
+        val s = slots[name] ?: return@withLock true
+        if (s.busy > 0) return@withLock false
+        unload(s, "deleted")
+        true
+    }
+
     suspend fun trim() = lock.withLock {
         slots.values.filter { it.model != null && it.busy == 0 }.forEach { unload(it, "low memory") }
     }

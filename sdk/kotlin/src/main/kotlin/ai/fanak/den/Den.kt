@@ -52,6 +52,9 @@ class Den private constructor(context: Context, private val config: DenConfig) :
     private val probe = AndroidDeviceProbe(context)
     val modelDir: File = (config.modelDir ?: File(context.filesDir, "den/models")).apply { mkdirs() }
     val recipes: List<Recipe> = context.assets.recipes("den/recipes")
+
+    // The model files of this process (embedded mode); the Den app manages the shared ones.
+    val files = ModelFiles(modelDir)
     private val store = if (config.download) {
         HttpModelStore(modelDir, BuiltinCatalog::remote, config.onDownload, online = { hasNetwork(context) })
     } else {

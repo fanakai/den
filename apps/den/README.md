@@ -40,6 +40,10 @@ Den keeps a model loaded while it is in use, and unloads it:
 
 A session whose model was unloaded keeps working; its next request loads the model again.
 
+## Disk
+
+The Models section of the Den screen lists the downloaded files with their size, the space they use and the free space on the phone. Delete removes every file of a model, after unloading it; it is refused while the model generates or downloads. Remove unfinished downloads deletes the `.part` files of downloads that are not running. Approvals and HTTP tokens are kept apart from the models, so deleting models does not touch them.
+
 ## Current limits
 
 - Requests on one model run one at a time, in order (see #11).
