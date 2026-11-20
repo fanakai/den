@@ -29,7 +29,7 @@ Unknown fields are rejected, so a typo fails the build instead of being ignored.
 
 | Model | Phone | First choice | Prefill (tok/s) | Decode (tok/s) |
 |---|---|---|---|---|
-| qwen3-0.6b | Galaxy S25 (SM8750) | llamacpp, CPU, Q4_0 | 179.3 | 47.1 |
+| qwen3-0.6b | Galaxy S25 (SM8750) | llamacpp, CPU, Q4_0 | 213.8 | 40.9 |
 | qwen3-1.7b | Galaxy S25 (SM8750) | llamacpp, GPU, Q4_0 | 196.4 | 24.3 |
 | qwen3-0.6b | Galaxy A52s (SM7325) | llamacpp, CPU, Q4_0 | 43.6 | 30.0 |
 | qwen3-1.7b | Galaxy A52s (SM7325) | llamacpp, CPU, Q4_0 | 33.3 | 12.8 |

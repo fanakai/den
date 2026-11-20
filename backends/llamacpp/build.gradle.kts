@@ -25,7 +25,12 @@ android {
 
     // Link-time stub only; the vendor libOpenCL.so must be the one loaded on the phone.
     packaging {
-        jniLibs { excludes += "**/libOpenCL.so" }
+        jniLibs {
+            excludes += "**/libOpenCL.so"
+            // CPU variants kept: armv8.0 (oldest phones), armv8.2_2 (dotprod + fp16), armv8.6_1 (+ i8mm). The others
+            // add about 18 MB for little gain on phones (128-bit SVE, same width as NEON); the loader skips them.
+            excludes += listOf("**/libggml-cpu-android_armv8.2_1.so", "**/libggml-cpu-android_armv9*.so")
+        }
     }
 
     compileOptions {

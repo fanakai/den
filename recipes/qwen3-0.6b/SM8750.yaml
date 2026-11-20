@@ -6,8 +6,8 @@ choices:
   - { backend: llamacpp, accel: gpu, format: gguf, quant: q4_0 }
   - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_k_m }
 measured:
-  prefill_tps: 179.3
-  decode_tps: 47.1
+  prefill_tps: 213.8
+  decode_tps: 40.9
   device: Galaxy S25 (SM-S931B)
-  date: 2026-11-19
-  protocol: den-smoke, llama.cpp b9590, 300-token prompt, 64 tokens greedy, mean of 2 runs, Termux in background
+  date: 2026-11-20
+  protocol: den-smoke, llama.cpp b9590 CPU variant armv8.6_1 (i8mm), 4 threads, 300-token prompt, 64 tokens greedy, mean of 3 runs, Termux in background
