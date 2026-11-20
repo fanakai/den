@@ -3,6 +3,7 @@ package ai.fanak.den.app
 import ai.fanak.den.Den
 import ai.fanak.den.DenConfig
 import ai.fanak.den.DenMode
+import ai.fanak.den.ModelFiles
 import ai.fanak.den.IDenService
 import ai.fanak.den.IGenCallback
 import ai.fanak.den.IOpenCallback
@@ -185,6 +186,12 @@ class DenService : Service() {
         }
     }
 
+    private suspend fun deleteModel(name: String): String = when {
+        name in downloads.values -> "$name is downloading; cancel it first"
+        !pool.evict(name) -> "$name is generating; try again when it is idle"
+        else -> "deleted $name, ${den.files.delete(name) shr 20} MB"
+    }.also(::log)
+
     private fun progress(p: DownloadProgress) {
         log("download ${p.fileName} ${p.bytes shr 20}/${p.total shr 20} MB")
         val model = downloads[p.fileName] ?: return
@@ -199,6 +206,7 @@ class DenService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        current = this
         scope.launch {
             while (true) {
                 delay(60_000)
@@ -261,6 +269,7 @@ class DenService : Service() {
     }
 
     override fun onDestroy() {
+        current = null
         http.stop()
         scope.cancel()
         pool.closeAll()
@@ -269,7 +278,22 @@ class DenService : Service() {
 
     private fun log(msg: String) = Log.i("DenService", msg)
 
-    private companion object {
-        const val IDLE_MS = 5 * 60_000L
+    companion object {
+        private const val IDLE_MS = 5 * 60_000L
+
+        // The running service, for the Den screen in the same process. Not an intent: the service is exported,
+        // and an intent action would let any app delete models.
+        @Volatile private var current: DenService? = null
+
+        // Deletes a model's files, unloading it first; without a running service nothing is loaded.
+        suspend fun delete(context: android.content.Context, model: String): String =
+            current?.deleteModel(model) ?: "deleted $model, ${ModelFiles(modelDir(context)).delete(model) shr 20} MB"
+
+        suspend fun deletePartial(context: android.content.Context): String {
+            val keep = current?.downloads?.keys?.toSet() ?: emptySet()
+            return "removed unfinished downloads, ${ModelFiles(modelDir(context)).deletePartial(keep) shr 20} MB"
+        }
+
+        private fun modelDir(context: android.content.Context) = java.io.File(context.filesDir, "den/models")
     }
 }
