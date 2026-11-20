@@ -23,4 +23,7 @@ interface IDenService {
     oneway void cancelOpen(IOpenCallback callback);
 
     // Version 3: open() may call IOpenCallback.onApproval with the approval screen.
+
+    // Version 4: the port of the OpenAI-compatible endpoint on 127.0.0.1, or -1 when it is off.
+    int httpPort();
 }

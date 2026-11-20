@@ -1,13 +1,10 @@
-package ai.fanak.den.app
+package ai.fanak.den.service
 
-import ai.fanak.den.DenModel
 import ai.fanak.den.core.backend.ChatMessage
 import ai.fanak.den.core.backend.Finish
 import ai.fanak.den.core.backend.GenEvent
 import ai.fanak.den.core.backend.GenRequest
 import ai.fanak.den.core.backend.Role
-import android.content.Context
-import android.util.Base64
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -16,15 +13,17 @@ import java.io.OutputStream
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
-import java.security.SecureRandom
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -38,66 +37,65 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 
-// Off by default. Tokens are made by the user in the Den app, one per client app.
-internal object HttpSettings {
-    const val PORT = 8000
-
-    private fun prefs(c: Context) = c.getSharedPreferences("http", Context.MODE_PRIVATE)
-    private fun tokens(c: Context) = c.getSharedPreferences("tokens", Context.MODE_PRIVATE)
-
-    fun enabled(c: Context) = prefs(c).getBoolean("enabled", false)
-
-    fun setEnabled(c: Context, on: Boolean) = prefs(c).edit().putBoolean("enabled", on).apply()
-
-    // token -> name
-    fun all(c: Context): Map<String, String> = tokens(c).all.mapValues { it.value.toString() }
-
-    fun name(c: Context, token: String): String? = tokens(c).getString(token, null)
-
-    fun create(c: Context, name: String): String {
-        val bytes = ByteArray(24).also { SecureRandom().nextBytes(it) }
-        val token = "den-" + Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
-        tokens(c).edit().putString(token, name).apply()
-        return token
-    }
-
-    fun revoke(c: Context, token: String) = tokens(c).edit().remove(token).apply()
-}
-
 private class HttpError(val code: Int, message: String) : Exception(message)
 
 private const val KEEPALIVE_MS = 3_000L
+private const val MAX_HEADERS = 64
+private const val MAX_LINE = 8192
 
 // A write to the client failed; other IOExceptions (a hub, a download) are errors to report to the client.
 private class ClientGone(cause: IOException) : IOException(cause)
 
-// Minimal OpenAI-compatible server on 127.0.0.1: GET /v1/models and POST /v1/chat/completions (with streaming).
-internal class HttpEndpoint(
+// A model as the server sees it: one chat call.
+typealias Chat = (GenRequest) -> Flow<GenEvent>
+
+/**
+ * Minimal OpenAI-compatible server on 127.0.0.1: GET /v1/models and POST /v1/chat/completions (with streaming).
+ * Plain JVM, so the Den app, the tests and later a Linux daemon (#74) run the same code.
+ */
+class OpenAiServer(
     private val scope: CoroutineScope,
     private val models: () -> List<String>,
-    private val use: suspend (String, suspend (DenModel) -> Unit) -> Unit,
+    // Loads the model if needed and runs the block with it.
+    private val use: suspend (String, suspend (Chat) -> Unit) -> Unit,
+    // The client's name for a token, or null when the token is unknown.
     private val client: (String) -> String?,
     private val log: (String) -> Unit,
+    // A local app could otherwise hold any number of sockets open.
+    private val maxConnections: Int = 8,
 ) {
     @Volatile private var server: ServerSocket? = null
+    private val open = AtomicInteger()
 
-    fun start() {
+    // The bound port, or -1 when stopped.
+    val port: Int get() = server?.localPort ?: -1
+
+    // Port 0 takes a free port (tests).
+    fun start(port: Int) {
         if (server != null) return
-        val s = ServerSocket(HttpSettings.PORT, 16, InetAddress.getByName("127.0.0.1"))
+        val s = ServerSocket(port, 16, InetAddress.getByName("127.0.0.1"))
         server = s
         thread(name = "den-http") {
             while (!s.isClosed) {
                 val c = try { s.accept() } catch (e: IOException) { break }
                 scope.launch(Dispatchers.IO) {
                     try {
-                        c.use { serve(it) }
+                        c.use {
+                            if (open.incrementAndGet() > maxConnections) {
+                                it.getOutputStream().json(503, error("too many connections; try again"))
+                            } else {
+                                serve(it)
+                            }
+                        }
                     } catch (e: IOException) {
                         log("http client gone: $e")
+                    } finally {
+                        open.decrementAndGet()
                     }
                 }
             }
         }
-        log("http on 127.0.0.1:${HttpSettings.PORT}")
+        log("http on 127.0.0.1:${s.localPort}")
     }
 
     fun stop() {
@@ -111,17 +109,18 @@ internal class HttpEndpoint(
         sock.soTimeout = 30_000
         val input = BufferedInputStream(sock.getInputStream())
         val out = sock.getOutputStream()
-        val parts = (input.line() ?: return).split(" ")
-        val method = parts[0]
-        val path = parts.getOrNull(1)?.substringBefore('?') ?: ""
-        val headers = mutableMapOf<String, String>()
-        while (true) {
-            val h = input.line() ?: return
-            if (h.isEmpty()) break
-            val i = h.indexOf(':')
-            if (i > 0) headers[h.substring(0, i).trim().lowercase()] = h.substring(i + 1).trim()
-        }
         try {
+            val parts = (input.line() ?: return).split(" ")
+            val method = parts[0]
+            val path = parts.getOrNull(1)?.substringBefore('?') ?: ""
+            val headers = mutableMapOf<String, String>()
+            while (true) {
+                val h = input.line() ?: return
+                if (h.isEmpty()) break
+                if (headers.size >= MAX_HEADERS) throw HttpError(431, "too many header lines")
+                val i = h.indexOf(':')
+                if (i > 0) headers[h.substring(0, i).trim().lowercase()] = h.substring(i + 1).trim()
+            }
             // A chunked body would otherwise be read as empty.
             if (headers["transfer-encoding"]?.contains("chunked", ignoreCase = true) == true) {
                 throw HttpError(411, "send the body with Content-Length; chunked bodies are not read")
@@ -162,6 +161,16 @@ internal class HttpEndpoint(
         val name = req.str("model") ?: throw HttpError(400, "model is required")
         // hf:owner/repo names are resolved on demand, so they are not in /v1/models.
         if (name !in models() && !name.startsWith("hf:")) throw HttpError(404, "unknown model $name; see /v1/models")
+        // Not supported until #81; ignoring them would answer in prose where the client expects a tool call or JSON.
+        listOf("tools", "functions").forEach { f ->
+            if ((req[f] as? JsonArray)?.isNotEmpty() == true) throw HttpError(400, "$f is not supported yet")
+        }
+        (req["response_format"] as? JsonObject)?.str("type")?.takeIf { it != "text" }?.let {
+            throw HttpError(400, "response_format $it is not supported yet")
+        }
+        req["n"]?.takeIf { it !is JsonNull }?.jsonPrimitive?.intOrNull?.takeIf { it > 1 }?.let {
+            throw HttpError(400, "n = $it is not supported; send one request per reply")
+        }
         val messages = (req["messages"] as? JsonArray)?.map { m ->
             val o = m.jsonObject
             val role = runCatching { Role.valueOf(o.str("role")!!.uppercase()) }.getOrNull()
@@ -239,7 +248,7 @@ internal class HttpEndpoint(
                     if (p.first.isNotEmpty()) event(chunk(buildJsonObject { put("reasoning_content", p.first) }, null).toString())
                     if (p.second.isNotEmpty()) event(chunk(buildJsonObject { put("content", p.second) }, null).toString())
                 }
-                m.chat(gen).collect { e ->
+                m(gen).collect { e ->
                     beat.cancel()
                     when (e) {
                         is GenEvent.Text -> send(split.feed(e.text))
@@ -265,12 +274,12 @@ internal class HttpEndpoint(
         }
     }
 
-    private suspend fun reply(m: DenModel, name: String, gen: GenRequest, out: OutputStream) {
+    private suspend fun reply(m: Chat, name: String, gen: GenRequest, out: OutputStream) {
         val split = ThinkSplitter()
         val reasoning = StringBuilder()
         val content = StringBuilder()
         var done: GenEvent.Done? = null
-        m.chat(gen).collect { e ->
+        m(gen).collect { e ->
             val p = if (e is GenEvent.Text) split.feed(e.text) else split.flush().also { done = e as GenEvent.Done }
             reasoning.append(p.first)
             content.append(p.second)
@@ -388,7 +397,7 @@ private fun InputStream.line(): String? {
         val c = read()
         if (c < 0) return if (b.size() == 0) null else b.toString(Charsets.UTF_8.name())
         if (c == '\n'.code) return b.toString(Charsets.UTF_8.name()).trimEnd('\r')
-        if (b.size() > 8192) return null
+        if (b.size() > MAX_LINE) throw HttpError(431, "header line too long")
         b.write(c)
     }
 }
@@ -398,7 +407,7 @@ private fun head(code: Int, type: String, extra: String = "") =
     "HTTP/1.1 $code ${reason(code)}\r\nContent-Type: $type\r\n${extra}Connection: close\r\n\r\n".toByteArray()
 
 private fun reason(code: Int) = when (code) {
-    200 -> "OK"; 500 -> "Internal Server Error"; 400 -> "Bad Request"; 401 -> "Unauthorized"; 404 -> "Not Found"; 411 -> "Length Required"; 413 -> "Payload Too Large"
+    200 -> "OK"; 500 -> "Internal Server Error"; 400 -> "Bad Request"; 401 -> "Unauthorized"; 404 -> "Not Found"; 411 -> "Length Required"; 413 -> "Payload Too Large"; 431 -> "Request Header Fields Too Large"
     503 -> "Service Unavailable"; else -> "Error"
 }
 

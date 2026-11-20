@@ -7,6 +7,7 @@ Instructions for coding agents and contributors working on Fanak Den. Den runs o
 | Path | What it holds |
 |---|---|
 | `core/` | Router, backend interface, model files, recipes. Plain Kotlin (JVM), no Android dependency. |
+| `service/` | The OpenAI-compatible HTTP server, plain Kotlin (JVM), tested with the OpenAI Java client. |
 | `backends/llamacpp/` | llama.cpp through JNI (`llama.cpp` is a git submodule), CPU and Adreno OpenCL. |
 | `sdk/kotlin/` | Android SDK: device probe, built-in catalog, downloads, connected mode (AIDL client). |
 | `apps/den/` | The Den app: AIDL service, model pool, app approvals, OpenAI-compatible HTTP endpoint. |
