@@ -4,8 +4,18 @@
 #include <chrono>
 #include <mutex>
 
-#include <android/log.h>
 #include <dlfcn.h>
+
+#ifdef __ANDROID__
+#include <android/log.h>
+#define DEN_LOG_INFO(...) __android_log_print(ANDROID_LOG_INFO, "den-llama", __VA_ARGS__)
+#define DEN_LOG_WARN(text) __android_log_write(ANDROID_LOG_WARN, "den-llama", text)
+#else
+// Desktop builds, used by the engine tests in CI.
+#include <cstdio>
+#define DEN_LOG_INFO(...) (std::fprintf(stderr, __VA_ARGS__), std::fputc('\n', stderr))
+#define DEN_LOG_WARN(text) std::fputs(text, stderr)
+#endif
 
 #include "ggml-backend.h"
 #include "llama.h"
@@ -40,6 +50,7 @@ std::once_flag g_backends;
 
 } // namespace
 
+#ifdef __ANDROID__
 // CPU variants built with GGML_CPU_ALL_VARIANTS. Each one scores itself on this CPU (0 when it cannot run here),
 // the way ggml picks a variant from a folder, which an APK does not have.
 static void load_best_cpu() {
@@ -60,18 +71,22 @@ static void load_best_cpu() {
     }
     if (best.empty()) best = "libggml-cpu.so";
     ggml_backend_load(best.c_str());
-    __android_log_print(ANDROID_LOG_INFO, "den-llama", "cpu backend %s (score %d)", best.c_str(), best_score);
+    DEN_LOG_INFO("cpu backend %s (score %d)", best.c_str(), best_score);
 }
+#endif
 
 std::vector<Device> init_backends(const std::string &lib_dir) {
     std::call_once(g_backends, [&] {
         llama_log_set([](ggml_log_level level, const char *text, void *) {
-            if (level >= GGML_LOG_LEVEL_WARN) __android_log_write(ANDROID_LOG_WARN, "den-llama", text);
+            if (level >= GGML_LOG_LEVEL_WARN) DEN_LOG_WARN(text);
         }, nullptr);
         if (lib_dir.empty()) {
+#ifdef __ANDROID__
             // In an APK the libraries are usually not extracted, so load by name; a missing one is skipped.
             load_best_cpu();
             ggml_backend_load("libggml-opencl.so");
+#endif
+            // Desktop builds link the CPU backend statically; nothing to load.
         } else {
             ggml_backend_load_all_from_path(lib_dir.c_str());
         }

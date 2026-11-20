@@ -10,9 +10,20 @@ foreach(opt LLAMA_BUILD_COMMON LLAMA_BUILD_TESTS LLAMA_BUILD_TOOLS LLAMA_BUILD_E
             LLAMA_BUILD_APP LLAMA_BUILD_UI LLAMA_OPENSSL GGML_NATIVE GGML_OPENMP)
     set(${opt} OFF CACHE BOOL "" FORCE)
 endforeach()
-# One CPU library per instruction set (armv8.0 up to armv9.2 with SME); the engine loads the best one this CPU runs.
-set(GGML_CPU_ALL_VARIANTS ON CACHE BOOL "" FORCE)
-set(GGML_CPU_ARM_ARCH "" CACHE STRING "" FORCE)
+if(ANDROID)
+    # One CPU library per instruction set (armv8.0 up to armv9.2 with SME); the engine loads the best one this CPU runs.
+    set(GGML_CPU_ALL_VARIANTS ON CACHE BOOL "" FORCE)
+    set(GGML_CPU_ARM_ARCH "" CACHE STRING "" FORCE)
+    set(DEN_LOG log)
+else()
+    # Desktop build for the engine tests in CI: one library with the CPU backend inside, loaded by the JVM.
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    set(GGML_BACKEND_DL OFF CACHE BOOL "" FORCE)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+    set(DEN_OPENCL OFF CACHE BOOL "" FORCE)
+    find_package(JNI REQUIRED)
+    set(DEN_LOG "")
+endif()
 
 # Adreno GPU through OpenCL. ggml skips GPUs it does not support at run time.
 option(DEN_OPENCL "Build the OpenCL backend" ON)
@@ -26,8 +37,11 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../../llama.cpp ${CMAKE_BINARY_D
 set(DEN_SOURCES engine.cpp threads.cpp)
 if(DEN_SMOKE)
     add_executable(den-smoke ${DEN_SOURCES} smoke.cpp)
-    target_link_libraries(den-smoke PRIVATE llama log)
+    target_link_libraries(den-smoke PRIVATE llama ${DEN_LOG})
 else()
     add_library(den_llamacpp SHARED ${DEN_SOURCES} jni.cpp)
-    target_link_libraries(den_llamacpp PRIVATE llama log)
+    target_link_libraries(den_llamacpp PRIVATE llama ${DEN_LOG})
+    if(NOT ANDROID)
+        target_include_directories(den_llamacpp PRIVATE ${JNI_INCLUDE_DIRS})
+    endif()
 endif()

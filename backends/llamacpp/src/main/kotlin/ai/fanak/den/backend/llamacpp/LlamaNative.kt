@@ -8,7 +8,8 @@ internal fun interface TextCallback {
 
 internal object LlamaNative {
     init {
-        System.loadLibrary("den_llamacpp")
+        // The JVM unit tests load a desktop build of the engine from a path.
+        System.getProperty("den.engineLib")?.let { System.load(it) } ?: System.loadLibrary("den_llamacpp")
     }
 
     // "name\tdescription\tgpu|cpu" per device
