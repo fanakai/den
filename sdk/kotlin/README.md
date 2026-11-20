@@ -37,6 +37,10 @@ model.close()
 5) the download of the chosen file on first use, checked against its SHA-256; `DenConfig.onDownload` reports its progress in both modes, and cancelling `model()` stops it (in connected mode, another app waiting for the same model then resumes it);
 6) the AIDL client of the Den app.
 
+## Memory in embedded mode
+
+A model loaded in the app process is unloaded when it is idle and Android reports low memory, when the app moves to the background list (where Android kills processes first), and on `den.close()`, which closes every model the `Den` opened. A model that is generating is never unloaded. An unloaded model loads again on its next request. In connected mode, the Den app does the same for every app.
+
 ## Model names
 
 `den.model(name)` accepts:
