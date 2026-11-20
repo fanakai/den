@@ -2,6 +2,7 @@ package ai.fanak.den.app
 
 import ai.fanak.den.DenModel
 import ai.fanak.den.core.backend.ChatMessage
+import ai.fanak.den.core.backend.Finish
 import ai.fanak.den.core.backend.GenEvent
 import ai.fanak.den.core.backend.GenRequest
 import ai.fanak.den.core.backend.Role
@@ -121,6 +122,10 @@ internal class HttpEndpoint(
             if (i > 0) headers[h.substring(0, i).trim().lowercase()] = h.substring(i + 1).trim()
         }
         try {
+            // A chunked body would otherwise be read as empty.
+            if (headers["transfer-encoding"]?.contains("chunked", ignoreCase = true) == true) {
+                throw HttpError(411, "send the body with Content-Length; chunked bodies are not read")
+            }
             val len = headers["content-length"]?.toIntOrNull() ?: 0
             if (len > 4 shl 20) throw HttpError(413, "request too large")
             val body = ByteArray(len).also { b -> var n = 0; while (n < len) n += input.read(b, n, len - n).also { if (it < 0) return } }
@@ -240,7 +245,7 @@ internal class HttpEndpoint(
                         is GenEvent.Text -> send(split.feed(e.text))
                         is GenEvent.Done -> {
                             send(split.flush())
-                            event(chunk(JsonObject(emptyMap()), finish(e, gen.maxTokens)).toString())
+                            event(chunk(JsonObject(emptyMap()), finish(e)).toString())
                         }
                     }
                 }
@@ -282,7 +287,7 @@ internal class HttpEndpoint(
                         put("content", content.toString())
                         if (reasoning.isNotBlank()) put("reasoning_content", reasoning.toString().trim())
                     }
-                    put("finish_reason", finish(done!!, gen.maxTokens))
+                    put("finish_reason", finish(done!!))
                 })
             }
             putJsonObject("usage") {
@@ -293,7 +298,8 @@ internal class HttpEndpoint(
         })
     }
 
-    private fun finish(d: GenEvent.Done, maxTokens: Int) = if (d.stats.outputTokens >= maxTokens) "length" else "stop"
+    // OpenAI has one reason for both limits: max_tokens and a full context.
+    private fun finish(d: GenEvent.Done) = if (d.stats.finish == Finish.STOP) "stop" else "length"
 
     // content is a string, or a list of parts of which only text is used.
     private fun text(c: kotlinx.serialization.json.JsonElement?): String = when (c) {
@@ -392,7 +398,7 @@ private fun head(code: Int, type: String, extra: String = "") =
     "HTTP/1.1 $code ${reason(code)}\r\nContent-Type: $type\r\n${extra}Connection: close\r\n\r\n".toByteArray()
 
 private fun reason(code: Int) = when (code) {
-    200 -> "OK"; 500 -> "Internal Server Error"; 400 -> "Bad Request"; 401 -> "Unauthorized"; 404 -> "Not Found"; 413 -> "Payload Too Large"
+    200 -> "OK"; 500 -> "Internal Server Error"; 400 -> "Bad Request"; 401 -> "Unauthorized"; 404 -> "Not Found"; 411 -> "Length Required"; 413 -> "Payload Too Large"
     503 -> "Service Unavailable"; else -> "Error"
 }
 

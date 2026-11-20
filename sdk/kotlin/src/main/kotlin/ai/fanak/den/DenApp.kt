@@ -14,8 +14,11 @@ import android.os.IBinder
 import java.io.IOException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.channels.trySendBlocking
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
@@ -116,12 +119,12 @@ internal class RemoteModel(
             request.stop.toTypedArray(),
             object : IGenCallback.Stub() {
                 override fun onText(text: String) {
-                    trySend(GenEvent.Text(text))
+                    trySendBlocking(GenEvent.Text(text))
                 }
 
                 override fun onDone(stats: LongArray) {
                     done = true
-                    trySend(GenEvent.Done(GenStats(stats[0].toInt(), stats[1].toInt(), stats[2], stats[3])))
+                    trySendBlocking(GenEvent.Done(GenStats.of(stats)))
                     close()
                 }
 
@@ -132,7 +135,7 @@ internal class RemoteModel(
             },
         )
         awaitClose { if (!done) runCatching { svc.cancel(session) } }
-    }
+    }.buffer(Channel.UNLIMITED) // the service cannot be slowed across oneway calls; a full buffer would drop text
 
     override fun close() {
         runCatching { svc.close(session) }

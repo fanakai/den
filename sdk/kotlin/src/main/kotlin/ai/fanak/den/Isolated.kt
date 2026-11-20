@@ -220,7 +220,7 @@ private class IsolatedSession(
 
             override fun onDone(stats: LongArray) {
                 done = true
-                trySendBlocking(GenEvent.Done(GenStats(stats[0].toInt(), stats[1].toInt(), stats[2], stats[3])))
+                trySendBlocking(GenEvent.Done(GenStats.of(stats)))
                 close()
             }
 
@@ -243,7 +243,7 @@ private class IsolatedSession(
         }
         awaitClose {
             engine.unwatch(onDeath)
-            if (!done && engine.alive(b)) runCatching { b.engine.cancel(id) }
+            if (!done && engine.alive(b)) runCatching { b.engine.cancel(callback) }
         }
     }.buffer(Channel.UNLIMITED)
 

@@ -16,15 +16,15 @@ internal object LlamaNative {
 
     external fun load(path: String, nCtx: Int, nThreads: Int, nGpuLayers: Int, useMmap: Boolean): Long
 
-    // [promptTokens, outputTokens, prefillMs, decodeMs]
+    // [promptTokens, outputTokens, prefillMs, decodeMs, finish]; contents and stop strings as UTF-8.
     external fun generate(
         handle: Long,
         roles: Array<String>,
-        contents: Array<String>,
+        contents: Array<ByteArray>,
         maxTokens: Int,
         temperature: Float,
         topP: Float,
-        stop: Array<String>,
+        stop: Array<ByteArray>,
         callback: TextCallback,
     ): LongArray
 

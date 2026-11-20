@@ -199,9 +199,13 @@ bool Engine::generate(const Messages &messages, const GenParams &params, const O
     bool go = true;
     char piece[256];
 
+    bool ended = false;
     for (int i = 0; i < max_new && go; ++i) {
         llama_token tok = llama_sampler_sample(smpl, ctx_, -1);
-        if (llama_vocab_is_eog(vocab, tok)) break;
+        if (llama_vocab_is_eog(vocab, tok)) {
+            ended = true;
+            break;
+        }
         stats.output_tokens++;
 
         int len = llama_token_to_piece(vocab, tok, piece, sizeof(piece), 0, false);
@@ -221,7 +225,10 @@ bool Engine::generate(const Messages &messages, const GenParams &params, const O
             go = on_text(pending.substr(0, ready));
             pending.erase(0, ready);
         }
-        if (stopped) break;
+        if (stopped) {
+            ended = true;
+            break;
+        }
 
         if (llama_decode(ctx_, llama_batch_get_one(&tok, 1)) != 0) {
             err = "decode failed";
@@ -230,6 +237,7 @@ bool Engine::generate(const Messages &messages, const GenParams &params, const O
     }
     if (go && !pending.empty()) on_text(pending.substr(0, utf8_complete(pending)));
 
+    if (!ended && go && stats.output_tokens >= max_new) stats.finish = max_new < params.max_tokens ? 2 : 1;
     stats.decode_ms = now_ms() - t1;
     llama_sampler_free(smpl);
     return err.empty();

@@ -10,6 +10,7 @@ import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -41,20 +42,20 @@ class HttpModelStore(
     private val minFreeBytes: Long = 200L shl 20,
     // False when the platform says this app has no usable network, to fail at once instead of after timeouts.
     private val online: () -> Boolean = { true },
+    private val retryDelayMs: Long = 2_000,
 ) : ModelStore {
-    private val locks = ConcurrentHashMap<String, Mutex>()
     private val manifest = ModelManifest(dir)
 
     override suspend fun fetch(variant: Variant): Artifact {
         val r = locate(variant)
         val file = File(dir, r.path)
         mirror(r, file)?.let { return Artifact(variant, it.path) }
-        locks.getOrPut(r.path) { Mutex() }.withLock {
+        LOCKS.getOrPut(file.canonicalPath) { Mutex() }.withLock {
             withContext(Dispatchers.IO) {
                 adoptLegacy(r, file)
                 if (!isVerified(file, r)) {
                     manifest.put(entry(variant, r, complete = false))
-                    download(r, file)
+                    downloadWithRetry(r, file)
                 }
                 manifest.put(entry(variant, r, complete = true))
             }
@@ -94,6 +95,19 @@ class HttpModelStore(
         val ok = file.inputStream().use { sha256(it) } == r.sha256
         if (ok) m.writeText(r.sha256)
         return ok
+    }
+
+    // A cut connection or a server error is tried again, resuming from the partial file.
+    private suspend fun downloadWithRetry(r: RemoteFile, file: File) {
+        var attempt = 1
+        while (true) {
+            try {
+                return download(r, file)
+            } catch (e: IOException) {
+                if (attempt >= ATTEMPTS || !retryable(e) || !online()) throw e
+                delay(retryDelayMs * attempt++)
+            }
+        }
     }
 
     private suspend fun download(r: RemoteFile, file: File) {
@@ -158,6 +172,17 @@ class HttpModelStore(
 
     private companion object {
         const val PROGRESS_STEP = 4L shl 20
+        const val ATTEMPTS = 3
+
+        // Shared by every store in the process: two Den instances on one folder must not write the same file.
+        val LOCKS = ConcurrentHashMap<String, Mutex>()
+
+        // Not retried: no network (fails the same way after its timeouts), 4xx, checksum, disk space.
+        fun retryable(e: IOException) = when (e) {
+            is OfflineException, is java.net.ConnectException, is java.net.UnknownHostException -> false
+            is java.net.SocketTimeoutException, is java.net.SocketException, is java.io.EOFException -> true
+            else -> e.message?.startsWith("HTTP 5") == true
+        }
 
         fun update(md: MessageDigest, input: InputStream) {
             val buf = ByteArray(1 shl 16)

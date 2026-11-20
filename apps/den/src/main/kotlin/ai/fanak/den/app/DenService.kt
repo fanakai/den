@@ -128,30 +128,41 @@ class DenService : Service() {
         ) {
             val s = sessions[session]
             if (s == null || s.uid != Binder.getCallingUid()) {
-                callback.onError("unknown session $session")
+                runCatching { callback.onError("unknown session $session") }
                 return
             }
-            val messages = roles.zip(contents) { r, c -> ChatMessage(Role.valueOf(r.uppercase()), c) }
-            s.job = scope.launch {
-                val t0 = System.currentTimeMillis()
-                try {
-                    pool.use(s.model) { m -> m.chat(GenRequest(messages, maxTokens, temperature, topP, stop.toList())).collect { e ->
-                        when (e) {
-                            is GenEvent.Text -> callback.onText(e.text)
-                            is GenEvent.Done -> e.stats.run {
-                                // Requests on one model run one at a time; wait is the time spent queued.
-                                val wait = System.currentTimeMillis() - t0 - prefillMs - decodeMs
-                                log("gen session $session for ${caller(s.uid)}: wait $wait ms, prefill $prefillMs ms, decode $decodeMs ms")
-                                callback.onDone(longArrayOf(promptTokens.toLong(), outputTokens.toLong(), prefillMs, decodeMs))
-                            }
+            // One request per session at a time, so cancel() always stops the running one.
+            synchronized(s) {
+                if (s.job?.isActive == true) {
+                    runCatching { callback.onError("session $session is already generating") }
+                    return
+                }
+                s.job = scope.launch(start = CoroutineStart.LAZY) {
+                    val t0 = System.currentTimeMillis()
+                    try {
+                        // Parsed here, not on the Binder thread: a bad value from a client must reach onError.
+                        val messages = roles.zip(contents) { r, c ->
+                            ChatMessage(requireNotNull(Role.entries.find { it.name == r.uppercase() }) { "unknown role $r" }, c)
                         }
-                    } }
-                } catch (e: CancellationException) {
-                    callback.onError("cancelled")
-                } catch (e: Exception) {
-                    callback.onError(e.message ?: e.toString())
+                        pool.use(s.model) { m -> m.chat(GenRequest(messages, maxTokens, temperature, topP, stop.toList())).collect { e ->
+                            when (e) {
+                                is GenEvent.Text -> callback.onText(e.text)
+                                is GenEvent.Done -> e.stats.run {
+                                    // Requests on one model run one at a time; wait is the time spent queued.
+                                    val wait = System.currentTimeMillis() - t0 - prefillMs - decodeMs
+                                    log("gen session $session for ${caller(s.uid)}: wait $wait ms, prefill $prefillMs ms, decode $decodeMs ms")
+                                    callback.onDone(toLongs())
+                                }
+                            }
+                        } }
+                    } catch (e: CancellationException) {
+                        runCatching { callback.onError("cancelled") }
+                    } catch (e: Exception) {
+                        runCatching { callback.onError(e.message ?: e.toString()) }
+                    }
                 }
             }
+            s.job?.start()
         }
 
         override fun cancel(session: Long) {
