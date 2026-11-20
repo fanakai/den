@@ -43,7 +43,31 @@ kotlin {
     jvmToolchain(17)
 }
 
+// The engine built for the machine running the tests (Linux or macOS, as in CI), so the JVM unit tests load, generate,
+// cancel and unload a real model. cmake builds incrementally; on Windows the engine tests are skipped.
+val hostDir = layout.buildDirectory.dir("host").get().asFile
+val hostEngine = tasks.register<Exec>("hostEngine") {
+    onlyIf { !System.getProperty("os.name").startsWith("Windows") }
+    workingDir = projectDir
+    commandLine(
+        "sh", "-c",
+        "cmake -S src/main/cpp -B '$hostDir' -DCMAKE_BUILD_TYPE=Release > /dev/null && " +
+            "cmake --build '$hostDir' --target den_llamacpp -j 4",
+    )
+}
+
+android.testOptions.unitTests.all {
+    it.dependsOn(hostEngine)
+    it.testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
+    it.systemProperty("den.engineLib", File(hostDir, System.mapLibraryName("den_llamacpp")).path)
+    it.systemProperty("den.testModels", layout.buildDirectory.dir("test-models").get().asFile.path)
+}
+
 dependencies {
     api(project(":core"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
+    testImplementation(kotlin("test-junit"))
 }

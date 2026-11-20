@@ -26,6 +26,7 @@ git submodule update --init
 
 - After a change to an AIDL file or another interface, run `./gradlew build --rerun-tasks` before opening a PR: an incremental build can miss a class that implements the interface.
 - CI (`.github/workflows/build.yml`) runs `./gradlew build` on every pull request and must pass before merging.
+- On Linux and macOS, `./gradlew :backends:llamacpp:test` also builds the engine for the machine (cmake and a C++ compiler needed) and runs it through JNI on a 1.2 MB model: generation, stop strings, cancel, context limits. On Windows these tests are skipped; CI runs them.
 
 ## Testing on a phone
 
