@@ -24,15 +24,20 @@ import ai.fanak.den.core.router.Failure
 import ai.fanak.den.core.router.Opened
 import ai.fanak.den.core.router.Router
 import ai.fanak.den.core.router.Source
+import ai.fanak.den.core.router.EngineCrashedException
+import ai.fanak.den.core.router.EngineLostException
+import ai.fanak.den.core.router.FailureStore
+import ai.fanak.den.core.router.FileFailureStore
 import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.res.Configuration
 import android.content.res.AssetManager
+import android.os.Build
 import android.util.Log
 import java.io.File
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.fold
@@ -59,6 +64,12 @@ data class DenConfig(
     val store: ModelStore? = null,
     // Added to the bundled recipes.
     val recipes: List<Recipe> = emptyList(),
+    // Run the backends in a separate process (`:den_engine`, Android 10 and later), so an engine crash does not take
+    // the app down. Each backend is created again there from its class: a Kotlin object, a constructor taking a
+    // Context, or one without arguments; others run in the app process.
+    val isolate: Boolean = true,
+    // Crashed candidates, skipped until the system or the backend is updated. Default: saved in <filesDir>/den.
+    val failures: FailureStore? = null,
 )
 
 enum class DenMode {
@@ -113,11 +124,19 @@ class Den private constructor(context: Context, private val config: DenConfig) :
     } else {
         FileModelStore(modelDir, catalog)
     }
+    private val engine = EngineConnection(context)
     private val router = Router(
-        config.backends ?: listOf(LlamaCppBackend(config.useMmap)),
+        (config.backends ?: listOf(LlamaCppBackend())).map { b ->
+            when {
+                !config.isolate || Build.VERSION.SDK_INT < 29 -> b
+                EngineService.creatable(b) -> IsolatedBackend(engine, b)
+                else -> b.also { Log.w("Den", "${b.id} runs in the app process: no constructor the engine process can call") }
+            }
+        },
         InMemoryRecipeStore(recipes),
         catalog,
         store,
+        config.failures ?: FileFailureStore(File(context.filesDir, "den/failures.json"), Build.FINGERPRINT),
     )
 
     val models: List<String> get() = catalog.models
@@ -152,8 +171,9 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         } else if (config.mode == DenMode.CONNECTED) {
             throw IllegalStateException("the Den app is not installed")
         }
-        val reopen: suspend () -> Opened = { router.open(name, device(), config.contextLength) }
-        return LocalModel(name, reopen(), reopen) { local -= it }.also { local += it }
+        val reopen: suspend () -> Opened = { router.open(name, device(), config.contextLength, config.useMmap) }
+        val crashed = { o: Opened, e: Throwable -> router.reportFailure(device(), o.candidate, e) }
+        return LocalModel(name, reopen(), reopen, crashed) { local -= it }.also { local += it }
     }
 
     // Closes the models this Den opened in the app process, and the connection to the Den app.
@@ -161,6 +181,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         appContext.unregisterComponentCallbacks(trim)
         synchronized(local) { local.toList().also { local.clear() } }.forEach { it.close() }
         app.close()
+        engine.close()
     }
 
     companion object {
@@ -192,11 +213,13 @@ abstract class DenModel : AutoCloseable {
 
 /**
  * A model in this process. It may be unloaded while idle (low memory, `Den.close()`) and loads again on next use.
+ * When its engine process dies, it loads again on the next candidate, and a request that had sent no text is replayed.
  */
 internal class LocalModel(
     override val name: String,
     first: Opened,
     private val reopen: suspend () -> Opened,
+    private val crashed: (Opened, Throwable) -> Unit = { _, _ -> },
     private val onClose: (LocalModel) -> Unit = {},
 ) : DenModel() {
     // Guards `opened` and `busy`: a request marks the model busy under the lock, an unload checks it under the lock.
@@ -214,23 +237,43 @@ internal class LocalModel(
     override val failures get() = last.failures
 
     override fun chat(request: GenRequest): Flow<GenEvent> = flow {
-        val o = lock.withLock {
-            check(!closed) { "model $name is closed" }
-            val o = opened ?: reopen().also {
-                Log.i("Den", "reloaded $name")
-                opened = it
-                last = it
+        var replayed = false
+        while (true) {
+            val o = lock.withLock {
+                check(!closed) { "model $name is closed" }
+                val o = opened ?: reopen().also {
+                    Log.i("Den", "loaded $name: ${it.candidate.backend.id} ${it.candidate.accel} ${it.candidate.variant.quant}")
+                    opened = it
+                    last = it
+                }
+                busy++
+                o
             }
-            busy++
-            o
-        }
-        try {
-            emitAll(o.session.generate(request))
-        } finally {
-            withContext(NonCancellable) {
-                lock.withLock { busy-- }
-                if (closed) unloadIfIdle("closed")
+            var sent = false
+            var lost: EngineLostException? = null
+            try {
+                o.session.generate(request)
+                    .catch { if (it is EngineLostException) lost = it else throw it }
+                    .collect {
+                        if (it is GenEvent.Text) sent = true
+                        emit(it)
+                    }
+            } finally {
+                withContext(NonCancellable) {
+                    lock.withLock {
+                        busy--
+                        // Several requests can lose the same engine; the first one to get here forgets the session.
+                        if (lost != null && opened === o) opened = null
+                    }
+                    if (closed) unloadIfIdle("closed")
+                }
             }
+            val e = lost ?: return@flow
+            Log.w("Den", "$name lost its engine: ${e.message}")
+            if (e is EngineCrashedException) crashed(o, e)
+            // Text already shown to the app cannot be taken back.
+            if (sent || replayed || closed) throw e
+            replayed = true
         }
     }
 

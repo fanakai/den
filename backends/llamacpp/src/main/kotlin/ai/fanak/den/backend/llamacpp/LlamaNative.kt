@@ -29,4 +29,6 @@ internal object LlamaNative {
     ): LongArray
 
     external fun free(handle: Long)
+
+    external fun version(): String
 }

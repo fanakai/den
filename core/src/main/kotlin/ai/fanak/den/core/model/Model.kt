@@ -12,6 +12,7 @@ enum class ModelFormat {
 }
 
 // One downloadable file of a model. soc is set only for SoC-specific builds (e.g. NPU).
+@Serializable
 data class Variant(
     val model: String,
     val format: ModelFormat,
@@ -21,6 +22,7 @@ data class Variant(
     val soc: String? = null,
 )
 
+@Serializable
 data class Artifact(
     val variant: Variant,
     val path: String,

@@ -22,9 +22,11 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-// useMmap = false reads the weights into RAM, so the OS cannot drop them under memory pressure.
-class LlamaCppBackend(private val useMmap: Boolean = true) : DenBackend {
+class LlamaCppBackend : DenBackend {
     override val id = "llamacpp"
+
+    // ggml version and llama.cpp commit, e.g. "0.14.0-a1b2c3d".
+    override val version by lazy { LlamaNative.version() }
 
     @Volatile
     private var lastError: String? = null
@@ -47,7 +49,7 @@ class LlamaCppBackend(private val useMmap: Boolean = true) : DenBackend {
         val threads = opts.threads ?: 0
         val handle = withContext(Dispatchers.IO) {
             try {
-                LlamaNative.load(artifact.path, opts.contextLength, threads, gpuLayers, useMmap).also { h ->
+                LlamaNative.load(artifact.path, opts.contextLength, threads, gpuLayers, opts.mmap).also { h ->
                     // Warm-up with a prompt as long as a real one: a 1-token "hi" left the first request at
                     // 3.8 tok/s prefill on the A52s, against ~75 for the next ones.
                     LlamaNative.generate(h, arrayOf("user"), arrayOf(WARMUP), 2, 0f, 1f, emptyArray()) { true }

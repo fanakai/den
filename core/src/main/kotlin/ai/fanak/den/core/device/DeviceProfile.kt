@@ -15,11 +15,13 @@ enum class Accel {
 // Same levels as Android PowerManager thermal status.
 enum class ThermalState { NONE, LIGHT, MODERATE, SEVERE, CRITICAL, EMERGENCY, SHUTDOWN }
 
+@Serializable
 data class NpuInfo(
     val vendor: String,
     val version: String? = null,
 )
 
+@Serializable
 data class DeviceProfile(
     val platform: Platform,
     val osApi: Int,

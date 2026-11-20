@@ -28,7 +28,8 @@ class MainActivity : Activity() {
     private val scope = MainScope()
     private val den by lazy {
         val mode = intent.getStringExtra("mode")?.let { DenMode.valueOf(it.uppercase()) } ?: DenMode.AUTO
-        if (intent.getBooleanExtra("echo", false)) echoDen() else testDen(intent.getBooleanExtra("mmap", true), mode)
+        val crash = intent.getStringExtra("crash")?.also { armCrash(it) }
+        if (intent.getBooleanExtra("echo", false)) echoDen() else testDen(intent.getBooleanExtra("mmap", true), mode, crash != null)
     }
 
     private lateinit var model: String

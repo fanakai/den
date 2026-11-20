@@ -33,5 +33,6 @@ kotlin {
 
 dependencies {
     implementation(project(":sdk:kotlin"))
+    implementation(project(":backends:llamacpp"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 }
