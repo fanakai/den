@@ -43,7 +43,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         model = intent.getStringExtra("model") ?: den.models.first()
         intent.getStringExtra("delete")?.let { name ->
-            listOf(name, "$name.sha256", "$name.part").forEach { java.io.File(den.modelDir, it).delete() }
+            den.files.delete(name)
             log("deleted $name")
         }
 

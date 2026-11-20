@@ -14,6 +14,8 @@ data class CatalogEntry(
     val fileName: String,
     val url: String,
     val sha256: String,
+    // Where the file is stored, relative to the model folder.
+    val path: String = fileName,
 )
 
 // Until the live catalog (#31). minRamMb is a rough margin until den bench measures peak RAM (#14).
@@ -27,6 +29,7 @@ object BuiltinCatalog : ModelCatalog {
             file,
             "$HF/Qwen3-$size-GGUF/resolve/main/$file",
             sha256,
+            "hf/unsloth/Qwen3-$size-GGUF/$file",
         )
     }
 
@@ -44,14 +47,17 @@ object BuiltinCatalog : ModelCatalog {
     fun entry(variant: Variant) = entries.first { it.variant == variant }
 
     override fun remote(variant: Variant) =
-        entries.firstOrNull { it.variant == variant }?.let { RemoteFile(it.fileName, it.url, it.sha256, variant.sizeBytes) }
+        entries.firstOrNull { it.variant == variant }?.let {
+            RemoteFile(it.fileName, it.url, it.sha256, variant.sizeBytes, it.path)
+        }
 }
 
 // Model files already on disk, with no download (DenConfig.download = false).
 class FileModelStore(val dir: File, private val catalog: ModelCatalog = BuiltinCatalog) : ModelStore {
     override suspend fun fetch(variant: Variant): Artifact {
-        val name = catalog.remote(variant)?.fileName ?: throw FileNotFoundException("no file for $variant in the catalog")
-        val f = File(dir, name)
+        val r = catalog.remote(variant) ?: throw FileNotFoundException("no file for $variant in the catalog")
+        // Placed by hand: under its path, or directly in the folder.
+        val f = File(dir, r.path).takeIf { it.isFile } ?: File(dir, r.fileName)
         if (!f.isFile) throw FileNotFoundException("missing ${f.path}")
         return Artifact(variant, f.path)
     }

@@ -20,6 +20,9 @@ data class RemoteFile(
     val url: String,
     val sha256: String,
     val sizeBytes: Long,
+    // Where the file is stored, relative to the model folder; by source and repository, so two uploads with the
+    // same file name never collide.
+    val path: String = fileName,
 )
 
 data class DownloadProgress(val fileName: String, val bytes: Long, val total: Long)
@@ -37,16 +40,37 @@ class HttpModelStore(
     private val online: () -> Boolean = { true },
 ) : ModelStore {
     private val locks = ConcurrentHashMap<String, Mutex>()
+    private val manifest = ModelManifest(dir)
 
     override suspend fun fetch(variant: Variant): Artifact {
         val r = locate(variant)
-        val file = File(dir, r.fileName)
-        locks.getOrPut(r.fileName) { Mutex() }.withLock {
+        val file = File(dir, r.path)
+        locks.getOrPut(r.path) { Mutex() }.withLock {
             withContext(Dispatchers.IO) {
-                if (!isVerified(file, r)) download(r, file)
+                adoptLegacy(r, file)
+                if (!isVerified(file, r)) {
+                    manifest.put(entry(variant, r, complete = false))
+                    download(r, file)
+                }
+                manifest.put(entry(variant, r, complete = true))
             }
         }
         return Artifact(variant, file.path)
+    }
+
+    private fun entry(v: Variant, r: RemoteFile, complete: Boolean) =
+        ManifestEntry(v.model, v.format, v.quant, r.path, r.sha256, r.sizeBytes, r.url, complete)
+
+    // Files stored before paths existed sit directly in the folder under their file name.
+    private fun adoptLegacy(r: RemoteFile, file: File) {
+        if (r.path == r.fileName || file.exists()) return
+        listOf("", ".sha256", ".part").forEach { ext ->
+            val old = File(dir, r.fileName + ext)
+            if (old.isFile) {
+                File(file.path + ext).parentFile?.mkdirs()
+                old.renameTo(File(file.path + ext))
+            }
+        }
     }
 
     private fun marker(file: File) = File(file.path + ".sha256")
@@ -62,7 +86,7 @@ class HttpModelStore(
     }
 
     private suspend fun download(r: RemoteFile, file: File) {
-        dir.mkdirs()
+        file.parentFile?.mkdirs()
         val part = File(file.path + ".part")
         var have = if (part.isFile) part.length() else 0L
         if (have >= r.sizeBytes) {

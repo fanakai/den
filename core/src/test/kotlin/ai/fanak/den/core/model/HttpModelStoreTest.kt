@@ -40,6 +40,36 @@ class HttpModelStoreTest {
         RemoteFile("m.gguf", "http://127.0.0.1:${server.address.port}/m.gguf", sha256, data.size.toLong())
     }, minFreeBytes = 0)
 
+    private fun storeWithPath() = HttpModelStore(dir, {
+        RemoteFile("m.gguf", "http://127.0.0.1:${server.address.port}/m.gguf", sha, data.size.toLong(), "hf/owner/repo/m.gguf")
+    }, minFreeBytes = 0)
+
+    @Test
+    fun storesUnderPathAndRecordsTheManifest() = runTest {
+        val a = storeWithPath().fetch(variant)
+        assertEquals(File(dir, "hf/owner/repo/m.gguf").path, a.path)
+        val e = ModelManifest(dir).entries().single()
+        assertEquals("hf/owner/repo/m.gguf", e.path)
+        assertEquals("m" to "q4_0", e.model to e.quant)
+        assertTrue(e.complete)
+    }
+
+    @Test
+    fun adoptsAFileStoredBeforePaths() = runTest {
+        File(dir, "m.gguf").writeBytes(data)
+        File(dir, "m.gguf.sha256").writeText(sha)
+        storeWithPath().fetch(variant)
+        assertTrue(requests.isEmpty())
+        assertFalse(File(dir, "m.gguf").exists())
+        assertTrue(File(dir, "hf/owner/repo/m.gguf").isFile)
+    }
+
+    @Test
+    fun failedDownloadStaysIncompleteInTheManifest() = runTest {
+        assertFailsWith<IOException> { store(sha256 = "0".repeat(64)).fetch(variant) }
+        assertFalse(ModelManifest(dir).entries().single().complete)
+    }
+
     @AfterTest
     fun stop() {
         server.stop(0)
