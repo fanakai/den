@@ -1,5 +1,7 @@
 package ai.fanak.den
 
+import ai.fanak.den.core.model.ModelCatalog
+import ai.fanak.den.core.model.Variant
 import java.io.File
 
 // A model file on disk: complete (verified or not yet), or a download that has not finished.
@@ -13,7 +15,12 @@ data class CachedFile(
 )
 
 /** The model files in one folder, as known to the catalog. Files the catalog does not know are left alone. */
-class ModelFiles(private val dir: File, private val entries: List<CatalogEntry> = BuiltinCatalog.entries) {
+class ModelFiles(private val dir: File, private val catalog: ModelCatalog = BuiltinCatalog) {
+    private class Entry(val variant: Variant, val fileName: String)
+
+    private val entries: List<Entry>
+        get() = catalog.models.flatMap { catalog.variants(it) }.mapNotNull { v -> catalog.remote(v)?.let { Entry(v, it.fileName) } }
+
     fun list(): List<CachedFile> = entries.mapNotNull { e ->
         val f = File(dir, e.fileName)
         val part = File(dir, e.fileName + ".part")
