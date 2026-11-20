@@ -28,6 +28,9 @@ abstract class CopyRecipes : DefaultTask() {
     @get:InputDirectory
     abstract val recipes: DirectoryProperty
 
+    @get:InputDirectory
+    abstract val models: DirectoryProperty
+
     @get:OutputDirectory
     abstract val outputDir: DirectoryProperty
 
@@ -37,14 +40,16 @@ abstract class CopyRecipes : DefaultTask() {
     @TaskAction
     fun run() {
         fs.sync {
-            from(recipes) { include("**/*.yaml") }
-            into(outputDir.dir("den/recipes"))
+            from(recipes) { include("**/*.yaml"); into("den/recipes") }
+            from(models) { include("*.yaml"); into("den/models") }
+            into(outputDir)
         }
     }
 }
 
 val copyRecipes = tasks.register<CopyRecipes>("copyRecipes") {
     recipes.set(rootProject.layout.projectDirectory.dir("recipes"))
+    models.set(rootProject.layout.projectDirectory.dir("models"))
 }
 
 androidComponents {

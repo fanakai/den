@@ -1,0 +1,4 @@
+name: qwen3-4b
+source: hf:unsloth/Qwen3-4B-GGUF
+licence: apache-2.0
+description: Qwen3 4B, for phones with about 4 GB of free RAM.

@@ -32,6 +32,9 @@ interface ModelCatalog {
 
     fun variants(model: String): List<Variant>
 
+    // Looks the model up (network, cache) before `variants` is asked; a catalog that knows its models returns them.
+    suspend fun resolve(id: String): List<Variant> = variants(id)
+
     // Where to download a variant from; null when this catalog does not serve it.
     fun remote(variant: Variant): RemoteFile? = null
 }
@@ -41,6 +44,8 @@ class CompositeCatalog(private val catalogs: List<ModelCatalog>) : ModelCatalog 
     override val models get() = catalogs.flatMap { it.models }.distinct()
 
     override fun variants(model: String) = catalogs.flatMap { it.variants(model) }.distinct()
+
+    override suspend fun resolve(id: String) = catalogs.flatMap { it.resolve(id) }.distinct()
 
     override fun remote(variant: Variant) = catalogs.firstNotNullOfOrNull { it.remote(variant) }
 }

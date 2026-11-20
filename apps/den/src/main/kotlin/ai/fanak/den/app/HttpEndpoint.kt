@@ -148,7 +148,8 @@ internal class HttpEndpoint(
     private suspend fun chat(body: String, out: OutputStream) {
         val req = runCatching { Json.parseToJsonElement(body).jsonObject }.getOrNull() ?: throw HttpError(400, "invalid JSON")
         val name = req.str("model") ?: throw HttpError(400, "model is required")
-        if (name !in models()) throw HttpError(404, "unknown model $name; see /v1/models")
+        // hf:owner/repo names are resolved on demand, so they are not in /v1/models.
+        if (name !in models() && !name.startsWith("hf:")) throw HttpError(404, "unknown model $name; see /v1/models")
         val messages = (req["messages"] as? JsonArray)?.map { m ->
             val o = m.jsonObject
             val role = runCatching { Role.valueOf(o.str("role")!!.uppercase()) }.getOrNull()

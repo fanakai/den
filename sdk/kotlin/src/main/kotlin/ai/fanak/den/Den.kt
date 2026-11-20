@@ -11,6 +11,9 @@ import ai.fanak.den.core.device.DeviceProfile
 import ai.fanak.den.core.model.DownloadProgress
 import ai.fanak.den.core.model.CompositeCatalog
 import ai.fanak.den.core.model.HttpModelStore
+import ai.fanak.den.core.model.HuggingFaceCatalog
+import ai.fanak.den.core.model.IndexCatalog
+import ai.fanak.den.core.model.ModelIndex
 import ai.fanak.den.core.model.ModelCatalog
 import ai.fanak.den.core.model.ModelStore
 import ai.fanak.den.core.recipe.InMemoryRecipeStore
@@ -41,8 +44,9 @@ data class DenConfig(
     // The parts below apply in embedded mode; the Den app uses its own. Defaults: llama.cpp, the built-in catalog,
     // downloads (or files on disk when download = false), and the recipes bundled with the SDK.
     val backends: List<DenBackend>? = null,
-    // Merged in order: the first catalog that serves a variant gives its file.
-    val catalogs: List<ModelCatalog> = listOf(BuiltinCatalog),
+    // Merged in order: the first catalog that serves a variant gives its file. Default: the built-in models, the
+    // curated index (short names) and Hugging Face (hf:owner/repo).
+    val catalogs: List<ModelCatalog>? = null,
     val store: ModelStore? = null,
     // Added to the bundled recipes.
     val recipes: List<Recipe> = emptyList(),
@@ -64,7 +68,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
     private val probe = AndroidDeviceProbe(context)
     val modelDir: File = (config.modelDir ?: File(context.filesDir, "den/models")).apply { mkdirs() }
     val recipes: List<Recipe> = context.assets.recipes("den/recipes") + config.recipes
-    private val catalog: ModelCatalog = config.catalogs.singleOrNull() ?: CompositeCatalog(config.catalogs)
+    private val catalog: ModelCatalog = (config.catalogs ?: defaultCatalogs(context)).let { it.singleOrNull() ?: CompositeCatalog(it) }
 
     // The model files of this process (embedded mode); the Den app manages the shared ones.
     val files = ModelFiles(modelDir, catalog)
@@ -96,8 +100,12 @@ class Den private constructor(context: Context, private val config: DenConfig) :
     fun fileName(model: String): String? = plan(model).firstOrNull()?.let { catalog.remote(it.variant)?.fileName }
 
     suspend fun download(model: String) {
+        resolve(model)
         plan(model).firstOrNull()?.let { store.fetch(it.variant) }
     }
+
+    // Looks a model up in the catalogs (network for hf: names, then cached); plan() and fileName() use the result.
+    suspend fun resolve(model: String) = catalog.resolve(model)
 
     // Whether model() will use the Den app.
     val connected: Boolean get() = config.mode != DenMode.EMBEDDED && app.installed()
@@ -156,6 +164,14 @@ internal class LocalModel(override val name: String, private val opened: Opened)
     override fun chat(request: GenRequest) = opened.session.generate(request)
 
     override fun close() = opened.session.unload()
+}
+
+private fun defaultCatalogs(context: Context): List<ModelCatalog> {
+    val hf = HuggingFaceCatalog(File(context.filesDir, "den/catalog"))
+    val index = (context.assets.list("den/models") ?: emptyArray()).filter { it.endsWith(".yaml") }.map { name ->
+        ModelIndex.parse(context.assets.open("den/models/$name").bufferedReader().readText(), name)
+    }
+    return listOf(BuiltinCatalog, IndexCatalog(index, hf), hf)
 }
 
 internal fun AssetManager.recipes(path: String): List<Recipe> =

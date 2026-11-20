@@ -59,6 +59,7 @@ class DenService : Service() {
     private val pool = ModelPool(
         load = { den.model(it) },
         prepare = { name ->
+            den.resolve(name)
             val file = den.fileName(name)
             if (file != null) downloads[file] = name
             try {
