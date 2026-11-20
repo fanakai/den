@@ -103,7 +103,9 @@ class MainActivity : Activity() {
                 log("using ${m.backend} ${m.accel} ${m.quant} (${m.source}), connected ${m.connected}, load ${System.currentTimeMillis() - t0} ms, free ${den.device().availRamMb} MB")
 
                 val req = GenRequest(listOf(ChatMessage(Role.USER, prompt.text.toString())), maxTokens = 128, temperature = 0f)
-                repeat(intent.getIntExtra("repeat", 1)) {
+                repeat(intent.getIntExtra("repeat", 1)) { i ->
+                // For trim tests: a wait between requests, while adb sends a trim-memory signal.
+                if (i > 0) kotlinx.coroutines.delay(intent.getIntExtra("pause", 0) * 1000L)
                 val sb = StringBuilder()
                 val start = System.currentTimeMillis()
                 m.chat(req).collect { e ->
@@ -123,6 +125,12 @@ class MainActivity : Activity() {
                         }
                     }
                 }
+                }
+                // For close tests: Den.close() must unload what it opened.
+                if (intent.getBooleanExtra("closeAfter", false)) {
+                    den.close()
+                    loaded = null
+                    log("den closed")
                 }
             } catch (e: NoUsableBackendException) {
                 output.text = "error: ${e.message}"

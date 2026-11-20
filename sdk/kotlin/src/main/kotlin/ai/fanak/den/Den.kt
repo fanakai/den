@@ -24,13 +24,21 @@ import ai.fanak.den.core.router.Failure
 import ai.fanak.den.core.router.Opened
 import ai.fanak.den.core.router.Router
 import ai.fanak.den.core.router.Source
+import android.content.ComponentCallbacks2
 import android.content.Context
+import android.content.res.Configuration
 import android.content.res.AssetManager
 import android.util.Log
 import java.io.File
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.fold
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 data class DenConfig(
     // Default: <filesDir>/den/models
@@ -65,6 +73,28 @@ enum class DenMode {
  * and runs it in the Den app when installed, so all apps share one copy.
  */
 class Den private constructor(context: Context, private val config: DenConfig) : AutoCloseable {
+    private val appContext = context
+    private val local = java.util.Collections.synchronizedList(mutableListOf<LocalModel>())
+
+    // An app process holding a model of a gigabyte or more is the first one Android kills; idle models go first.
+    private val trim = object : ComponentCallbacks2 {
+        override fun onTrimMemory(level: Int) {
+            val low = level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW || level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL
+            if (low || level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND) {
+                synchronized(local) { local.toList() }.forEach { it.unloadIfIdle("trim memory, level $level") }
+            }
+        }
+
+        override fun onConfigurationChanged(newConfig: Configuration) {}
+
+        @Deprecated("Replaced by onTrimMemory")
+        override fun onLowMemory() = onTrimMemory(ComponentCallbacks2.TRIM_MEMORY_COMPLETE)
+    }
+
+    init {
+        appContext.registerComponentCallbacks(trim)
+    }
+
     private val app = DenAppConnection(context, config.onDownload)
     private val probe = AndroidDeviceProbe(context)
     val modelDir: File = (config.modelDir ?: File(context.filesDir, "den/models")).apply { mkdirs() }
@@ -122,10 +152,16 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         } else if (config.mode == DenMode.CONNECTED) {
             throw IllegalStateException("the Den app is not installed")
         }
-        return LocalModel(name, router.open(name, device(), config.contextLength))
+        val reopen: suspend () -> Opened = { router.open(name, device(), config.contextLength) }
+        return LocalModel(name, reopen(), reopen) { local -= it }.also { local += it }
     }
 
-    override fun close() = app.close()
+    // Closes the models this Den opened in the app process, and the connection to the Den app.
+    override fun close() {
+        appContext.unregisterComponentCallbacks(trim)
+        synchronized(local) { local.toList().also { local.clear() } }.forEach { it.close() }
+        app.close()
+    }
 
     companion object {
         fun connect(context: Context, config: DenConfig = DenConfig()) = Den(context.applicationContext, config)
@@ -154,17 +190,70 @@ abstract class DenModel : AutoCloseable {
         }.toString()
 }
 
-internal class LocalModel(override val name: String, private val opened: Opened) : DenModel() {
-    override val backend get() = opened.candidate.backend.id
-    override val accel get() = opened.candidate.accel
-    override val quant get() = opened.candidate.variant.quant
-    override val source get() = opened.candidate.source
+/**
+ * A model in this process. It may be unloaded while idle (low memory, `Den.close()`) and loads again on next use.
+ */
+internal class LocalModel(
+    override val name: String,
+    first: Opened,
+    private val reopen: suspend () -> Opened,
+    private val onClose: (LocalModel) -> Unit = {},
+) : DenModel() {
+    // Guards `opened` and `busy`: a request marks the model busy under the lock, an unload checks it under the lock.
+    private val lock = Mutex()
+    private var opened: Opened? = first
+    private var last: Opened = first
+    private var busy = 0
+    @Volatile private var closed = false
+
+    override val backend get() = last.candidate.backend.id
+    override val accel get() = last.candidate.accel
+    override val quant get() = last.candidate.variant.quant
+    override val source get() = last.candidate.source
     override val connected = false
-    override val failures get() = opened.failures
+    override val failures get() = last.failures
 
-    override fun chat(request: GenRequest) = opened.session.generate(request)
+    override fun chat(request: GenRequest): Flow<GenEvent> = flow {
+        val o = lock.withLock {
+            check(!closed) { "model $name is closed" }
+            val o = opened ?: reopen().also {
+                Log.i("Den", "reloaded $name")
+                opened = it
+                last = it
+            }
+            busy++
+            o
+        }
+        try {
+            emitAll(o.session.generate(request))
+        } finally {
+            withContext(NonCancellable) {
+                lock.withLock { busy-- }
+                if (closed) unloadIfIdle("closed")
+            }
+        }
+    }
 
-    override fun close() = opened.session.unload()
+    // False when the model is generating or another call holds it.
+    fun unloadIfIdle(why: String): Boolean {
+        if (!lock.tryLock()) return false
+        try {
+            val o = opened ?: return true
+            if (busy > 0) return false
+            o.session.unload()
+            opened = null
+            Log.i("Den", "unloaded $name ($why)")
+            return true
+        } finally {
+            lock.unlock()
+        }
+    }
+
+    override fun close() {
+        closed = true
+        onClose(this)
+        if (!unloadIfIdle("closed")) Log.i("Den", "$name is generating; it unloads when the request ends")
+    }
 }
 
 private fun defaultCatalogs(context: Context): List<ModelCatalog> {
