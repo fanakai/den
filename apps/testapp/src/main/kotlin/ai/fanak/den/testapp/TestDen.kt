@@ -17,3 +17,9 @@ fun Context.testDen(useMmap: Boolean = true, mode: DenMode = DenMode.AUTO) = Den
         onDownload = { Log.i("DenTest", "download ${it.fileName} ${it.bytes shr 20}/${it.total shr 20} MB") },
     ),
 )
+
+// Only parts from outside the SDK: the echo backend, catalog and store, in the app process.
+fun Context.echoDen() = Den.connect(
+    this,
+    DenConfig(mode = DenMode.EMBEDDED, backends = listOf(EchoBackend), catalogs = listOf(EchoCatalog), store = EchoStore),
+)

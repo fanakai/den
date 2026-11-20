@@ -37,19 +37,21 @@ object BuiltinCatalog : ModelCatalog {
         qwen3("1.7B", "q4_k_m", 1_107_409_472, 1_500, "b139949c5bd74937ad8ed8c8cf3d9ffb1e99c866c823204dc42c0d91fa181897"),
     )
 
-    val models get() = entries.map { it.variant.model }.distinct()
+    override val models get() = entries.map { it.variant.model }.distinct()
 
     override fun variants(model: String) = entries.filter { it.variant.model == model }.map { it.variant }
 
     fun entry(variant: Variant) = entries.first { it.variant == variant }
 
-    fun remote(variant: Variant) = entry(variant).let { RemoteFile(it.fileName, it.url, it.sha256, variant.sizeBytes) }
+    override fun remote(variant: Variant) =
+        entries.firstOrNull { it.variant == variant }?.let { RemoteFile(it.fileName, it.url, it.sha256, variant.sizeBytes) }
 }
 
 // Model files already on disk, with no download (DenConfig.download = false).
-class FileModelStore(val dir: File) : ModelStore {
+class FileModelStore(val dir: File, private val catalog: ModelCatalog = BuiltinCatalog) : ModelStore {
     override suspend fun fetch(variant: Variant): Artifact {
-        val f = File(dir, BuiltinCatalog.entry(variant).fileName)
+        val name = catalog.remote(variant)?.fileName ?: throw FileNotFoundException("no file for $variant in the catalog")
+        val f = File(dir, name)
         if (!f.isFile) throw FileNotFoundException("missing ${f.path}")
         return Artifact(variant, f.path)
     }

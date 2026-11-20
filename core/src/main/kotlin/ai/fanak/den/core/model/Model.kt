@@ -27,7 +27,22 @@ data class Artifact(
 )
 
 interface ModelCatalog {
+    // The model names this catalog knows.
+    val models: List<String> get() = emptyList()
+
     fun variants(model: String): List<Variant>
+
+    // Where to download a variant from; null when this catalog does not serve it.
+    fun remote(variant: Variant): RemoteFile? = null
+}
+
+/** Several catalogs as one: models and variants in catalog order, a variant's file from the first catalog that has it. */
+class CompositeCatalog(private val catalogs: List<ModelCatalog>) : ModelCatalog {
+    override val models get() = catalogs.flatMap { it.models }.distinct()
+
+    override fun variants(model: String) = catalogs.flatMap { it.variants(model) }.distinct()
+
+    override fun remote(variant: Variant) = catalogs.firstNotNullOfOrNull { it.remote(variant) }
 }
 
 // Downloads and caches variants; in connected mode one copy is shared by all apps.

@@ -2,13 +2,17 @@ package ai.fanak.den
 
 import ai.fanak.den.backend.llamacpp.LlamaCppBackend
 import ai.fanak.den.core.backend.ChatMessage
+import ai.fanak.den.core.backend.DenBackend
 import ai.fanak.den.core.backend.GenEvent
 import ai.fanak.den.core.backend.GenRequest
 import ai.fanak.den.core.backend.Role
 import ai.fanak.den.core.device.Accel
 import ai.fanak.den.core.device.DeviceProfile
 import ai.fanak.den.core.model.DownloadProgress
+import ai.fanak.den.core.model.CompositeCatalog
 import ai.fanak.den.core.model.HttpModelStore
+import ai.fanak.den.core.model.ModelCatalog
+import ai.fanak.den.core.model.ModelStore
 import ai.fanak.den.core.recipe.InMemoryRecipeStore
 import ai.fanak.den.core.recipe.Recipe
 import ai.fanak.den.core.recipe.RecipeFiles
@@ -34,6 +38,14 @@ data class DenConfig(
     val download: Boolean = true,
     val onDownload: (DownloadProgress) -> Unit = {},
     val mode: DenMode = DenMode.AUTO,
+    // The parts below apply in embedded mode; the Den app uses its own. Defaults: llama.cpp, the built-in catalog,
+    // downloads (or files on disk when download = false), and the recipes bundled with the SDK.
+    val backends: List<DenBackend>? = null,
+    // Merged in order: the first catalog that serves a variant gives its file.
+    val catalogs: List<ModelCatalog> = listOf(BuiltinCatalog),
+    val store: ModelStore? = null,
+    // Added to the bundled recipes.
+    val recipes: List<Recipe> = emptyList(),
 )
 
 enum class DenMode {
@@ -51,18 +63,29 @@ class Den private constructor(context: Context, private val config: DenConfig) :
     private val app = DenAppConnection(context, config.onDownload)
     private val probe = AndroidDeviceProbe(context)
     val modelDir: File = (config.modelDir ?: File(context.filesDir, "den/models")).apply { mkdirs() }
-    val recipes: List<Recipe> = context.assets.recipes("den/recipes")
+    val recipes: List<Recipe> = context.assets.recipes("den/recipes") + config.recipes
+    private val catalog: ModelCatalog = config.catalogs.singleOrNull() ?: CompositeCatalog(config.catalogs)
 
     // The model files of this process (embedded mode); the Den app manages the shared ones.
-    val files = ModelFiles(modelDir)
-    private val store = if (config.download) {
-        HttpModelStore(modelDir, BuiltinCatalog::remote, config.onDownload, online = { hasNetwork(context) })
+    val files = ModelFiles(modelDir, catalog)
+    private val store = config.store ?: if (config.download) {
+        HttpModelStore(
+            modelDir,
+            { v -> catalog.remote(v) ?: throw java.io.FileNotFoundException("no download for $v in the catalog") },
+            config.onDownload,
+            online = { hasNetwork(context) },
+        )
     } else {
-        FileModelStore(modelDir)
+        FileModelStore(modelDir, catalog)
     }
-    private val router = Router(listOf(LlamaCppBackend(config.useMmap)), InMemoryRecipeStore(recipes), BuiltinCatalog, store)
+    private val router = Router(
+        config.backends ?: listOf(LlamaCppBackend(config.useMmap)),
+        InMemoryRecipeStore(recipes),
+        catalog,
+        store,
+    )
 
-    val models: List<String> get() = BuiltinCatalog.models
+    val models: List<String> get() = catalog.models
 
     fun device(): DeviceProfile = probe.profile()
 
@@ -70,7 +93,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
     fun plan(model: String, device: DeviceProfile = device()): List<Candidate> = router.plan(model, device)
 
     // The file the router would pick on this phone, and its download without loading it. Runs in this process.
-    fun fileName(model: String): String? = plan(model).firstOrNull()?.let { BuiltinCatalog.entry(it.variant).fileName }
+    fun fileName(model: String): String? = plan(model).firstOrNull()?.let { catalog.remote(it.variant)?.fileName }
 
     suspend fun download(model: String) {
         plan(model).firstOrNull()?.let { store.fetch(it.variant) }

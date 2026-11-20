@@ -37,6 +37,21 @@ model.close()
 5) the download of the chosen file on first use, checked against its SHA-256; `DenConfig.onDownload` reports its progress in both modes, and cancelling `model()` stops it (in connected mode, another app waiting for the same model then resumes it);
 6) the AIDL client of the Den app.
 
+## Your own parts
+
+In embedded mode, the backend, the catalog, the file store and extra recipes can come from the app, through `DenConfig`; the defaults are llama.cpp, the built-in catalog, the downloader and the bundled recipes.
+
+```kotlin
+val den = Den.connect(context, DenConfig(
+    mode = DenMode.EMBEDDED,
+    backends = listOf(MyBackend),                  // implements DenBackend
+    catalogs = listOf(MyCatalog, BuiltinCatalog),  // merged in order; the first that serves a file gives it
+    recipes = listOf(myRecipe),                    // added to the bundled ones
+))
+```
+
+The Den app uses its own parts, so these settings do not change connected mode. `apps/testapp/.../EchoParts.kt` is a complete example.
+
 ## Current limits
 
 - Only the built-in catalog; the live catalog comes with #31.
