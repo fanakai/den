@@ -20,6 +20,9 @@ data class Variant(
     val sizeBytes: Long,
     val minRamMb: Int,
     val soc: String? = null,
+    // GGUF architecture and parameter count, when the catalog knows them: what recipes match on (#107).
+    val arch: String? = null,
+    val params: Long? = null,
 )
 
 @Serializable

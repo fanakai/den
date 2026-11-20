@@ -58,9 +58,11 @@ class Router(
         fun usable(backend: DenBackend, accel: Accel, v: Variant) =
             caps[backend]?.supports(accel, v.format) == true
 
-        val fromRecipes = recipes.find(model, device).flatMap { recipe ->
+        // Recipes match the model by architecture and size, so a curated name and its hub repository get the same.
+        val size = variants.firstOrNull { it.params != null }
+        val fromRecipes = recipes.find(device).flatMap { recipe ->
             val source = if (recipe.soc != null) Source.RECIPE_SOC else Source.RECIPE_FAMILY
-            recipe.choices.flatMap { choice ->
+            recipe.choicesFor(size?.arch, size?.params).flatMap { choice ->
                 val backend = backends.find { it.id == choice.backend } ?: return@flatMap emptyList()
                 variants
                     .filter { it.format == choice.format && it.quant == choice.quant }

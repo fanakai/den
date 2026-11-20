@@ -18,14 +18,22 @@ internal object GgufFiles {
     fun ramMb(bytes: Long): Int = ((bytes shr 20) * 5 / 4).toInt() + 512
 
     // `store` is the folder under the model folder; `url` builds the download link of a file.
-    fun variants(id: String, files: List<HubFile>, store: String, url: (HubFile) -> String): Map<Variant, RemoteFile> {
+    // `arch` and `params` come from the hub's GGUF metadata, the same for every file of a repository.
+    fun variants(
+        id: String,
+        files: List<HubFile>,
+        store: String,
+        arch: String? = null,
+        params: Long? = null,
+        url: (HubFile) -> String,
+    ): Map<Variant, RemoteFile> {
         val out = LinkedHashMap<Variant, RemoteFile>()
         // Same content under two names (Q2_K and Q2_K_L in some repositories): keep the first.
         for (f in files.distinctBy { it.sha256 }) {
             val name = f.path.substringAfterLast('/')
             if (!name.endsWith(".gguf", ignoreCase = true) || SKIP.containsMatchIn(name)) continue
             val quant = QUANT.find(name)?.groupValues?.get(1)?.lowercase() ?: continue
-            val v = Variant(id, ModelFormat.GGUF, quant, f.size, ramMb(f.size))
+            val v = Variant(id, ModelFormat.GGUF, quant, f.size, ramMb(f.size), arch = arch, params = params)
             out[v] = RemoteFile(name, url(f), f.sha256, f.size, "$store/${f.path}")
         }
         return out

@@ -12,7 +12,7 @@ Instructions for coding agents and contributors working on Fanak Den. Den runs o
 | `sdk/kotlin/` | Android SDK: device probe, built-in catalog, downloads, connected mode (AIDL client). |
 | `apps/den/` | The Den app: AIDL service, model pool, app approvals, OpenAI-compatible HTTP endpoint. |
 | `apps/testapp/`, `apps/demo/` | Test app (driven from adb) and a second app that uses only the SDK. |
-| `recipes/` | Measured best choices per model and SoC, bundled into the SDK. See `recipes/README.md`. |
+| `recipes/` | Measured best choices per SoC by model size, bundled into the SDK. See `recipes/README.md`. |
 
 ## Build and test
 

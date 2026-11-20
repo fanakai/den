@@ -22,10 +22,13 @@ data class CatalogEntry(
 object BuiltinCatalog : ModelCatalog {
     private const val HF = "https://huggingface.co/unsloth"
 
+    // Parameter counts from the GGUF metadata of the unsloth repositories (Hugging Face `expand[]=gguf`).
+    private val PARAMS = mapOf("0.6B" to 596_049_920L, "1.7B" to 1_720_574_976L)
+
     private fun qwen3(size: String, quant: String, bytes: Long, ramMb: Int, sha256: String): CatalogEntry {
         val file = "Qwen3-$size-${quant.uppercase()}.gguf"
         return CatalogEntry(
-            Variant("qwen3-${size.lowercase()}", ModelFormat.GGUF, quant, bytes, ramMb),
+            Variant("qwen3-${size.lowercase()}", ModelFormat.GGUF, quant, bytes, ramMb, arch = "qwen3", params = PARAMS[size]),
             file,
             "$HF/Qwen3-$size-GGUF/resolve/main/$file",
             sha256,
