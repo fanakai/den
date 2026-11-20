@@ -1,0 +1,15 @@
+schema: 1
+soc_family: unisoc-t760
+soc: T760
+rankings:
+  - model: { arch: qwen3, params_b: 0.6 }
+    choices:
+      - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_0 }
+      - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_k_m }
+    measured:
+      prefill_tps: 166.4
+      decode_tps: 13.6
+      device: ZTE Blade A75 5G (Z2357N)
+      date: 2026-11-20
+      sha256: 33bcc57074ec7b6eada5a90651ee546ec0c2b271002c22baf9f1b2dd1e8f75cb
+      protocol: den-smoke over adb shell, llama.cpp b9590, automatic threads (4 decode, 8 prefill, #120), 300-token prompt, 64 tokens greedy, mean of 3 runs, charging
