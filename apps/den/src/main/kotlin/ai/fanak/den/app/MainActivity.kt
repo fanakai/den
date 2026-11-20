@@ -71,10 +71,14 @@ class MainActivity : Activity() {
     private fun showApps() {
         apps.removeAllViews()
         apps.addView(TextView(this).apply { text = "\nApps"; textSize = 18f })
-        val rows = Approvals.pending.associateWith { null as Boolean? } + Approvals.all(this)
+        // Waiting, or closed without an answer (Allow or Deny here ends the quiet time).
+        val rows = (Approvals.pending + Approvals.dismissed).associateWith { null as Boolean? } + Approvals.all(this)
         if (rows.isEmpty()) apps.addView(TextView(this).apply { text = "No app has asked yet." })
         rows.forEach { (pkg, allowed) ->
-            val state = when (allowed) { true -> "allowed"; false -> "denied"; null -> "waiting" }
+            val state = when (allowed) {
+                true -> "allowed"; false -> "denied"
+                null -> if (pkg in Approvals.pending) "waiting" else "not answered"
+            }
             apps.addView(TextView(this).apply { text = "${Approvals.label(context, pkg)} ($pkg): $state" })
             apps.addView(LinearLayout(this).apply {
                 if (allowed != true) addView(button("Allow") { Approvals.set(context, pkg, true) })

@@ -77,7 +77,7 @@ class DenService : Service() {
     private val nextId = AtomicLong(1)
 
     private val binder = object : IDenService.Stub() {
-        override fun version() = 2
+        override fun version() = 3
 
         override fun models() = den.models.toTypedArray()
 
@@ -92,7 +92,8 @@ class DenService : Service() {
             p.job = scope.launch(start = CoroutineStart.LAZY) {
                 try {
                     val pkg = callerPackage(uid)
-                    if (!Approvals.request(this@DenService, pkg)) {
+                    // Version 3 clients open the approval screen; older ones ignore it and get the notification.
+                    if (!Approvals.request(this@DenService, pkg) { screen -> runCatching { callback.onApproval(screen) } }) {
                         log("open $model for $pkg: not allowed")
                         return@launch callback.onError("$pkg is not allowed to use Den; allow it in the Den app")
                     }

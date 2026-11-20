@@ -4,7 +4,7 @@ The Den app. It hosts the engine for every app on the phone, so all of them shar
 
 ## For Android apps (AIDL)
 
-Apps that use the Kotlin SDK (`sdk/kotlin`) find the Den app by themselves (`DenMode.AUTO`). The first time an app opens a model, Den asks the user by notification whether to allow it; the answer is kept, and the Den screen lists the apps with Allow, Deny and Forget.
+Apps that use the Kotlin SDK (`sdk/kotlin`) find the Den app by themselves (`DenMode.AUTO`). The first time an app opens a model, Den asks the user whether to allow it: on an approval screen that the app opens through the SDK, and by notification. The answer is kept with the app's signing certificate, and the Den screen lists the apps with Allow, Deny and Forget, including those that closed the screen without an answer.
 
 ## OpenAI-compatible HTTP endpoint
 
