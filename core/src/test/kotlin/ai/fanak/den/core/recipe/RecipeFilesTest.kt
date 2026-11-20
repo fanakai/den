@@ -8,6 +8,7 @@ import ai.fanak.den.core.backend.Session
 import ai.fanak.den.core.device.Accel
 import ai.fanak.den.core.device.DeviceProfile
 import ai.fanak.den.core.device.Platform
+import ai.fanak.den.core.device.SocFamilies
 import ai.fanak.den.core.model.Artifact
 import ai.fanak.den.core.model.ModelCatalog
 import ai.fanak.den.core.model.ModelFormat
@@ -118,6 +119,14 @@ class RecipeFilesTest {
     @Test
     fun a52sStaysOnCpu() {
         val c = first(a52s, "qwen3-1.7b", setOf(Accel.CPU))
+        assertEquals(Source.RECIPE_SOC, c.source)
+        assertEquals(Accel.CPU to "q4_0", c.accel to c.variant.quant)
+    }
+
+    @Test
+    fun t760FollowsItsRecipe() {
+        val zte = DeviceProfile(Platform.ANDROID, 34, "T760", SocFamilies.of("T760"), "arm64-v8a", 3_400, 1_200)
+        val c = first(zte, "qwen3-0.6b", setOf(Accel.CPU))
         assertEquals(Source.RECIPE_SOC, c.source)
         assertEquals(Accel.CPU to "q4_0", c.accel to c.variant.quant)
     }

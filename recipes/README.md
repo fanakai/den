@@ -43,10 +43,13 @@ In CI, unknown fields are rejected, so a typo fails the build. On the phone, rec
 | Galaxy S25 (SM8750) | Qwen3 1.7B | llamacpp, GPU, Q4_0 | 196.4 | 24.3 |
 | Galaxy A52s (SM7325) | Qwen3 0.6B | llamacpp, CPU, Q4_0 | 43.6 | 30.0 |
 | Galaxy A52s (SM7325) | Qwen3 1.7B | llamacpp, CPU, Q4_0 | 33.3 | 12.8 |
+| ZTE Blade A75 5G (Unisoc T760) | Qwen3 0.6B | llamacpp, CPU, Q4_0 | 166.4 | 13.6 |
 
 On the S25 the CPU decodes 0.6B faster than the GPU, while the GPU is 2.7x faster at prefill on 1.7B with the same decode.
 On the A52s the OpenCL driver is too old for llama.cpp and the Vulkan path is slower than the CPU.
 A52s prefill varies a lot between runs, likely due to core parking and heat.
+On the T760 the Mali GPU is not used (the OpenCL path is for Adreno); Q4_0 and Q4_K_M decode at the same speed, and Q4_0 prefills about 10% faster.
+With 3.4 GB of RAM it has about 1.2 GB free, so only the 0.6B size is measured.
 
 ## Contributing
 
