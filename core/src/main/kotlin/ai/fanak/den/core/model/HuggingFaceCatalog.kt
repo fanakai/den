@@ -31,7 +31,14 @@ class HuggingFaceCatalog(
     private val host: String = "https://huggingface.co",
 ) : ModelCatalog {
     @Serializable
-    private data class Repo(val commit: String, val licence: String?, val files: List<RepoFile>)
+    private data class Repo(
+        val commit: String,
+        val licence: String?,
+        val files: List<RepoFile>,
+        // From the GGUF metadata; null in caches written before recipes matched on them.
+        val arch: String? = null,
+        val params: Long? = null,
+    )
 
     @Serializable
     private data class RepoFile(val path: String, val size: Long, val sha256: String)
@@ -71,7 +78,7 @@ class HuggingFaceCatalog(
     }
 
     private suspend fun load(id: String, ref: Ref): Repo {
-        val info = json.parseToJsonElement(fetch("$host/api/models/${ref.name}/revision/${ref.revision}?expand[]=gated&expand[]=cardData&expand[]=sha")).jsonObject
+        val info = json.parseToJsonElement(fetch("$host/api/models/${ref.name}/revision/${ref.revision}?expand[]=gated&expand[]=cardData&expand[]=sha&expand[]=gguf")).jsonObject
         val commit = info.str("sha") ?: throw IOException("no commit for ${ref.name}@${ref.revision}")
         val gated = (info["gated"] as? JsonPrimitive)?.let { it.booleanOrNull ?: (it.contentOrNull != null) } ?: false
         if (gated) throw GatedModelException(id)
@@ -85,13 +92,16 @@ class HuggingFaceCatalog(
             val size = (lfs["size"] as? JsonPrimitive)?.longOrNull ?: return@mapNotNull null
             RepoFile(path, size, sha)
         }
-        return Repo(commit, licence, files)
+        val gguf = info["gguf"] as? JsonObject
+        return Repo(commit, licence, files, gguf?.str("architecture"), (gguf?.get("total") as? JsonPrimitive)?.longOrNull)
     }
 
     private fun build(id: String, ref: Ref, repo: Repo): Resolved {
         val store = "hf/${ref.owner}/${ref.repo}" + if (ref.revision == "main") "" else "/${ref.revision}"
         val files = repo.files.map { HubFile(it.path, it.size, it.sha256) }
-        val remote = GgufFiles.variants(id, files, store) { "$host/${ref.name}/resolve/${repo.commit}/${it.path}" }
+        val remote = GgufFiles.variants(id, files, store, repo.arch, repo.params) {
+            "$host/${ref.name}/resolve/${repo.commit}/${it.path}"
+        }
         return Resolved(remote.keys.toList(), remote)
     }
 

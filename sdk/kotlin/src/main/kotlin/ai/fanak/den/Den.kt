@@ -331,7 +331,11 @@ internal fun AssetManager.recipes(path: String): List<Recipe> =
         val children = list(p)
         when {
             !children.isNullOrEmpty() -> recipes(p)
-            name.endsWith(".yaml") -> listOf(RecipeFiles.parse(open(p).bufferedReader().readText(), p))
+            // A recipe this SDK cannot read (newer schema, damaged) is skipped; the others still apply.
+            name.endsWith(".yaml") -> listOfNotNull(
+                RecipeFiles.parseOrNull(open(p).bufferedReader().readText(), p)
+                    ?: null.also { Log.w("Den", "recipe $p skipped: unreadable or newer schema") },
+            )
             else -> emptyList()
         }
     }

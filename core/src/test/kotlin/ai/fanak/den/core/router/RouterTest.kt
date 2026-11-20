@@ -16,6 +16,8 @@ import ai.fanak.den.core.model.ModelFormat
 import ai.fanak.den.core.model.ModelStore
 import ai.fanak.den.core.model.Variant
 import ai.fanak.den.core.recipe.InMemoryRecipeStore
+import ai.fanak.den.core.recipe.ModelSize
+import ai.fanak.den.core.recipe.Ranking
 import ai.fanak.den.core.recipe.Recipe
 import ai.fanak.den.core.recipe.RecipeChoice
 import kotlinx.coroutines.flow.Flow
@@ -33,10 +35,11 @@ class RouterTest {
     )
     private val model = "qwen3-1.7b"
 
-    private val q4km = Variant(model, ModelFormat.GGUF, "q4_k_m", 1_100, 1_500)
-    private val q40 = Variant(model, ModelFormat.GGUF, "q4_0", 1_000, 1_400)
-    private val npu = Variant(model, ModelFormat.LITERTLM, "int4", 1_200, 1_600, soc = "SM8750")
-    private val huge = Variant(model, ModelFormat.GGUF, "f16", 3_400, 8_000)
+    private val size = 1_720_574_976L
+    private val q4km = Variant(model, ModelFormat.GGUF, "q4_k_m", 1_100, 1_500, arch = "qwen3", params = size)
+    private val q40 = Variant(model, ModelFormat.GGUF, "q4_0", 1_000, 1_400, arch = "qwen3", params = size)
+    private val npu = Variant(model, ModelFormat.LITERTLM, "int4", 1_200, 1_600, soc = "SM8750", arch = "qwen3", params = size)
+    private val huge = Variant(model, ModelFormat.GGUF, "f16", 3_400, 8_000, arch = "qwen3", params = size)
 
     private class FakeBackend(
         override val id: String,
@@ -77,10 +80,15 @@ class RouterTest {
     @Test
     fun recipeChoicesComeFirstInOrder() {
         val recipe = Recipe(
-            model, "snapdragon-8-elite",
-            listOf(
-                RecipeChoice("litert", Accel.NPU, ModelFormat.LITERTLM, "int4"),
-                RecipeChoice("llamacpp", Accel.GPU, ModelFormat.GGUF, "q4_k_m"),
+            socFamily = "snapdragon-8-elite",
+            rankings = listOf(
+                Ranking(
+                    ModelSize("qwen3", 1.7),
+                    listOf(
+                        RecipeChoice("litert", Accel.NPU, ModelFormat.LITERTLM, "int4"),
+                        RecipeChoice("llamacpp", Accel.GPU, ModelFormat.GGUF, "q4_k_m"),
+                    ),
+                ),
             ),
         )
         val plan = router(listOf(llama(), litert()), listOf(recipe)).plan(model, device)
