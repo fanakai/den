@@ -16,6 +16,8 @@ import ai.fanak.den.core.model.IndexCatalog
 import ai.fanak.den.core.model.ModelIndex
 import ai.fanak.den.core.model.ModelCatalog
 import ai.fanak.den.core.model.ModelStore
+import ai.fanak.den.core.model.RemoteFile
+import ai.fanak.den.core.model.Variant
 import ai.fanak.den.core.recipe.InMemoryRecipeStore
 import ai.fanak.den.core.recipe.Recipe
 import ai.fanak.den.core.recipe.RecipeFiles
@@ -75,6 +77,9 @@ data class DenConfig(
     val isolate: Boolean = true,
     // Crashed candidates, skipped until the system or the backend is updated. Default: saved in <filesDir>/den.
     val failures: FailureStore? = null,
+    // Embedded mode: runs before a file is downloaded (not when it is on disk). It may wait, or refuse with
+    // DownloadRefusedException; the Den app asks the user here, checks its quota and waits for Wi-Fi.
+    val beforeDownload: suspend (Variant, RemoteFile) -> Unit = { _, _ -> },
 )
 
 enum class DenMode {
@@ -125,6 +130,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
             { v -> catalog.remote(v) ?: throw java.io.FileNotFoundException("no download for $v in the catalog") },
             config.onDownload,
             online = { hasNetwork(context) },
+            beforeDownload = config.beforeDownload,
         )
     } else {
         FileModelStore(modelDir, catalog)

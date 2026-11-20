@@ -99,7 +99,7 @@ class HuggingFaceCatalog(
     private fun build(id: String, ref: Ref, repo: Repo): Resolved {
         val store = "hf/${ref.owner}/${ref.repo}" + if (ref.revision == "main") "" else "/${ref.revision}"
         val files = repo.files.map { HubFile(it.path, it.size, it.sha256) }
-        val remote = GgufFiles.variants(id, files, store, repo.arch, repo.params) {
+        val remote = GgufFiles.variants(id, files, store, repo.arch, repo.params, repo.licence) {
             "$host/${ref.name}/resolve/${repo.commit}/${it.path}"
         }
         return Resolved(remote.keys.toList(), remote)

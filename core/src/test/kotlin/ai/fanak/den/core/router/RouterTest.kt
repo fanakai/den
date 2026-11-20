@@ -152,6 +152,22 @@ class RouterTest {
     }
 
     @Test
+    fun refusedDownloadStopsBeforeOtherFiles() = runTest {
+        var fetches = 0
+        val refusing = object : ModelStore {
+            override suspend fun fetch(variant: Variant): Artifact {
+                fetches++
+                throw ai.fanak.den.core.model.DownloadRefusedException("not approved")
+            }
+        }
+        val e = assertFailsWith<NoUsableBackendException> {
+            Router(listOf(llama()), InMemoryRecipeStore(emptyList()), catalog, refusing).open(model, device)
+        }
+        assertEquals(1, fetches)
+        assertEquals("not approved", e.failures.single().error.message)
+    }
+
+    @Test
     fun emptyPlanSaysWhy() = runTest {
         val r = router(listOf(llama()))
         val tooSmall = assertFailsWith<NoUsableBackendException> { r.open(model, device.copy(availRamMb = 500)) }

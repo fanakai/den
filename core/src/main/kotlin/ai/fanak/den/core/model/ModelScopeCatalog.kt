@@ -55,7 +55,7 @@ class ModelScopeCatalog(
         val store = "ms/${ref.owner}/${ref.repo}" + if (ref.revision == "master") "" else "/${ref.revision}"
         val files = repo.files.map { HubFile(it.path, it.size, it.sha256) }
         val commits = repo.files.associate { it.path to it.commit }
-        val remote = GgufFiles.variants(id, files, store) { f ->
+        val remote = GgufFiles.variants(id, files, store, licence = repo.licence) { f ->
             "$host/models/${ref.name}/resolve/${commits[f.path] ?: ref.revision}/${f.path}"
         }
         return Resolved(remote.keys.toList(), remote).also { resolved[id] = it }.variants

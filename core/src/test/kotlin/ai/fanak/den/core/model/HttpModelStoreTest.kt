@@ -82,6 +82,24 @@ class HttpModelStoreTest {
     }
 
     @Test
+    fun beforeDownloadRunsOnlyWhenAFileIsDownloaded() = runTest {
+        var checks = 0
+        val remote = RemoteFile("m.gguf", "http://127.0.0.1:${server.address.port}/m.gguf", sha, data.size.toLong())
+        val refusing = HttpModelStore(dir, { remote }, minFreeBytes = 0, beforeDownload = { _, _ ->
+            checks++
+            throw DownloadRefusedException("no")
+        })
+        assertFailsWith<DownloadRefusedException> { refusing.fetch(variant) }
+        assertTrue(requests.isEmpty())
+        assertTrue(ModelManifest(dir).entries().isEmpty())
+
+        HttpModelStore(dir, { remote }, minFreeBytes = 0, beforeDownload = { _, _ -> checks++ }).fetch(variant)
+        refusing.fetch(variant)
+        assertEquals(2, checks)
+        assertEquals(1, requests.size)
+    }
+
+    @Test
     fun failedDownloadStaysIncompleteInTheManifest() = runTest {
         assertFailsWith<IOException> { store(sha256 = "0".repeat(64)).fetch(variant) }
         assertFalse(ModelManifest(dir).entries().single().complete)

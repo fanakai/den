@@ -25,6 +25,7 @@ internal object GgufFiles {
         store: String,
         arch: String? = null,
         params: Long? = null,
+        licence: String? = null,
         url: (HubFile) -> String,
     ): Map<Variant, RemoteFile> {
         val out = LinkedHashMap<Variant, RemoteFile>()
@@ -34,7 +35,7 @@ internal object GgufFiles {
             if (!name.endsWith(".gguf", ignoreCase = true) || SKIP.containsMatchIn(name)) continue
             val quant = QUANT.find(name)?.groupValues?.get(1)?.lowercase() ?: continue
             val v = Variant(id, ModelFormat.GGUF, quant, f.size, ramMb(f.size), arch = arch, params = params)
-            out[v] = RemoteFile(name, url(f), f.sha256, f.size, "$store/${f.path}")
+            out[v] = RemoteFile(name, url(f), f.sha256, f.size, "$store/${f.path}", licence)
         }
         return out
     }

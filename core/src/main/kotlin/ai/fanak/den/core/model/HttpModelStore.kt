@@ -24,10 +24,14 @@ data class RemoteFile(
     // Where the file is stored, relative to the model folder; by source and repository, so two uploads with the
     // same file name never collide.
     val path: String = fileName,
+    val licence: String? = null,
 )
 
 // The platform reports no usable network for this app (Doze, battery saver, data saver, no connection).
 class OfflineException(message: String) : IOException(message)
+
+// The download was not allowed (user, quota): other files of the model would be refused the same way.
+class DownloadRefusedException(message: String) : IOException(message)
 
 data class DownloadProgress(val fileName: String, val bytes: Long, val total: Long)
 
@@ -43,6 +47,8 @@ class HttpModelStore(
     // False when the platform says this app has no usable network, to fail at once instead of after timeouts.
     private val online: () -> Boolean = { true },
     private val retryDelayMs: Long = 2_000,
+    // Runs before a file is downloaded, not when it is on disk already; may wait (network) or throw DownloadRefusedException.
+    private val beforeDownload: suspend (Variant, RemoteFile) -> Unit = { _, _ -> },
 ) : ModelStore {
     private val manifest = ModelManifest(dir)
 
@@ -54,6 +60,7 @@ class HttpModelStore(
             withContext(Dispatchers.IO) {
                 adoptLegacy(r, file)
                 if (!isVerified(file, r)) {
+                    beforeDownload(variant, r)
                     manifest.put(entry(variant, r, complete = false))
                     downloadWithRetry(r, file)
                 }

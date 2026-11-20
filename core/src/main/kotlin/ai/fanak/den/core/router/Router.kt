@@ -95,8 +95,8 @@ class Router(
                 val artifact = try {
                     store.fetch(c.variant)
                 } catch (e: IOException) {
-                    // Without network every other file fails the same way, after its own timeout.
-                    if (e.isNetwork()) throw NoUsableBackendException(model, tried + Failure(c, e))
+                    // Without network, or when the download is refused, every other file fails the same way.
+                    if (e.isNetwork() || e is ai.fanak.den.core.model.DownloadRefusedException) throw NoUsableBackendException(model, tried + Failure(c, e))
                     throw e
                 }
                 val session = try {
