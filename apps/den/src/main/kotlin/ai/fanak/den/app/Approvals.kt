@@ -7,23 +7,38 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
 
-// Apps the user allowed or denied, by package name. Asked once per app, on its first open().
+/**
+ * Apps the user allowed or denied, by package name and signing certificate, so another app installed later under the
+ * same name is asked again. Asked once per app, on its first open().
+ */
 internal object Approvals {
     private const val TIMEOUT_MS = 60_000L
     private val waiting = ConcurrentHashMap<String, CompletableDeferred<Boolean>>()
 
+    // Stored as "allow <sha256>" or "deny <sha256>"; a Boolean is a decision from before certificates were stored.
+    private class Decision(val allow: Boolean, val cert: String?)
+
     private fun prefs(c: Context) = c.getSharedPreferences("approvals", Context.MODE_PRIVATE)
 
-    fun all(c: Context): Map<String, Boolean> = prefs(c).all.mapValues { it.value == true }
+    private fun read(c: Context, pkg: String): Decision? = when (val v = prefs(c).all[pkg]) {
+        is Boolean -> Decision(v, null)
+        is String -> Decision(v.substringBefore(' ') == "allow", v.substringAfter(' ', "").ifEmpty { null })
+        else -> null
+    }
+
+    fun all(c: Context): Map<String, Boolean> = prefs(c).all.keys.associateWith { read(c, it)?.allow == true }
 
     val pending: Set<String> get() = waiting.keys
 
     fun set(c: Context, pkg: String, allow: Boolean) {
-        prefs(c).edit().putBoolean(pkg, allow).apply()
+        val value = (if (allow) "allow " else "deny ") + (certificate(c, pkg) ?: "")
+        prefs(c).edit().putString(pkg, value.trim()).apply()
         c.getSystemService(NotificationManager::class.java).cancel(pkg, 0)
         waiting.remove(pkg)?.complete(allow)
     }
@@ -32,14 +47,36 @@ internal object Approvals {
 
     // False when denied, or not answered within a minute.
     suspend fun request(c: Context, pkg: String): Boolean {
-        val p = prefs(c)
-        if (p.contains(pkg)) return p.getBoolean(pkg, false)
+        read(c, pkg)?.let { d ->
+            when {
+                // Given before certificates were stored: tied now to the app installed under that name.
+                d.cert == null -> return d.allow.also { set(c, pkg, it) }
+                signedWith(c, pkg, d.cert) -> return d.allow
+                // Another app under the same name: the decision does not carry over.
+                else -> forget(c, pkg)
+            }
+        }
         val d = waiting.computeIfAbsent(pkg) { CompletableDeferred<Boolean>().also { notify(c, pkg) } }
         return withTimeoutOrNull(TIMEOUT_MS) { d.await() } ?: false.also {
             waiting.remove(pkg, d)
             c.getSystemService(NotificationManager::class.java).cancel(pkg, 0)
         }
     }
+
+    // SHA-256 of the app's current signing certificate (the first one when it has several signers).
+    private fun certificate(c: Context, pkg: String): String? = runCatching {
+        val info = c.packageManager.getPackageInfo(pkg, PackageManager.GET_SIGNING_CERTIFICATES).signingInfo
+            ?: return null
+        // The history runs from the original certificate to the current one.
+        val cert = if (info.hasMultipleSigners()) info.apkContentsSigners.first() else info.signingCertificateHistory.last()
+        MessageDigest.getInstance("SHA-256").digest(cert.toByteArray()).joinToString("") { "%02x".format(it) }
+    }.getOrElse { android.util.Log.w("DenService", "no certificate for $pkg: $it"); null }
+
+    // Checks the signing history too, so an app that rotates its key keeps its approval.
+    private fun signedWith(c: Context, pkg: String, sha256: String) = runCatching {
+        val bytes = sha256.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        c.packageManager.hasSigningCertificate(pkg, bytes, PackageManager.CERT_INPUT_SHA256)
+    }.getOrDefault(false)
 
     fun label(c: Context, pkg: String): String =
         runCatching { c.packageManager.getApplicationLabel(c.packageManager.getApplicationInfo(pkg, 0)).toString() }

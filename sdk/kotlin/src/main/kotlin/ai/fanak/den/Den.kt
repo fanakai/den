@@ -54,6 +54,8 @@ data class DenConfig(
     val download: Boolean = true,
     val onDownload: (DownloadProgress) -> Unit = {},
     val mode: DenMode = DenMode.AUTO,
+    // SHA-256 of the certificates a Den app may be signed with; prompts go only to a Den app signed with one of them.
+    val denCertificates: List<String> = DEN_CERTIFICATES,
     // The parts below apply in embedded mode; the Den app uses its own. Defaults: llama.cpp, the built-in catalog,
     // downloads (or files on disk when download = false), and the recipes bundled with the SDK.
     val backends: List<DenBackend>? = null,
@@ -106,7 +108,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         appContext.registerComponentCallbacks(trim)
     }
 
-    private val app = DenAppConnection(context, config.onDownload)
+    private val app = DenAppConnection(context, config.onDownload, config.denCertificates)
     private val probe = AndroidDeviceProbe(context)
     val modelDir: File = (config.modelDir ?: File(context.filesDir, "den/models")).apply { mkdirs() }
     val recipes: List<Recipe> = context.assets.recipes("den/recipes") + config.recipes
@@ -158,10 +160,11 @@ class Den private constructor(context: Context, private val config: DenConfig) :
     suspend fun resolve(model: String) = catalog.resolve(model)
 
     // Whether model() will use the Den app.
-    val connected: Boolean get() = config.mode != DenMode.EMBEDDED && app.installed()
+    val connected: Boolean get() = config.mode != DenMode.EMBEDDED && app.status() == DenAppStatus.OK
 
     suspend fun model(name: String): DenModel {
-        if (connected) {
+        val status = if (config.mode == DenMode.EMBEDDED) DenAppStatus.MISSING else app.status()
+        if (status == DenAppStatus.OK) {
             try {
                 return app.open(name)
             } catch (e: Exception) {
@@ -169,7 +172,12 @@ class Den private constructor(context: Context, private val config: DenConfig) :
                 Log.w("Den", "Den app unavailable, running $name in the app: $e")
             }
         } else if (config.mode == DenMode.CONNECTED) {
-            throw IllegalStateException("the Den app is not installed")
+            throw IllegalStateException(
+                if (status == DenAppStatus.UNTRUSTED) "the app installed as $DEN_PACKAGE is not signed by Fanak Den"
+                else "the Den app is not installed",
+            )
+        } else if (status == DenAppStatus.UNTRUSTED) {
+            Log.w("Den", "$DEN_PACKAGE is not signed by Fanak Den; running $name in the app")
         }
         val reopen: suspend () -> Opened = { router.open(name, device(), config.contextLength, config.useMmap) }
         val crashed = { o: Opened, e: Throwable -> router.reportFailure(device(), o.candidate, e) }

@@ -30,7 +30,7 @@ git submodule update --init
 
 ## Testing on a phone
 
-- Use release builds (`assembleRelease`, signed with the debug key). Debug builds compile the native code without optimization and decode about 3 times slower.
+- Use release builds (`assembleRelease`). The Den app is signed with the release key when `~/.gradle/gradle.properties` names it (`den.release.storeFile`, `den.release.keyAlias`, `den.release.passwordFile`), and with the debug key otherwise; `-Pden.release.storeFile=` forces the debug key, for a phone that has a debug-signed Den app. The key never goes into the repository. Debug builds compile the native code without optimization and decode about 3 times slower.
 - Install with `adb install -r apps/<app>/build/outputs/apk/release/<app>-release.apk`, then read `adb logcat -s DenService:I DenTest:I DenDemo:I`.
 - The test app is driven by intent extras, for example `am start -n ai.fanak.den.testapp/.MainActivity --es model qwen3-0.6b --es mode connected --ez autorun true`. See the comment at the top of each `MainActivity`.
 - Keep the screen on while measuring: with the screen off or the app in the background, Android moves it to slower cores and the numbers drop.

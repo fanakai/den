@@ -1,5 +1,6 @@
 package ai.fanak.den.testapp
 
+import ai.fanak.den.DEN_CERTIFICATES
 import ai.fanak.den.Den
 import ai.fanak.den.DenMode
 import ai.fanak.den.DenModel
@@ -29,7 +30,9 @@ class MainActivity : Activity() {
     private val den by lazy {
         val mode = intent.getStringExtra("mode")?.let { DenMode.valueOf(it.uppercase()) } ?: DenMode.AUTO
         val crash = intent.getStringExtra("crash")?.also { armCrash(it) }
-        if (intent.getBooleanExtra("echo", false)) echoDen() else testDen(intent.getBooleanExtra("mmap", true), mode, crash != null)
+        // "denCerts": trusted Den app signers as SHA-256, comma-separated; "none" trusts no Den app.
+        val certs = intent.getStringExtra("denCerts")?.let { v -> if (v == "none") emptyList() else v.split(',') } ?: DEN_CERTIFICATES
+        if (intent.getBooleanExtra("echo", false)) echoDen() else testDen(intent.getBooleanExtra("mmap", true), mode, crash != null, certs)
     }
 
     private lateinit var model: String

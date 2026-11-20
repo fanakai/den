@@ -28,6 +28,8 @@ model.close()
 
 `model.connected` tells which one was used. In `AUTO`, if the Den app does not answer, the model runs in the app process instead.
 
+Prompts go only to a Den app signed with a certificate the SDK trusts (`DEN_CERTIFICATES`: the release key, and the maintainer's debug key for test builds), since any app can be installed under the name `ai.fanak.den`. Another signer counts as "not installed" in `AUTO`, and is refused in `CONNECTED`. `DenConfig.denCertificates` replaces the list, for example with the debug key of your own Den builds. The Den app, in turn, stores each app's signing certificate with its approval: another app installed later under the same name is asked again.
+
 ## What it contains
 
 1) `AndroidDeviceProbe`: SoC, SoC family, RAM and free RAM, thermal status;
