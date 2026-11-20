@@ -43,6 +43,41 @@ kotlin {
     jvmToolchain(17)
 }
 
+// The architectures the pinned llama.cpp loads, read from its source, so the router refuses others before download.
+// Regenerated whenever the submodule moves.
+abstract class LlamaArchitectures : DefaultTask() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val source: RegularFileProperty
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val names = Regex("""\{\s*LLM_ARCH_\w+\s*,\s*"([^"]+)"\s*}""").findAll(source.get().asFile.readText())
+            .map { it.groupValues[1] }
+            .filter { it != "clip" && it != "(unknown)" }
+            .distinct().sorted().toList()
+        check(names.size > 20) { "found only ${names.size} architectures in ${source.get().asFile}" }
+        val out = outputDir.get().asFile.resolve("ai/fanak/den/backend/llamacpp/Architectures.kt")
+        out.parentFile.mkdirs()
+        out.writeText(
+            "package ai.fanak.den.backend.llamacpp\n\n// Generated from llama.cpp/src/llama-arch.cpp.\n" +
+                "internal val ARCHITECTURES = setOf(\n" + names.joinToString("") { "    \"$it\",\n" } + ")\n",
+        )
+    }
+}
+
+val architectures = tasks.register<LlamaArchitectures>("llamaArchitectures") {
+    source = layout.projectDirectory.file("llama.cpp/src/llama-arch.cpp")
+    outputDir = layout.buildDirectory.dir("generated/architectures")
+}
+
+androidComponents.onVariants { v ->
+    v.sources.java?.addGeneratedSourceDirectory(architectures, LlamaArchitectures::outputDir)
+}
+
 // The engine built for the machine running the tests (Linux or macOS, as in CI), so the JVM unit tests load, generate,
 // cancel and unload a real model. cmake builds incrementally; on Windows the engine tests are skipped.
 val hostDir = layout.buildDirectory.dir("host").get().asFile

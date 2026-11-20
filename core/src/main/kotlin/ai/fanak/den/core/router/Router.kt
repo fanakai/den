@@ -56,7 +56,7 @@ class Router(
             .filter { it.minRamMb <= device.availRamMb }
 
         fun usable(backend: DenBackend, accel: Accel, v: Variant) =
-            caps[backend]?.supports(accel, v.format) == true
+            caps[backend]?.let { it.supports(accel, v.format) && it.loads(v.arch) } == true
 
         // Recipes match the model by architecture and size, so a curated name and its hub repository get the same.
         val size = variants.firstOrNull { it.params != null }
@@ -122,8 +122,14 @@ class Router(
     private fun emptyPlanReason(model: String, device: DeviceProfile): String {
         val all = catalog.variants(model).filter { it.soc == null || it.soc == device.soc }
         val fits = all.filter { it.minRamMb <= device.availRamMb }
+        val caps = backends.mapNotNull { runCatching { it.probe(device) }.getOrNull() }
+        val unknownArch = all.filter { v ->
+            caps.any { v.format in it.formats } && caps.none { v.format in it.formats && it.loads(v.arch) }
+        }
         return when {
             all.isEmpty() -> "unknown model $model: no catalog has a file for it"
+            unknownArch.size == all.size ->
+                "$model needs a newer engine (architecture ${unknownArch.mapNotNull { it.arch }.distinct().joinToString()})"
             fits.isEmpty() -> "no file of $model fits in free RAM: ${device.availRamMb} MB free, the smallest needs ${all.minOf { it.minRamMb }} MB"
             fits.all { lowBit(it.quant) } -> "only 1- or 2-bit files of $model fit in free RAM (${device.availRamMb} MB); they are not used without a recipe"
             else -> "no backend on this device runs $model (${fits.map { it.format }.distinct().joinToString()})"
