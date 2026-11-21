@@ -40,6 +40,9 @@ In CI, unknown fields are rejected, so a typo fails the build; `RecipeLintTest` 
 <!-- Made from the recipe files by RecipeTableTest; do not edit. -->
 | Phone | Model size | First choice | Then | Prefill (tok/s) | Decode (tok/s) | Measured |
 |---|---|---|---|---|---|---|
+| Galaxy A15 (MT6789V) | Qwen3 0.6B | llamacpp, CPU, Q4_0 | llamacpp, CPU, Q4_K_M | 65.9 | 14.6 | 2026-11-21 |
+| Galaxy Z Flip7 (S5E9955) | Qwen3 0.6B | llamacpp, CPU, Q4_0 | llamacpp, CPU, Q4_K_M | 262.0 | 18.3 | 2026-11-21 |
+| Galaxy Z Flip7 (S5E9955) | Qwen3 1.7B | llamacpp, CPU, Q4_0 | llamacpp, CPU, Q4_K_M | 107.0 | 13.7 | 2026-11-21 |
 | Galaxy A52s 5G (SM7325) | Qwen3 0.6B | llamacpp, CPU, Q4_0 | llamacpp, CPU, Q4_K_M | 43.6 | 30.0 | 2026-11-19 |
 | Galaxy A52s 5G (SM7325) | Qwen3 1.7B | llamacpp, CPU, Q4_0 | llamacpp, CPU, Q4_K_M | 33.3 | 12.8 | 2026-11-19 |
 | Galaxy S25 (SM8750) | Qwen3 0.6B | llamacpp, CPU, Q4_0 | llamacpp, GPU, Q4_0; llamacpp, CPU, Q4_K_M | 213.8 | 40.9 | 2026-11-20 |
@@ -52,6 +55,9 @@ On the A52s the OpenCL driver is too old for llama.cpp and the Vulkan path is sl
 A52s prefill varies a lot between runs, likely due to core parking and heat.
 On the T760 the Mali GPU is not used (the OpenCL path is for Adreno); Q4_0 and Q4_K_M decode at the same speed, and Q4_0 prefills about 10% faster.
 With 3.4 GB of RAM it has about 1.2 GB free, so only the 0.6B size is measured.
+The Exynos 2500 was measured on a Samsung Remote Test Lab phone, on CPU only: its Xclipse GPU is not used.
+Its 0.6B decode is lower than on the A52s; the automatic thread choice on its 10-core CPU is not yet checked.
+The Helio G99 (Galaxy A15, also from the lab) has 3.6 GB of RAM, so only 0.6B is measured; Q4_0 is clearly ahead of Q4_K_M there (prefill 65.9 against 41.3, decode 14.6 against 11.8).
 
 ## Contributing
 

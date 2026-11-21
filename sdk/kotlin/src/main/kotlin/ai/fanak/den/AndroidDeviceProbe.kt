@@ -36,7 +36,8 @@ internal class AndroidDeviceProbe(context: Context) : DeviceProbe {
     override fun profile(): DeviceProfile {
         val mem = ActivityManager.MemoryInfo()
         (context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(mem)
-        val soc = if (Build.VERSION.SDK_INT >= 31) Build.SOC_MODEL else Build.HARDWARE
+        // Upper case and without the bin suffix, as recipes name it: Samsung reports s5e9955, MediaTek MT6789V/CD.
+        val soc = (if (Build.VERSION.SDK_INT >= 31) Build.SOC_MODEL else Build.HARDWARE).substringBefore('/').trim().uppercase()
         return DeviceProfile(
             platform = Platform.ANDROID,
             osApi = Build.VERSION.SDK_INT,
