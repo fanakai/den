@@ -354,8 +354,9 @@ class MainActivity : Activity() {
         if (list.any { !it.complete }) models.addView(button("Remove unfinished downloads") { run { DenService.deletePartial(this) } })
         list.map { it.model }.distinct().filter { it.startsWith("hf:") }.forEach { m ->
             models.addView(button("Check $m for updates") {
-                run { benchDen.newerCommit(m)?.let { "$m: a newer commit (${it.take(7)}) is on the hub" } ?: "$m is up to date" }
+                run { benchDen.newerCommit(m)?.let { "$m: a newer commit (${it.take(7)}) is on the hub; Update downloads it" } ?: "$m is up to date" }
             })
+            models.addView(button("Update $m") { run { DenService.update(m) } })
         }
         // GGUF files the user already has: used where they are, never copied.
         benchDen.addedFiles.forEach { a ->

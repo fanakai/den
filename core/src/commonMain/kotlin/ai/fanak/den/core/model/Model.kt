@@ -92,6 +92,10 @@ interface ModelCatalog {
 
     // A newer commit of the model's repository than the one in use; null when up to date or not from a hub.
     suspend fun newerCommit(model: String): String? = null
+
+    // Resolves the model again at the repository's latest commit, so its files download from there; returns that
+    // commit, or null when up to date or not from a hub.
+    suspend fun update(model: String): String? = null
 }
 
 /** Several catalogs as one: models and variants in catalog order, a variant's file from the first catalog that has it. */
@@ -107,6 +111,8 @@ class CompositeCatalog(private val catalogs: List<ModelCatalog>) : ModelCatalog 
     override fun licence(model: String) = catalogs.firstNotNullOfOrNull { it.licence(model) }
 
     override suspend fun newerCommit(model: String): String? = catalogs.firstNotNullOfOrNull { it.newerCommit(model) }
+
+    override suspend fun update(model: String): String? = catalogs.firstNotNullOfOrNull { it.update(model) }
 }
 
 // Downloads and caches variants; in connected mode one copy is shared by all apps.

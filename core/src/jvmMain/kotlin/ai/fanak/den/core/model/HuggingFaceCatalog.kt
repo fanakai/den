@@ -95,6 +95,14 @@ class HuggingFaceCatalog(
         return info.str("sha")?.takeIf { it != known }
     }
 
+    override suspend fun update(id: String): String? {
+        val ref = parse(id) ?: return null
+        newerCommit(id) ?: return null
+        val repo = load(id, ref).also { save(ref, it) }
+        resolved[id] = build(id, ref, repo)
+        return repo.commit
+    }
+
     private suspend fun load(id: String, ref: Ref): Repo {
         val info = json.parseToJsonElement(fetch("$host/api/models/${ref.name}/revision/${ref.revision}?expand[]=gated&expand[]=cardData&expand[]=sha&expand[]=gguf")).jsonObject
         val commit = info.str("sha") ?: throw IOException("no commit for ${ref.name}@${ref.revision}")

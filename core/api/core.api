@@ -786,6 +786,7 @@ public final class ai/fanak/den/core/model/CompositeCatalog : ai/fanak/den/core/
 	public fun newerCommit (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun remote (Lai/fanak/den/core/model/Variant;)Lai/fanak/den/core/model/RemoteFile;
 	public fun resolve (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun update (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun variants (Ljava/lang/String;)Ljava/util/List;
 }
 
@@ -891,6 +892,7 @@ public final class ai/fanak/den/core/model/HuggingFaceCatalog : ai/fanak/den/cor
 	public fun newerCommit (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun remote (Lai/fanak/den/core/model/Variant;)Lai/fanak/den/core/model/RemoteFile;
 	public fun resolve (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun update (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun variants (Ljava/lang/String;)Ljava/util/List;
 }
 
@@ -901,6 +903,7 @@ public final class ai/fanak/den/core/model/IndexCatalog : ai/fanak/den/core/mode
 	public fun newerCommit (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun remote (Lai/fanak/den/core/model/Variant;)Lai/fanak/den/core/model/RemoteFile;
 	public fun resolve (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun update (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun variants (Ljava/lang/String;)Ljava/util/List;
 }
 
@@ -1014,6 +1017,7 @@ public abstract interface class ai/fanak/den/core/model/ModelCatalog {
 	public abstract fun newerCommit (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun remote (Lai/fanak/den/core/model/Variant;)Lai/fanak/den/core/model/RemoteFile;
 	public abstract fun resolve (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun update (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun variants (Ljava/lang/String;)Ljava/util/List;
 }
 
@@ -1023,6 +1027,7 @@ public final class ai/fanak/den/core/model/ModelCatalog$DefaultImpls {
 	public static fun newerCommit (Lai/fanak/den/core/model/ModelCatalog;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun remote (Lai/fanak/den/core/model/ModelCatalog;Lai/fanak/den/core/model/Variant;)Lai/fanak/den/core/model/RemoteFile;
 	public static fun resolve (Lai/fanak/den/core/model/ModelCatalog;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static fun update (Lai/fanak/den/core/model/ModelCatalog;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
 
 public final class ai/fanak/den/core/model/ModelFormat {
@@ -1081,6 +1086,7 @@ public final class ai/fanak/den/core/model/ModelScopeCatalog : ai/fanak/den/core
 	public fun newerCommit (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun remote (Lai/fanak/den/core/model/Variant;)Lai/fanak/den/core/model/RemoteFile;
 	public fun resolve (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun update (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun variants (Ljava/lang/String;)Ljava/util/List;
 }
 
@@ -1108,6 +1114,7 @@ public final class ai/fanak/den/core/model/OllamaCatalog : ai/fanak/den/core/mod
 	public fun newerCommit (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun remote (Lai/fanak/den/core/model/Variant;)Lai/fanak/den/core/model/RemoteFile;
 	public fun resolve (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun update (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun variants (Ljava/lang/String;)Ljava/util/List;
 }
 

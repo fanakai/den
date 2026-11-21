@@ -286,6 +286,16 @@ class DenService : Service() {
         else -> "deleted $name, ${den.files.delete(name) shr 20} MB"
     }.also(::log)
 
+    private suspend fun updateModel(name: String): String = when {
+        name in downloads.values -> "$name is downloading; wait for it to finish"
+        !pool.evict(name) -> "$name is generating; try again when it is idle"
+        else -> try {
+            den.update(name)?.let { "updated $name to commit ${it.take(7)}" } ?: "$name is up to date"
+        } catch (e: Exception) {
+            "update of $name failed: ${e.message}"
+        }
+    }.also(::log)
+
     // The user approves hub repositories; the clients waiting for this model get the approval screen.
     private suspend fun beforeDownload(v: Variant, r: RemoteFile) {
         val waiting = pending.values.filter { it.model == v.model }
@@ -413,6 +423,10 @@ class DenService : Service() {
         // Deletes a model's files, unloading it first; without a running service nothing is loaded.
         suspend fun delete(context: android.content.Context, model: String): String =
             current?.deleteModel(model) ?: "deleted $model, ${ModelFiles(modelDir(context)).delete(model) shr 20} MB"
+
+        // Here, not in the screen's own Den: the service's catalog must follow the new commit, or it would download
+        // the old one again.
+        suspend fun update(model: String): String = current?.updateModel(model) ?: "the Den service is not running; open the Den app again"
 
         // Unloads a model before den bench loads its own copy; false while it is generating.
         suspend fun unload(model: String): Boolean = current?.pool?.evict(model) ?: true

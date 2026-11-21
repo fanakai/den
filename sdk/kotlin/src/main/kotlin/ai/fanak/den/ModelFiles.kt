@@ -49,6 +49,10 @@ class ModelFiles(private val dir: File, private val legacy: ModelCatalog = Built
     // Every file of the model (all quants), with its checksum marker and any partial download. Returns the bytes freed.
     fun delete(model: String): Long = manifest.entries().filter { it.model == model }.sumOf { remove(it) }
 
+    // The files of [model] whose path is not in [paths], e.g. those an update no longer has.
+    fun deleteExcept(model: String, paths: Set<String>): Long =
+        manifest.entries().filter { it.model == model && it.path !in paths }.sumOf { remove(it) }
+
     // Unfinished downloads, except the files named in `keep` (downloads in progress, by file name).
     fun deletePartial(keep: Set<String> = emptySet()): Long =
         manifest.entries().filter { !it.complete && it.fileName !in keep }.sumOf { remove(it) }

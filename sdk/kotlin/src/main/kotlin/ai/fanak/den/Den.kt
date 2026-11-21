@@ -296,6 +296,21 @@ class Den private constructor(context: Context, private val config: DenConfig) :
     suspend fun newerCommit(model: String): String? = withContext(Dispatchers.IO) { catalog.newerCommit(model) }
 
     /**
+     * Moves [model] to the latest commit of its hub repository, in this process: downloads the file the router picks
+     * (the old one is replaced once the new one's SHA-256 checks out) and loads it once. Files of the old commit that
+     * the new one no longer has are deleted after that load. Returns the new commit, or null when up to date.
+     * A model loaded before keeps its old file until it loads again.
+     */
+    suspend fun update(model: String): String? = withContext(Dispatchers.IO) {
+        val target = resolveAlias(model)
+        val commit = catalog.update(target) ?: return@withContext null
+        router.open(target, device(), minContext, config.useMmap, minContext).session.unload()
+        val kept = catalog.variants(target).mapNotNull { catalog.remote(it)?.path }.toSet()
+        files.deleteExcept(target, kept)
+        commit
+    }
+
+    /**
      * Adds a GGUF file the user picked with the system file picker (ACTION_OPEN_DOCUMENT): it stays where it is, and
      * apps name it by the returned file's id (file:<name>). Reads the whole file once for its SHA-256.
      */
