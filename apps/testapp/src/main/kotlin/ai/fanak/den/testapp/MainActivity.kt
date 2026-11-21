@@ -8,6 +8,7 @@ import ai.fanak.den.core.backend.ChatMessage
 import ai.fanak.den.core.backend.GenEvent
 import ai.fanak.den.core.backend.GenRequest
 import ai.fanak.den.core.backend.Role
+import ai.fanak.den.core.bench.Contribute
 import ai.fanak.den.core.router.NoUsableBackendException
 import android.app.Activity
 import android.os.Bundle
@@ -95,6 +96,10 @@ class MainActivity : Activity() {
                 r.candidates.filter { !it.ok }.forEach { c -> log("bench failed: ${c.accel} ${c.quant}: ${c.error}") }
                 log("bench done: ${dir.path}/$name.${if (yaml != null) "yaml" else "json (no recipe: model size unknown or nothing ran)"}")
                 yaml?.lines()?.forEach { log("recipe: $it") }
+                if (yaml != null) {
+                    val known = den.recipes.any { it.soc == r.soc }
+                    log("bench link: ${if (known) Contribute.issueUrl(r, yaml) else Contribute.newRecipeUrl(r.soc, yaml)}")
+                }
             } catch (e: Exception) {
                 log("bench error: ${e.message}")
             } finally {

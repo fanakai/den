@@ -119,6 +119,27 @@ class BenchTest {
     }
 
     @Test
+    fun linksCarryTheRecipe() = runTest {
+        val b = Fake(mapOf((Accel.CPU to "q4_0") to Triple(1_500L, 10_000L, "fox")))
+        val r = result(Bench(store, runs = 1).run(candidates(b)))
+        val yaml = RecipeFiles.encode(r.recipe()!!)
+        fun query(url: String) = url.substringAfter('?').split('&').associate {
+            it.substringBefore('=') to java.net.URLDecoder.decode(it.substringAfter('='), "UTF-8")
+        }
+
+        val pr = Contribute.newRecipeUrl(r.soc, yaml)
+        assertTrue(pr.startsWith("https://github.com/fanakai/den/new/main/recipes?"), pr)
+        assertTrue(" " !in pr && "+" !in pr, pr)
+        assertEquals("T760.yaml", query(pr)["filename"])
+        assertEquals(yaml, query(pr)["value"])
+
+        val issue = query(Contribute.issueUrl(r, yaml))
+        assertEquals("Recipe: T760, m (ZTE Z2357N)", issue["title"])
+        assertTrue("| llamacpp cpu q4_0 | 200.0 | 10.0 |" in issue["body"]!!, issue["body"])
+        assertTrue("```yaml\n$yaml```" in issue["body"]!!, issue["body"])
+    }
+
+    @Test
     fun spreadTakesTheMedian() {
         assertEquals(Spread(3.0, 1.0, 9.0), Spread.of(listOf(9.0, 1.0, 3.0)))
         assertEquals(Spread(2.5, 1.0, 9.0), Spread.of(listOf(9.0, 1.0, 2.0, 3.0)))
