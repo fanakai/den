@@ -12,4 +12,10 @@ oneway interface IOpenCallback {
 
     // Version 3: the Den app asks the user about this app; opening this screen needs no notification permission.
     void onApproval(in PendingIntent screen);
+
+    // Version 5, after openWith: the context the model was loaded with, in tokens.
+    void onContext(int contextLength);
+
+    // Version 5, after openWith: an error with its kind, "no_backend" when no candidate could run, else "error".
+    void onFailed(String kind, String message);
 }

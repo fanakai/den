@@ -5,6 +5,7 @@ import ai.fanak.den.core.backend.GenRequest
 import ai.fanak.den.core.backend.GenStats
 import ai.fanak.den.core.device.Accel
 import ai.fanak.den.core.model.DownloadProgress
+import ai.fanak.den.core.router.NoUsableBackendException
 import ai.fanak.den.core.router.Source
 import android.app.ActivityOptions
 import android.app.PendingIntent
@@ -103,13 +104,41 @@ internal class DenAppConnection(
         return svc.httpPort().takeIf { it > 0 }?.let { "http://127.0.0.1:$it/v1" }
     }
 
-    suspend fun open(model: String): DenModel {
+    private fun options(contextLength: Int, minContextLength: Int) =
+        org.json.JSONObject().put("contextLength", contextLength).put("minContextLength", minContextLength).toString()
+
+    // The Den app's route, or null when it is older than version 5.
+    suspend fun plan(model: String, contextLength: Int, minContextLength: Int): List<Route>? {
         val svc = service()
+        if (svc.version() < 5) return null
+        return svc.plan(model, options(contextLength, minContextLength)).map { line ->
+            val (backend, accel, quant, source) = line.split(' ')
+            Route(backend, Accel.valueOf(accel), quant, Source.valueOf(source))
+        }
+    }
+
+    suspend fun open(model: String, contextLength: Int, minContextLength: Int): DenModel {
+        val svc = service()
+        val v5 = svc.version() >= 5
         return suspendCancellableCoroutine { cont ->
             val callback = object : IOpenCallback.Stub() {
+                @Volatile private var context = 0
+
                 override fun onOpened(session: Long, backend: String, accel: String, quant: String, source: String) {
-                    val m = RemoteModel(model, svc, session, backend, Accel.valueOf(accel), quant, Source.valueOf(source))
+                    val m = RemoteModel(model, svc, session, backend, Accel.valueOf(accel), quant, Source.valueOf(source), context)
                     if (cont.isActive) cont.resume(m) else m.close()
+                }
+
+                override fun onContext(contextLength: Int) {
+                    context = contextLength
+                }
+
+                // The same exception as in embedded mode when no candidate could run.
+                override fun onFailed(kind: String, message: String) {
+                    if (!cont.isActive) return
+                    cont.resumeWithException(
+                        if (kind == "no_backend") NoUsableBackendException(model, emptyList(), message) else IOException("Den app: $message"),
+                    )
                 }
 
                 override fun onError(message: String) {
@@ -125,7 +154,7 @@ internal class DenAppConnection(
                 }
             }
             cont.invokeOnCancellation { runCatching { svc.cancelOpen(callback) } }
-            svc.open(model, callback)
+            if (v5) svc.openWith(model, options(contextLength, minContextLength), callback) else svc.open(model, callback)
         }
     }
 
@@ -162,6 +191,7 @@ internal class RemoteModel(
     override val accel: Accel,
     override val quant: String,
     override val source: Source,
+    override val contextLength: Int = 0,
 ) : DenModel() {
     override val connected = true
 

@@ -73,6 +73,7 @@ class MainActivity : Activity() {
 
         showPlan()
         if (intent.getBooleanExtra("bench", false)) bench()
+        if (intent.getBooleanExtra("compare", false)) compare()
         if (intent.getBooleanExtra("autorun", false)) run()
         if (intent.getBooleanExtra("soak", false)) {
             startForegroundService(android.content.Intent(this, SoakService::class.java).putExtras(intent))
@@ -108,6 +109,29 @@ class MainActivity : Activity() {
             } finally {
                 window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             }
+        }
+    }
+
+    // --ez compare true [--ei context N --ei minContext N]: the same steps in embedded and connected mode; each
+    // "compare" line should match between them.
+    private fun compare() {
+        val context = intent.getIntExtra("context", 4096)
+        val min = intent.getIntExtra("minContext", 0).takeIf { it > 0 }
+        job = scope.launch {
+            for (mode in listOf(DenMode.EMBEDDED, DenMode.CONNECTED)) {
+                val d = testDen(mode = mode, contextLength = context, minContextLength = min)
+                try {
+                    log("compare $mode route: ${d.route(model).joinToString()}")
+                    d.model(model).use { m -> log("compare $mode open: ${m.backend} ${m.accel} ${m.quant} (${m.source}), context ${m.contextLength}") }
+                    val e = runCatching { d.model("no-such-model") }.exceptionOrNull()
+                    log("compare $mode unknown: ${e?.javaClass?.simpleName}: ${e?.message}")
+                } catch (e: Exception) {
+                    log("compare $mode error: $e")
+                } finally {
+                    d.close()
+                }
+            }
+            log("compare done")
         }
     }
 

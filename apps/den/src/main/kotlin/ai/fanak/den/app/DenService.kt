@@ -12,6 +12,7 @@ import ai.fanak.den.core.backend.ChatMessage
 import ai.fanak.den.core.backend.GenEvent
 import ai.fanak.den.core.backend.GenRequest
 import ai.fanak.den.core.backend.Role
+import ai.fanak.den.core.router.NoUsableBackendException
 import ai.fanak.den.core.model.DownloadProgress
 import ai.fanak.den.core.model.RemoteFile
 import ai.fanak.den.core.model.Variant
@@ -63,8 +64,11 @@ class DenService : Service() {
     // File name -> model, for the downloads in progress.
     private val downloads = ConcurrentHashMap<String, String>()
 
+    // The context the next load of a model uses: what the last version 5 client asked for, (length, shortest).
+    private val wanted = ConcurrentHashMap<String, Pair<Int, Int>>()
+
     private val pool = ModelPool(
-        load = { den.model(it) },
+        load = { name -> wanted[name]?.let { (length, min) -> den.model(name, length, min) } ?: den.model(name) },
         prepare = { name ->
             den.resolve(name)
             val file = den.fileName(name)
@@ -84,13 +88,33 @@ class DenService : Service() {
     private val nextId = AtomicLong(1)
 
     private val binder = object : IDenService.Stub() {
-        override fun version() = 4
+        override fun version() = 5
 
         override fun httpPort() = if (HttpSettings.enabled(this@DenService)) http.port else -1
 
         override fun models() = den.models.toTypedArray()
 
-        override fun open(model: String, callback: IOpenCallback) {
+        override fun open(model: String, callback: IOpenCallback) = start(model, callback, null)
+
+        override fun openWith(model: String, options: String, callback: IOpenCallback) =
+            start(model, callback, runCatching { contextOf(options) }.getOrNull())
+
+        override fun plan(model: String, options: String): Array<String> {
+            val (_, min) = runCatching { contextOf(options) }.getOrNull() ?: (0 to 0)
+            // Binder thread: hf: names need the network once, then their cache.
+            runCatching { kotlinx.coroutines.runBlocking { kotlinx.coroutines.withTimeout(30_000) { den.resolve(model) } } }
+            return den.plan(model, minContextLength = min).map { "${it.backend.id} ${it.accel} ${it.variant.quant} ${it.source}" }.toTypedArray()
+        }
+
+        override fun cancelOpen(callback: IOpenCallback) {
+            pending[callback.asBinder()]?.takeIf { it.uid == Binder.getCallingUid() }?.job?.cancel()
+        }
+
+        // [context]: (length, shortest accepted) from a version 5 client, which also gets onContext and onFailed.
+        private fun start(model: String, callback: IOpenCallback, context: Pair<Int, Int>?) {
+            val v5 = context != null
+            fun fail(kind: String, message: String) =
+                runCatching { if (v5) callback.onFailed(kind, message) else callback.onError(message) }
             val uid = Binder.getCallingUid()
             val client = callback.asBinder()
             val p = Pending(model, uid, callback)
@@ -104,32 +128,37 @@ class DenService : Service() {
                     // Version 3 clients open the approval screen; older ones ignore it and get the notification.
                     if (!Approvals.request(this@DenService, pkg) { screen -> runCatching { callback.onApproval(screen) } }) {
                         log("open $model for $pkg: not allowed")
-                        return@launch callback.onError("$pkg is not allowed to use Den; allow it in the Den app")
+                        fail("error", "$pkg is not allowed to use Den; allow it in the Den app")
+                        return@launch
                     }
-                    val m = pool.acquire(model)
+                    if (context != null) wanted[model] = context
+                    var m = pool.acquire(model)
+                    // Loaded for another app with a shorter context than this one accepts: reloaded when it is idle.
+                    if (context != null && m.contextLength in 1 until context.second) {
+                        pool.release(model)
+                        if (!pool.evict(model)) throw IllegalStateException("$model runs with ${m.contextLength} tokens of context for another app; try again when it is idle")
+                        m = pool.acquire(model)
+                    }
                     val id = nextId.getAndIncrement()
                     // A client that dies releases its sessions.
                     val session = Session(model, uid, client)
                     sessions[id] = session
                     session.death = IBinder.DeathRecipient { scope.launch { release(id) } }.also { client.linkToDeath(it, 0) }
                     log("open $model for ${caller(uid)}: session $id, ${m.backend} ${m.accel} ${m.quant}, sessions ${pool.sessions(model)}")
+                    if (v5) callback.onContext(m.contextLength)
                     callback.onOpened(id, m.backend, m.accel.name, m.quant, m.source.name)
                 } catch (e: CancellationException) {
                     log("open $model for ${caller(uid)} cancelled")
-                    runCatching { callback.onError("cancelled") }
+                    fail("error", "cancelled")
                 } catch (e: Exception) {
                     log("open $model for ${caller(uid)} failed: $e")
-                    runCatching { callback.onError(e.message ?: e.toString()) }
+                    fail(if (e is NoUsableBackendException) "no_backend" else "error", e.message ?: e.toString())
                 } finally {
                     pending.remove(client)
                     runCatching { client.unlinkToDeath(early, 0) }
                 }
             }
             p.job?.start()
-        }
-
-        override fun cancelOpen(callback: IOpenCallback) {
-            pending[callback.asBinder()]?.takeIf { it.uid == Binder.getCallingUid() }?.job?.cancel()
         }
 
         override fun generate(
@@ -241,6 +270,13 @@ class DenService : Service() {
                 )
             }
         }
+    }
+
+    // {"contextLength":4096,"minContextLength":2048} -> (4096, 2048).
+    private fun contextOf(options: String): Pair<Int, Int> {
+        val o = org.json.JSONObject(options)
+        val length = o.getInt("contextLength").coerceIn(256, 1 shl 20)
+        return length to o.optInt("minContextLength", length).coerceIn(256, length)
     }
 
     private fun caller(uid: Int) = packageManager.getNameForUid(uid) ?: uid.toString()

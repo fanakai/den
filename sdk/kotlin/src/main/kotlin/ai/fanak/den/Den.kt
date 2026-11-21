@@ -102,6 +102,9 @@ data class DenConfig(
     // Whether the app may use a model under this licence id (null: none given), e.g. { !Licences.nonCommercial(it) }.
     // Embedded mode; in connected mode it is checked when the model opens.
     val allowLicence: (String?) -> Boolean = { true },
+    // AUTO: when the Den app is installed but fails to open the model, run it in this app instead. False reports the
+    // error, so a second large download never starts in this app without it knowing.
+    val fallback: Boolean = true,
 )
 
 enum class DenMode {
@@ -191,8 +194,21 @@ class Den private constructor(context: Context, private val config: DenConfig) :
 
     fun device(): DeviceProfile = probe.profile()
 
-    // What the router would try, in order, without loading anything.
-    fun plan(model: String, device: DeviceProfile = device()): List<Candidate> = router.plan(model, device, minContext, config.useMmap)
+    // What the router of this process would try, in order, without loading anything. route() gives the Den app's.
+    fun plan(model: String, device: DeviceProfile = device(), minContextLength: Int = minContext): List<Candidate> =
+        router.plan(model, device, minContextLength, config.useMmap)
+
+    /**
+     * What model() would try, in order, in the mode it would use: the Den app's route when connected (version 5 and
+     * later), else this process's. Looks the model up first, as model() does.
+     */
+    suspend fun route(model: String): List<Route> {
+        if (connected) {
+            runCatching { app.plan(model, config.contextLength, minContext) }.getOrNull()?.let { return it }
+        }
+        resolve(model)
+        return plan(model).map { Route(it.backend.id, it.accel, it.variant.quant, it.source) }
+    }
 
     // The file the router would pick on this phone, and its download without loading it. Runs in this process.
     fun fileName(model: String): String? = plan(model).firstOrNull()?.let { catalog.remote(it.variant)?.fileName }
@@ -293,13 +309,19 @@ class Den private constructor(context: Context, private val config: DenConfig) :
     suspend fun httpEndpoint(): String? =
         if (app.status() == DenAppStatus.OK) runCatching { app.httpEndpoint() }.getOrNull() else null
 
-    suspend fun model(name: String): DenModel {
+    // [contextLength] and [minContextLength] replace the config's for this model, e.g. per client in the Den app.
+    suspend fun model(
+        name: String,
+        contextLength: Int = config.contextLength,
+        minContextLength: Int = minOf(minContext, contextLength),
+    ): DenModel {
         val status = if (config.mode == DenMode.EMBEDDED) DenAppStatus.MISSING else app.status()
         if (status == DenAppStatus.OK) {
             val m = try {
-                app.open(name).also { it.licenceOf = ::licence }
+                app.open(name, contextLength, minContextLength).also { it.licenceOf = ::licence }
             } catch (e: Exception) {
-                if (config.mode == DenMode.CONNECTED) throw e
+                // A model no backend can run fails the same way here; and the app may refuse the fallback.
+                if (config.mode == DenMode.CONNECTED || !config.fallback || e is NoUsableBackendException) throw e
                 Log.w("Den", "Den app unavailable, running $name in the app: $e")
                 null
             }
@@ -319,7 +341,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         } else if (status == DenAppStatus.UNTRUSTED) {
             Log.w("Den", "$DEN_PACKAGE is not signed by Fanak Den; running $name in the app")
         }
-        val reopen: suspend () -> Opened = { router.open(name, device(), config.contextLength, config.useMmap, minContext) }
+        val reopen: suspend () -> Opened = { router.open(name, device(), contextLength, config.useMmap, minContextLength) }
         val crashed = { o: Opened, e: Throwable -> router.reportFailure(device(), o.candidate, e) }
         return LocalModel(name, reopen(), reopen, crashed) { local -= it }.also { it.licenceOf = ::licence; local += it }
     }
@@ -337,6 +359,11 @@ class Den private constructor(context: Context, private val config: DenConfig) :
     }
 }
 
+// One candidate of a route, the same in both modes.
+data class Route(val backend: String, val accel: Accel, val quant: String, val source: Source) {
+    override fun toString() = "$backend $accel $quant ($source)"
+}
+
 abstract class DenModel : AutoCloseable {
     abstract val name: String
     abstract val backend: String
@@ -351,6 +378,9 @@ abstract class DenModel : AutoCloseable {
 
     // True when the model runs in the Den app, shared with other apps.
     abstract val connected: Boolean
+
+    // The context it was loaded with, in tokens; 0 from a Den app older than version 5.
+    open val contextLength: Int get() = 0
     open val failures: List<Failure> get() = emptyList()
 
     abstract fun chat(request: GenRequest): Flow<GenEvent>
@@ -390,6 +420,7 @@ internal class LocalModel(
     override val quant get() = last.candidate.variant.quant
     override val source get() = last.candidate.source
     override val connected = false
+    override val contextLength get() = last.contextLength
     override val failures get() = last.failures
 
     override fun chat(request: GenRequest): Flow<GenEvent> = flow {
