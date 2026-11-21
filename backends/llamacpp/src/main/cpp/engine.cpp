@@ -21,7 +21,6 @@
 
 #include "ggml-backend.h"
 #include "json-schema-to-grammar.h"
-#include <nlohmann/json.hpp>
 #include "llama.h"
 #include "threads.h"
 
@@ -219,7 +218,7 @@ std::unique_ptr<Engine> Engine::load(const std::string &path, int n_ctx, int n_t
         }
         mp.devices = devs;
     }
-    mp.use_mmap = use_mmap;
+    mp.load_mode = use_mmap ? LLAMA_LOAD_MODE_MMAP : LLAMA_LOAD_MODE_NONE;
     llama_model *model = llama_model_load_from_file(path.c_str(), mp);
     if (!model) {
         err = "failed to load model: " + path;
@@ -452,7 +451,7 @@ bool Engine::generate(const Messages &messages, const GenParams &params, const O
     std::string grammar = params.grammar;
     if (grammar.empty() && !params.json_schema.empty()) {
         try {
-            grammar = json_schema_to_grammar(nlohmann::ordered_json::parse(params.json_schema));
+            grammar = json_schema_to_grammar(common_json::parse(params.json_schema));
         } catch (const std::exception &e) {
             err = std::string("invalid JSON schema: ") + e.what();
             return false;
