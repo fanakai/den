@@ -177,7 +177,7 @@ class Bench(
                 }
                 try {
                     val t0 = clock()
-                    val session = c.backend.load(artifact, LoadOptions(c.accel, contextLength))
+                    val session = c.backend.load(artifact, LoadOptions(c.accel, minOf(contextLength, c.variant.maxContext ?: contextLength)))
                     val loadMs = clock() - t0
                     try {
                         run(session, base.copy(loadMs = loadMs), ref)

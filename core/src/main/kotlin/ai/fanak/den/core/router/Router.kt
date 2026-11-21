@@ -63,11 +63,13 @@ class Router(
     // Without a recipe the CPU comes first: a GPU or NPU that is present is not always faster (A52s) and can crash.
     private val defaultOrder = listOf(Accel.CPU, Accel.GPU, Accel.NPU)
 
-    fun plan(model: String, device: DeviceProfile): List<Candidate> {
+    // [minContext]: the shortest context the app accepts, in tokens; a file with a lower maximum is left out.
+    fun plan(model: String, device: DeviceProfile, minContext: Int? = null): List<Candidate> {
         val caps = backends.associateWith { runCatching { it.probe(device) }.getOrNull() }
         val variants = catalog.variants(model)
             .filter { it.soc == null || it.soc == device.soc }
             .filter { it.minRamMb <= device.availRamMb }
+            .filter { fitsContext(it, minContext) }
 
         fun usable(backend: DenBackend, accel: Accel, v: Variant) =
             caps[backend]?.let { it.supports(accel, v.format) && it.loads(v.arch) } == true
@@ -108,11 +110,21 @@ class Router(
             .filterNot { failures.isBlocked(key(device, it)) }
     }
 
-    suspend fun open(model: String, device: DeviceProfile, contextLength: Int = 4096, mmap: Boolean = true): Opened {
+    /**
+     * Loads the first candidate that works, with a context of [contextLength] tokens, or less down to [minContext]
+     * for a file whose maximum is lower.
+     */
+    suspend fun open(
+        model: String,
+        device: DeviceProfile,
+        contextLength: Int = 4096,
+        mmap: Boolean = true,
+        minContext: Int = contextLength,
+    ): Opened {
         catalog.resolve(model)
         val tried = mutableListOf<Failure>()
-        var plan = plan(model, device)
-        if (plan.isEmpty()) throw NoUsableBackendException(model, tried, emptyPlanReason(model, device))
+        var plan = plan(model, device, minContext)
+        if (plan.isEmpty()) throw NoUsableBackendException(model, tried, emptyPlanReason(model, device, minContext))
         val first = plan.first()
         if (firstRun != null && first.source == Source.DEFAULT && measured.add(first.variant)) {
             try {
@@ -122,7 +134,7 @@ class Router(
             } catch (e: Throwable) {
                 // The default order still works.
             }
-            plan = plan(model, device).ifEmpty { plan }
+            plan = plan(model, device, minContext).ifEmpty { plan }
         }
         for (c in plan) {
             try {
@@ -134,7 +146,7 @@ class Router(
                     throw e
                 }
                 val session = try {
-                    c.backend.load(artifact, LoadOptions(c.accel, contextLength, mmap = mmap))
+                    c.backend.load(artifact, LoadOptions(c.accel, minOf(contextLength, c.variant.maxContext ?: contextLength), mmap = mmap))
                 } catch (e: EngineLostException) {
                     // The engine did not start or the system stopped it: other files would only be downloaded in vain.
                     if (e !is EngineCrashedException) throw NoUsableBackendException(model, tried + Failure(c, e))
@@ -153,15 +165,18 @@ class Router(
         throw NoUsableBackendException(model, tried)
     }
 
-    private fun emptyPlanReason(model: String, device: DeviceProfile): String {
+    private fun emptyPlanReason(model: String, device: DeviceProfile, minContext: Int?): String {
         val all = catalog.variants(model).filter { it.soc == null || it.soc == device.soc }
-        val fits = all.filter { it.minRamMb <= device.availRamMb }
+        val longEnough = all.filter { fitsContext(it, minContext) }
+        val fits = longEnough.filter { it.minRamMb <= device.availRamMb }
         val caps = backends.mapNotNull { runCatching { it.probe(device) }.getOrNull() }
         val unknownArch = all.filter { v ->
             caps.any { v.format in it.formats } && caps.none { v.format in it.formats && it.loads(v.arch) }
         }
         return when {
             all.isEmpty() -> "unknown model $model: no catalog has a file for it"
+            longEnough.isEmpty() ->
+                "no file of $model supports a context of $minContext tokens (the longest has ${all.mapNotNull { it.maxContext }.max()})"
             unknownArch.size == all.size ->
                 "$model needs a newer engine (architecture ${unknownArch.mapNotNull { it.arch }.distinct().joinToString()})"
             fits.isEmpty() -> "no file of $model fits in free RAM: ${device.availRamMb} MB free, the smallest needs ${all.minOf { it.minRamMb }} MB"
@@ -169,6 +184,8 @@ class Router(
             else -> "no backend on this device runs $model (${fits.map { it.format }.distinct().joinToString()})"
         }
     }
+
+    private fun fitsContext(v: Variant, minContext: Int?) = minContext == null || v.maxContext == null || v.maxContext >= minContext
 
     // For crashes after load, e.g. during generation; the next open() skips this candidate.
     fun reportFailure(device: DeviceProfile, candidate: Candidate, error: Throwable) =

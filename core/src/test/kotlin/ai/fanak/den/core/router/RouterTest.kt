@@ -274,4 +274,44 @@ class RouterTest {
         val e = assertFailsWith<NoUsableBackendException> { r.open(model, device) }
         assertEquals(4, e.failures.size)
     }
+
+    @Test
+    fun aFileWithAShorterContextIsSkippedOrCapped() = runTest {
+        // An NPU build compiled for 1280 tokens, then the usual GGUF.
+        val ekv = npu.copy(maxContext = 1280)
+        val gguf = q4km.copy(maxContext = 40960)
+        val cat = object : ModelCatalog {
+            override fun variants(model: String) = listOf(ekv, gguf)
+        }
+        val contexts = mutableListOf<Int>()
+        val b = object : DenBackend {
+            override val id = "litert"
+            override fun probe(device: DeviceProfile) = Capabilities(setOf(Accel.CPU, Accel.NPU), setOf(ModelFormat.LITERTLM, ModelFormat.GGUF))
+            override suspend fun load(artifact: Artifact, opts: LoadOptions): Session {
+                contexts += opts.contextLength
+                return object : Session {
+                    override fun generate(req: GenRequest): Flow<GenEvent> = emptyFlow()
+                    override fun unload() {}
+                }
+            }
+            override fun health() = Health.Ok
+        }
+        val recipe = Recipe(
+            socFamily = "snapdragon-8-elite",
+            rankings = listOf(Ranking(ModelSize("qwen3", 1.7), listOf(RecipeChoice("litert", Accel.NPU, ModelFormat.LITERTLM, "int4")))),
+        )
+        val r = Router(listOf(b), InMemoryRecipeStore(listOf(recipe)), cat, store)
+
+        assertTrue(r.plan(model, device, minContext = 4096).none { it.variant == ekv })
+        assertEquals(gguf, r.open(model, device, contextLength = 4096).candidate.variant)
+        // The app accepts 1024 tokens: the NPU file runs with its 1280.
+        assertEquals(ekv, r.open(model, device, contextLength = 4096, minContext = 1024).candidate.variant)
+        assertEquals(listOf(4096, 1280), contexts)
+
+        val onlyNpu = Router(listOf(b), InMemoryRecipeStore(emptyList()), object : ModelCatalog {
+            override fun variants(model: String) = listOf(ekv)
+        }, store)
+        val e = assertFailsWith<NoUsableBackendException> { onlyNpu.open(model, device, contextLength = 4096) }
+        assertEquals("no file of $model supports a context of 4096 tokens (the longest has 1280)", e.message)
+    }
 }
