@@ -50,7 +50,8 @@ private class ClientGone(cause: IOException) : IOException(cause)
 typealias Chat = (GenRequest) -> Flow<GenEvent>
 
 /**
- * Minimal OpenAI-compatible server on 127.0.0.1: GET /v1/models and POST /v1/chat/completions (with streaming).
+ * Minimal OpenAI-compatible server on 127.0.0.1: GET /v1/models and POST /v1/chat/completions (with streaming), and
+ * GET /den/v1/system-info for Den's own clients.
  * Plain JVM, so the Den app, the tests and later a Linux daemon (#74) run the same code.
  */
 class OpenAiServer(
@@ -63,6 +64,8 @@ class OpenAiServer(
     private val log: (String) -> Unit,
     // A local app could otherwise hold any number of sockets open.
     private val maxConnections: Int = 8,
+    // GET /den/v1/system-info: the device and the backends, as a JSON object.
+    private val systemInfo: () -> JsonObject = { buildJsonObject {} },
 ) {
     @Volatile private var server: ServerSocket? = null
     private val open = AtomicInteger()
@@ -133,6 +136,7 @@ class OpenAiServer(
             log("http $method $path from $name")
             when {
                 method == "GET" && path == "/v1/models" -> out.json(200, modelList())
+                method == "GET" && path == "/den/v1/system-info" -> out.json(200, systemInfo())
                 method == "POST" && path == "/v1/chat/completions" -> chat(body.decodeToString(), out)
                 else -> throw HttpError(404, "not found: $method $path")
             }

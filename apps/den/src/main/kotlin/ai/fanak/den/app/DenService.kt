@@ -8,6 +8,7 @@ import ai.fanak.den.ModelFiles
 import ai.fanak.den.IDenService
 import ai.fanak.den.IGenCallback
 import ai.fanak.den.IOpenCallback
+import ai.fanak.den.core.backend.BackendDescriptor
 import ai.fanak.den.core.backend.ChatMessage
 import ai.fanak.den.core.backend.GenEvent
 import ai.fanak.den.core.backend.GenRequest
@@ -43,6 +44,12 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 
 // Hosts the engine for every app on the phone: one loaded copy of each model, shared by all callers.
 class DenService : Service() {
@@ -83,6 +90,7 @@ class DenService : Service() {
         availMb = { den.device().availRamMb },
         now = SystemClock::elapsedRealtime,
         log = ::log,
+        exclusive = { name -> den.exclusiveAccelerator(name) },
     )
     private val sessions = ConcurrentHashMap<Long, Session>()
     private val nextId = AtomicLong(1)
@@ -227,7 +235,29 @@ class DenService : Service() {
         use = { name, block -> pool.use(name) { m -> block { req -> recorded(name, m, m.chat(req)) } } },
         client = { HttpSettings.name(this, it) },
         log = ::log,
+        systemInfo = ::systemInfo,
     )
+
+    // Every field, defaults too, so clients need not know them.
+    private val INFO_JSON = Json { encodeDefaults = true }
+
+    // The device and the backends, for GET /den/v1/system-info.
+    private fun systemInfo(): JsonObject {
+        val p = den.device()
+        val backends = kotlinx.coroutines.runBlocking { den.backendDescriptors() }
+        return buildJsonObject {
+            put("den_version", runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull())
+            putJsonObject("device") {
+                put("soc", p.soc)
+                put("soc_family", p.socFamily)
+                put("android_api", p.osApi)
+                put("ram_mb", p.ramMb)
+                put("free_ram_mb", p.availRamMb)
+                put("thermal", p.thermal.name)
+            }
+            put("backends", INFO_JSON.encodeToJsonElement(ListSerializer(BackendDescriptor.serializer()), backends))
+        }
+    }
 
     // Starts, stops, or moves the endpoint to the port set on the Den screen.
     private fun applyHttp() {

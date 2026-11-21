@@ -72,6 +72,7 @@ class MainActivity : Activity() {
             setPadding(32, 32, 32, 32)
             addView(TextView(context).apply { this.text = text })
             addView(models)
+            addView(backendsView)
             addView(downloads)
             addView(bench)
             addView(apps)
@@ -231,6 +232,23 @@ class MainActivity : Activity() {
             }
         })
         addView(text)
+    }
+
+    // The backends with their descriptors; filled once, off the main thread (the version comes from the engine).
+    private val backendsView by lazy {
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(TextView(context).apply { text = "\nBackends"; textSize = 18f })
+            scope.launch {
+                benchDen.backendDescriptors().forEach { d ->
+                    addView(TextView(context).apply {
+                        text = "${d.name} ${d.version} (${d.id}), ${d.tier.name.lowercase()}, ${d.licence}\n" +
+                            "${d.author}, ${d.url}\n${d.modes.joinToString { it.name.lowercase() }}, " +
+                            "${d.formats.joinToString { it.name.lowercase() }}, slots ${d.slots.name.lowercase()}"
+                    })
+                }
+            }
+        }
     }
 
     // The diagnostics file, shown before it is shared; null until the user asks for it.

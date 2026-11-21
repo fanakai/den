@@ -13,6 +13,12 @@ interface DenBackend {
     // Part of the key of a recorded crash, so an updated backend gets tried again.
     val version: String get() = ""
 
+    // What it is, without its version: plain data, so reading it never starts the engine. Null: not described.
+    val about: BackendDescriptor? get() = null
+
+    // With the version: shown on the Den screen and at /den/v1/system-info.
+    val descriptor: BackendDescriptor? get() = about?.copy(version = version)
+
     fun probe(device: DeviceProfile): Capabilities
 
     suspend fun load(artifact: Artifact, opts: LoadOptions): Session

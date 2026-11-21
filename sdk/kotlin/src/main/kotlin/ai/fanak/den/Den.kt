@@ -1,11 +1,13 @@
 package ai.fanak.den
 
 import ai.fanak.den.backend.llamacpp.LlamaCppBackend
+import ai.fanak.den.core.backend.BackendDescriptor
 import ai.fanak.den.core.backend.ChatMessage
 import ai.fanak.den.core.backend.DenBackend
 import ai.fanak.den.core.backend.GenEvent
 import ai.fanak.den.core.backend.GenRequest
 import ai.fanak.den.core.backend.Role
+import ai.fanak.den.core.backend.SlotPolicy
 import ai.fanak.den.core.device.Accel
 import ai.fanak.den.core.device.DeviceProfile
 import ai.fanak.den.core.device.Thermal
@@ -58,6 +60,7 @@ import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.fold
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 data class DenConfig(
@@ -168,14 +171,16 @@ class Den private constructor(context: Context, private val config: DenConfig) :
 
     // Measured on this phone by the first-run benchmark.
     val localRecipes = LocalRecipeStore(File(context.filesDir, "den/local-recipes"), Build.FINGERPRINT)
+    private val backends: List<DenBackend> = (config.backends ?: listOf(LlamaCppBackend())).map { b ->
+        when {
+            !config.isolate || Build.VERSION.SDK_INT < 29 -> b
+            EngineService.creatable(b) -> IsolatedBackend(engine, b)
+            else -> b.also { Log.w("Den", "${b.id} runs in the app process: no constructor the engine process can call") }
+        }
+    }
+
     private val router = Router(
-        (config.backends ?: listOf(LlamaCppBackend())).map { b ->
-            when {
-                !config.isolate || Build.VERSION.SDK_INT < 29 -> b
-                EngineService.creatable(b) -> IsolatedBackend(engine, b)
-                else -> b.also { Log.w("Den", "${b.id} runs in the app process: no constructor the engine process can call") }
-            }
-        },
+        backends,
         InMemoryRecipeStore(recipes),
         catalog,
         store,
@@ -231,6 +236,18 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         resolve(model)
         plan(model).firstOrNull()?.let { store.fetch(it.variant) }
     }
+
+    /**
+     * What each backend is, with its version: asking an engine process for it can start that process, so it runs on
+     * the IO dispatcher. A backend that does not describe itself is left out.
+     */
+    suspend fun backendDescriptors(): List<BackendDescriptor> = withContext(Dispatchers.IO) {
+        backends.mapNotNull { b -> runCatching { b.descriptor }.getOrNull() ?: b.about }
+    }
+
+    // The accelerator [model] would load on, as "backend ACCEL", when that accelerator holds one model at a time.
+    fun exclusiveAccelerator(model: String): String? =
+        plan(model).firstOrNull()?.takeIf { it.backend.about?.slots == SlotPolicy.EXCLUSIVE_ACCEL }?.let { "${it.backend.id} ${it.accel}" }
 
     // Looks a model up in the catalogs (network for hf: names, then cached); plan() and fileName() use the result.
     suspend fun resolve(model: String) = catalog.resolve(model)
