@@ -10,6 +10,7 @@ import ai.fanak.den.core.device.DeviceProfile
 import ai.fanak.den.core.device.Thermal
 import ai.fanak.den.core.model.Artifact
 import ai.fanak.den.core.model.ModelCatalog
+import ai.fanak.den.core.model.ModelFormat
 import ai.fanak.den.core.model.ModelStore
 import ai.fanak.den.core.model.Variant
 import ai.fanak.den.core.recipe.RecipeStore
@@ -47,12 +48,30 @@ enum class RoutingPolicy { LOCAL_ONLY, LOCAL_FIRST, REMOTE_FIRST }
 
 data class Failure(val candidate: Candidate, val error: Throwable)
 
+// Why a file, or a path for it, is not in the plan.
+enum class RejectReason { OTHER_SOC, CONTEXT, LICENCE, RAM, PHONE_RAM, DISK, NO_BACKEND, ARCHITECTURE, LOW_BIT, CRASHED }
+
+data class Rejection(
+    val quant: String,
+    val format: ModelFormat,
+    val reason: RejectReason,
+    val detail: String,
+    // Set for a path that crashed before; the reasons above it are about the whole file.
+    val backend: String? = null,
+    val accel: Accel? = null,
+)
+
+// The plan, in order, and what was left out and why: what an app shows when it asks why a model runs where it does.
+data class RouteExplanation(val candidates: List<Candidate>, val rejected: List<Rejection>)
+
 data class Opened(
     val session: Session,
     val candidate: Candidate,
     val failures: List<Failure>,
     // The context it was loaded with, in tokens: shorter than asked when RAM or the file allowed no more.
     val contextLength: Int = 0,
+    // Left out of the plan before any try; [failures] are the tries that failed before this one (a fallback).
+    val rejected: List<Rejection> = emptyList(),
 ) {
     // No recipe for this device: worth running a benchmark and submitting it.
     val needsBenchmark get() = candidate.source == Source.DEFAULT
@@ -63,6 +82,7 @@ class NoUsableBackendException(
     val failures: List<Failure>,
     // Why nothing was tried, when the plan was empty.
     val reason: String? = null,
+    val rejected: List<Rejection> = emptyList(),
 ) : Exception(reason ?: "No backend could load $model (${failures.size} attempts)")
 
 class Router(
@@ -149,6 +169,37 @@ class Router(
         }
     }
 
+    /** The plan of [model] with what it leaves out: each file with the first reason that removes it, then each path that crashed before. */
+    fun explain(model: String, device: DeviceProfile, minContext: Int? = null, mmap: Boolean = true): RouteExplanation {
+        val planned = plan(model, device, minContext, mmap)
+        val caps = backends.mapNotNull { b -> runCatching { b.probe(device) }.getOrNull()?.let { b to it } }
+        val ctx = minContext ?: 0
+        val rejected = mutableListOf<Rejection>()
+        for (v in catalog.variants(model)) {
+            fun no(reason: RejectReason, detail: String) = rejected.add(Rejection(v.quant, v.format, reason, detail))
+            val need = ramNeed(v, ctx, mmap)
+            when {
+                v.soc != null && v.soc != device.soc -> no(RejectReason.OTHER_SOC, "built for ${v.soc}")
+                !fitsContext(v, minContext) -> no(RejectReason.CONTEXT, "${v.maxContext} tokens at most, $minContext needed")
+                !licenceOk(v) -> no(RejectReason.LICENCE, "licence ${catalog.remote(v)?.licence ?: "not given"} not allowed by this app")
+                need.totalMb > device.ramMb -> no(RejectReason.PHONE_RAM, "needs ${need.totalMb} MB, the phone has ${device.ramMb} MB")
+                need.freeMb > device.availRamMb -> no(RejectReason.RAM, "needs ${need.freeMb} MB free, ${device.availRamMb} MB free")
+                !onDisk(v) -> no(RejectReason.DISK, "needs ${v.sizeBytes shr 20} MB on disk, ${(store.freeBytes() ?: 0L) shr 20} MB free")
+                caps.none { (_, c) -> v.format in c.formats } -> no(RejectReason.NO_BACKEND, "no backend here reads ${v.format}")
+                caps.none { (_, c) -> v.format in c.formats && c.loads(v.arch) } -> no(RejectReason.ARCHITECTURE, "architecture ${v.arch} needs a newer engine")
+                planned.none { it.variant == v } && lowBit(v.quant) -> no(RejectReason.LOW_BIT, "1- or 2-bit, used only when a recipe names it")
+                else -> caps.forEach { (b, c) ->
+                    c.accels.filter { c.supports(it, v.format) }.forEach { accel ->
+                        if (failures.isBlocked(key(device, Candidate(b, accel, v, Source.DEFAULT)))) {
+                            rejected += Rejection(v.quant, v.format, RejectReason.CRASHED, "crashed the engine before", b.id, accel)
+                        }
+                    }
+                }
+            }
+        }
+        return RouteExplanation(planned, rejected)
+    }
+
     // Candidates off the phone, LAN before cloud: the phone's RAM and disk do not limit them, the network does.
     private fun remote(model: String, device: DeviceProfile, minContext: Int?, caps: Map<DenBackend, Capabilities?>): List<Candidate> {
         if (policy == RoutingPolicy.LOCAL_ONLY || !online()) return emptyList()
@@ -175,8 +226,9 @@ class Router(
     ): Opened {
         catalog.resolve(model)
         val tried = mutableListOf<Failure>()
-        var plan = plan(model, device, minContext, mmap)
-        if (plan.isEmpty()) throw NoUsableBackendException(model, tried, emptyPlanReason(model, device, minContext, mmap))
+        val why = explain(model, device, minContext, mmap)
+        var plan = why.candidates
+        if (plan.isEmpty()) throw NoUsableBackendException(model, tried, emptyPlanReason(model, device, minContext, mmap), why.rejected)
         val first = plan.first()
         if (firstRun != null && first.source == Source.DEFAULT && first.location == Location.DEVICE && first.variant !in measured) {
             measured = measured + first.variant
@@ -215,7 +267,7 @@ class Router(
                     if (e !is EngineCrashedException) throw NoUsableBackendException(model, tried + Failure(c, e))
                     throw e
                 }
-                return Opened(session, c, tried, context)
+                return Opened(session, c, tried, context, why.rejected)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: NoUsableBackendException) {
@@ -225,7 +277,7 @@ class Router(
                 failures.record(key(device, c), e)
             }
         }
-        throw NoUsableBackendException(model, tried)
+        throw NoUsableBackendException(model, tried, rejected = why.rejected)
     }
 
     private fun emptyPlanReason(model: String, device: DeviceProfile, minContext: Int?, mmap: Boolean): String {

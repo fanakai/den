@@ -30,6 +30,8 @@ import ai.fanak.den.core.recipe.RecipeFiles
 import ai.fanak.den.core.router.Candidate
 import ai.fanak.den.core.router.Failure
 import ai.fanak.den.core.router.Opened
+import ai.fanak.den.core.router.Rejection
+import ai.fanak.den.core.router.RouteExplanation
 import ai.fanak.den.core.router.Router
 import ai.fanak.den.core.router.RoutingPolicy
 import ai.fanak.den.core.router.Source
@@ -270,6 +272,13 @@ class Den private constructor(context: Context, private val config: DenConfig) :
     fun exclusiveAccelerator(model: String): String? =
         plan(model).firstOrNull()?.takeIf { it.backend.about?.slots == SlotPolicy.EXCLUSIVE_ACCEL }?.let { "${it.backend.id} ${it.accel}" }
 
+    // What this process's router would try for [model] (an alias resolved first), and what it leaves out and why.
+    suspend fun explain(model: String): RouteExplanation {
+        val target = resolveAlias(model)
+        resolve(target)
+        return router.explain(target, device(), minContext, config.useMmap)
+    }
+
     // A newer commit of [model]'s hub repository than the one in use, for "check for updates"; null when up to date.
     suspend fun newerCommit(model: String): String? = withContext(Dispatchers.IO) { catalog.newerCommit(model) }
 
@@ -449,6 +458,12 @@ abstract class DenModel : AutoCloseable {
     // Where it runs: on this phone, or on a server of the local network or the cloud, so an app can show it.
     open val location: Location get() = Location.DEVICE
 
+    // Files and paths the router left out before trying, with the reason; empty in connected mode for now.
+    open val rejected: List<Rejection> get() = emptyList()
+
+    // True when an earlier candidate failed and this one runs instead.
+    val fallback: Boolean get() = failures.isNotEmpty()
+
     // The context it was loaded with, in tokens; 0 from a Den app older than version 5.
     open val contextLength: Int get() = 0
     open val failures: List<Failure> get() = emptyList()
@@ -494,6 +509,7 @@ internal class LocalModel(
     override val source get() = last.candidate.source
     override val connected = false
     override val location get() = last.candidate.location
+    override val rejected get() = last.rejected
     override val contextLength get() = last.contextLength
     override val failures get() = last.failures
 

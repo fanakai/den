@@ -494,4 +494,28 @@ class RouterTest {
         val offline = policyRouter(RoutingPolicy.REMOTE_FIRST, online = false).plan(model, device)
         assertTrue(offline.isNotEmpty() && offline.all { it.location == ai.fanak.den.core.backend.Location.DEVICE })
     }
+
+    @Test
+    fun theRouteSaysWhatItLeftOutAndWhy() = runTest {
+        val q2 = Variant(model, ModelFormat.GGUF, "q2_k", 700, 900, arch = "qwen3", params = size)
+        val nc = q40.copy(quant = "q5_k_m")
+        val cat = object : ModelCatalog {
+            override fun variants(model: String) = listOf(q4km, q40, npu, huge, q2, nc)
+            override fun remote(variant: Variant) = ai.fanak.den.core.model.RemoteFile("f", "u", "s", 1, "p", if (variant == nc) "cc-by-nc-4.0" else "mit")
+        }
+        val r = Router(listOf(llama()), InMemoryRecipeStore(emptyList()), cat, store, allowLicence = { it != "cc-by-nc-4.0" })
+        val other = device.copy(soc = "SM7325")
+        val first = r.open(model, other).candidate
+        r.reportFailure(other, first, EngineCrashedException("died"))
+
+        val why = r.explain(model, other).rejected.associate { (it.quant to it.accel) to it.reason }
+        assertEquals(RejectReason.OTHER_SOC, why["int4" to null])
+        assertEquals(RejectReason.RAM, why["f16" to null])
+        assertEquals(RejectReason.LOW_BIT, why["q2_k" to null])
+        assertEquals(RejectReason.LICENCE, why["q5_k_m" to null])
+        assertEquals(RejectReason.CRASHED, why[first.variant.quant to first.accel])
+
+        // The model that opens next carries the same reasons.
+        assertEquals(r.explain(model, other).rejected, r.open(model, other).rejected)
+    }
 }

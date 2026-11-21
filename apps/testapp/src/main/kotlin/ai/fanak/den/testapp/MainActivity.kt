@@ -168,6 +168,7 @@ class MainActivity : Activity() {
                 val t0 = System.currentTimeMillis()
                 val m = loaded ?: den.model(model).also { loaded = it }
                 m.failures.forEach { log("failed: ${it.candidate.accel} ${it.candidate.variant.quant}: ${it.error.message}") }
+                m.rejected.forEach { log("left out: ${it.quant}${it.accel?.let { a -> " on $a" } ?: ""}: ${it.reason}, ${it.detail}") }
                 log("using ${m.backend} ${m.accel} ${m.quant} (${m.source}), licence ${m.licence}, connected ${m.connected}, load ${System.currentTimeMillis() - t0} ms, free ${den.device().availRamMb} MB")
                 if (m.connected) log("http endpoint ${den.httpEndpoint()}")
 
