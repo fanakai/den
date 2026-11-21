@@ -57,8 +57,8 @@ class EngineTest {
         return text.toString() to GenStats.of(s)
     }
 
-    private fun withEngine(nCtx: Int = 256, block: (Long) -> Unit) {
-        val h = LlamaNative.load(model.path, nCtx, 2, 0, true)
+    private fun withEngine(nCtx: Int = 256, nSeq: Int = 1, block: (Long) -> Unit) {
+        val h = LlamaNative.load(model.path, nCtx, 2, 0, true, nSeq)
         try {
             block(h)
         } finally {
@@ -127,6 +127,33 @@ class EngineTest {
         }
         // The first one still works after the fork is freed: the weights stay until the last one goes.
         assertEquals(alone, gen(h, PROMPT, 24, cache = false).first)
+    }
+
+    @Test
+    fun sequencesRunTogetherInOneContext() = withEngine(nSeq = 2) { h ->
+        val prompts = listOf(PROMPT, "Once upon a time, a little dog", "The sun was hot and the cat")
+        val alone = prompts.map { gen(h, it, 24, cache = false).first }
+        // Three at once on two sequences: the third waits for a free one. Each gets its own reply.
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(3)
+        try {
+            val together = prompts.map { p -> pool.submit<String> { gen(h, p, 24, cache = false).first } }.map { it.get() }
+            assertEquals(alone, together)
+        } finally {
+            pool.shutdown()
+        }
+        // A stop string ends one request while the other goes on.
+        val stopper = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            val word = alone[1].trim().split(" ").first()
+            val short = stopper.submit<Pair<String, GenStats>> { gen(h, prompts[1], 24, stop = listOf(word), cache = false) }
+            val long = gen(h, prompts[0], 24, cache = false).first
+            assertEquals(alone[0], long)
+            assertEquals(Finish.STOP, short.get().second.finish)
+        } finally {
+            stopper.shutdown()
+        }
+        // The history of a chat is kept per sequence.
+        assertEquals(gen(h, PROMPT, 8).second.promptTokens - 1, gen(h, PROMPT, 8).second.cachedTokens)
     }
 
     @Test

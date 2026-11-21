@@ -62,6 +62,9 @@ data class LoadOptions(
     val threads: Int? = null,
     // Map the weights from the file; false reads them into RAM, so the OS cannot drop them under memory pressure.
     val mmap: Boolean = true,
+    // Requests that run at the same time on this session, each a sequence of contextLength tokens in one KV cache,
+    // decoded together in batches; further ones wait. Backends that cannot run several take them one after another.
+    val sequences: Int = 1,
 )
 
 sealed interface Health {

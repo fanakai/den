@@ -50,9 +50,11 @@ class RouterTest {
         private val crashOn: Set<Accel> = emptySet(),
     ) : DenBackend {
         val loaded = mutableListOf<Pair<Variant, Accel>>()
+        var sequences = 0
         override fun probe(device: DeviceProfile) = caps
         override suspend fun load(artifact: Artifact, opts: LoadOptions): Session {
             loaded += artifact.variant to opts.accel
+            sequences = opts.sequences
             if (opts.accel in crashOn) throw EngineCrashedException("engine died on ${opts.accel}")
             if (opts.accel in failOn) error("load failed on ${opts.accel}")
             return object : Session {
@@ -372,6 +374,17 @@ class RouterTest {
         // Not even the minimum fits: no load, and the reason names the memory.
         val e = assertFailsWith<NoUsableBackendException> { sizedRouter(free = { 600 }).open(model, device, minContext = 1024) }
         assertTrue(e.failures.isNotEmpty() && e.failures.all { it.error is NotEnoughMemoryException }, "${e.failures}")
+    }
+
+    @Test
+    fun sequencesNeedAKvCacheEachInFreeRam() = runTest {
+        // 4096 tokens: 968 MB for one sequence, 1416 MB for two.
+        val b = llama()
+        val r = { free: Int -> Router(listOf(b), InMemoryRecipeStore(emptyList()), object : ModelCatalog { override fun variants(model: String) = listOf(sized) }, store, freeRamMb = { free }) }
+        r(1_500).open(model, device, sequences = 2)
+        assertEquals(2, b.sequences)
+        r(1_200).open(model, device, sequences = 2)
+        assertEquals(1, b.sequences)
     }
 
     @Test

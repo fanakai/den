@@ -15,9 +15,11 @@ internal object LlamaNative {
     // "name\tdescription\tgpu|cpu" per device
     external fun devices(): Array<String>
 
-    external fun load(path: String, nCtx: Int, nThreads: Int, nGpuLayers: Int, useMmap: Boolean): Long
+    // nSeq: requests that generate on the handle at the same time, decoded together; further ones wait.
+    external fun load(path: String, nCtx: Int, nThreads: Int, nGpuLayers: Int, useMmap: Boolean, nSeq: Int): Long
 
-    // [promptTokens, outputTokens, prefillMs, decodeMs, finish]; contents and stop strings as UTF-8.
+    // [promptTokens, outputTokens, prefillMs, decodeMs, finish, cachedTokens, threads]; contents and stop strings
+    // as UTF-8. Several threads may call it at once; free must wait for them.
     external fun generate(
         handle: Long,
         roles: Array<String>,
