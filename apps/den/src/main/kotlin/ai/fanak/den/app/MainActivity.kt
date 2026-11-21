@@ -42,6 +42,7 @@ class MainActivity : Activity() {
     private lateinit var apps: LinearLayout
     private lateinit var http: LinearLayout
     private lateinit var downloads: LinearLayout
+    private lateinit var aliasesView: LinearLayout
     private lateinit var bench: LinearLayout
     private lateinit var diag: LinearLayout
 
@@ -65,6 +66,7 @@ class MainActivity : Activity() {
         apps = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         http = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         downloads = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        aliasesView = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         bench = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         diag = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val root = LinearLayout(this).apply {
@@ -73,6 +75,7 @@ class MainActivity : Activity() {
             addView(TextView(context).apply { this.text = text })
             addView(models)
             addView(backendsView)
+            addView(aliasesView)
             addView(downloads)
             addView(bench)
             addView(apps)
@@ -89,10 +92,34 @@ class MainActivity : Activity() {
         if (HttpSettings.enabled(this)) startForegroundService(Intent(this, DenService::class.java))
         showModels()
         showDownloads()
+        showAliases()
         showBench()
         showApps()
         showHttp()
         showDiagnostics()
+    }
+
+    // Each alias, the model behind it now, and a button that moves it: through the models, then back to its defaults.
+    private fun showAliases() {
+        aliasesView.removeAllViews()
+        aliasesView.addView(TextView(this).apply { text = "\nAliases"; textSize = 18f })
+        aliasesView.addView(TextView(this).apply { text = "Apps can ask for an alias instead of a model, and keep working when it moves." })
+        val aliases = benchDen.aliases.also { AliasSettings.applyTo(this, it) }
+        aliases.names.sorted().forEach { alias ->
+            val row = TextView(this)
+            aliasesView.addView(row)
+            val set = aliases.override(alias)
+            scope.launch {
+                val now = benchDen.resolveAlias(alias)
+                row.text = "$alias: $now" + if (set != null) " (set by you)" else " (first of ${aliases.defaults(alias).joinToString()} that runs)"
+            }
+            val choices = listOf<String?>(null) + benchDen.models
+            val next = choices[(choices.indexOf(set) + 1) % choices.size]
+            aliasesView.addView(button("Change $alias to ${next ?: "its defaults"}") {
+                DenService.setAlias(this, alias, next)
+                aliases.set(alias, next)
+            })
+        }
     }
 
     private fun showDownloads() {
@@ -387,6 +414,6 @@ class MainActivity : Activity() {
 
     private fun button(label: String, onClick: () -> Unit) = Button(this).apply {
         text = label
-        setOnClickListener { onClick(); showModels(); showDownloads(); showBench(); showApps(); showHttp(); showDiagnostics() }
+        setOnClickListener { onClick(); showModels(); showDownloads(); showAliases(); showBench(); showApps(); showHttp(); showDiagnostics() }
     }
 }

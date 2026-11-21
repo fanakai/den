@@ -123,10 +123,17 @@ internal class DenAppConnection(
         return suspendCancellableCoroutine { cont ->
             val callback = object : IOpenCallback.Stub() {
                 @Volatile private var context = 0
+                @Volatile private var resolved: String? = null
 
                 override fun onOpened(session: Long, backend: String, accel: String, quant: String, source: String) {
-                    val m = RemoteModel(model, svc, session, backend, Accel.valueOf(accel), quant, Source.valueOf(source), context)
+                    val name = resolved ?: model
+                    val m = RemoteModel(name, svc, session, backend, Accel.valueOf(accel), quant, Source.valueOf(source), context)
+                    m.alias = model.takeIf { it != name }
                     if (cont.isActive) cont.resume(m) else m.close()
+                }
+
+                override fun onModel(model: String) {
+                    resolved = model
                 }
 
                 override fun onContext(contextLength: Int) {

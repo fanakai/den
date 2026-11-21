@@ -59,14 +59,14 @@ class DenService : Service() {
     )
     private val den by lazy {
         val config = DenConfig(mode = DenMode.EMBEDDED, onDownload = ::progress, beforeDownload = ::beforeDownload)
-        Den.connect(this, config)
+        Den.connect(this, config).also { AliasSettings.applyTo(this, it.aliases) }
     }
 
     // Holds the client's binder: a death link on a binder that is garbage-collected never fires.
     private class Session(val model: String, val uid: Int, val client: IBinder, var death: IBinder.DeathRecipient? = null, var job: Job? = null)
 
     // Opens still in progress, by the client's callback binder; they get the download progress of their model.
-    private class Pending(val model: String, val uid: Int, val callback: IOpenCallback, var job: Job? = null)
+    private class Pending(var model: String, val uid: Int, val callback: IOpenCallback, var job: Job? = null)
     private val pending = ConcurrentHashMap<IBinder, Pending>()
     // File name -> model, for the downloads in progress.
     private val downloads = ConcurrentHashMap<String, String>()
@@ -96,7 +96,7 @@ class DenService : Service() {
     private val nextId = AtomicLong(1)
 
     private val binder = object : IDenService.Stub() {
-        override fun version() = 5
+        override fun version() = 6
 
         override fun httpPort() = if (HttpSettings.enabled(this@DenService)) http.port else -1
 
@@ -111,7 +111,8 @@ class DenService : Service() {
             val (_, min) = runCatching { contextOf(options) }.getOrNull() ?: (0 to 0)
             // Binder thread: hf: names need the network once, then their cache.
             runCatching { kotlinx.coroutines.runBlocking { kotlinx.coroutines.withTimeout(30_000) { den.resolve(model) } } }
-            return den.plan(model, minContextLength = min).map { "${it.backend.id} ${it.accel} ${it.variant.quant} ${it.source}" }.toTypedArray()
+            val target = runCatching { kotlinx.coroutines.runBlocking { den.resolveAlias(model) } }.getOrDefault(model)
+            return den.plan(target, minContextLength = min).map { "${it.backend.id} ${it.accel} ${it.variant.quant} ${it.source}" }.toTypedArray()
         }
 
         override fun cancelOpen(callback: IOpenCallback) {
@@ -139,21 +140,25 @@ class DenService : Service() {
                         fail("error", "$pkg is not allowed to use Den; allow it in the Den app")
                         return@launch
                     }
-                    if (context != null) wanted[model] = context
-                    var m = pool.acquire(model)
+                    // An alias (den.default) opens the model behind it, with the Den app's aliases.
+                    val target = den.resolveAlias(model)
+                    p.model = target
+                    if (context != null) wanted[target] = context
+                    var m = pool.acquire(target)
                     // Loaded for another app with a shorter context than this one accepts: reloaded when it is idle.
                     if (context != null && m.contextLength in 1 until context.second) {
-                        pool.release(model)
-                        if (!pool.evict(model)) throw IllegalStateException("$model runs with ${m.contextLength} tokens of context for another app; try again when it is idle")
-                        m = pool.acquire(model)
+                        pool.release(target)
+                        if (!pool.evict(target)) throw IllegalStateException("$target runs with ${m.contextLength} tokens of context for another app; try again when it is idle")
+                        m = pool.acquire(target)
                     }
                     val id = nextId.getAndIncrement()
                     // A client that dies releases its sessions.
-                    val session = Session(model, uid, client)
+                    val session = Session(target, uid, client)
                     sessions[id] = session
                     session.death = IBinder.DeathRecipient { scope.launch { release(id) } }.also { client.linkToDeath(it, 0) }
-                    log("open $model for ${caller(uid)}: session $id, ${m.backend} ${m.accel} ${m.quant}, sessions ${pool.sessions(model)}")
+                    log("open $target for ${caller(uid)}: session $id, ${m.backend} ${m.accel} ${m.quant}, sessions ${pool.sessions(target)}")
                     if (v5) callback.onContext(m.contextLength)
+                    if (v5 && target != model) callback.onModel(target)
                     callback.onOpened(id, m.backend, m.accel.name, m.quant, m.source.name)
                 } catch (e: CancellationException) {
                     log("open $model for ${caller(uid)} cancelled")
@@ -402,6 +407,12 @@ class DenService : Service() {
 
         // Unloads a model before den bench loads its own copy; false while it is generating.
         suspend fun unload(model: String): Boolean = current?.pool?.evict(model) ?: true
+
+        // Points an alias at a model (null: its defaults), for the Den screen; the running service follows at once.
+        fun setAlias(context: android.content.Context, alias: String, model: String?) {
+            AliasSettings.set(context, alias, model)
+            current?.den?.aliases?.set(alias, model)
+        }
 
         suspend fun deletePartial(context: android.content.Context): String {
             val keep = current?.downloads?.keys?.toSet() ?: emptySet()

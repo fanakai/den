@@ -46,6 +46,8 @@ fun Context.remoteCheck(model: String, prompt: String) {
                 override fun onContext(contextLength: Int) { log("context $contextLength") }
 
                 override fun onFailed(kind: String, message: String) { log("open failed ($kind): $message") }
+
+                override fun onModel(model: String) { log("model $model") }
             })
         }
 
