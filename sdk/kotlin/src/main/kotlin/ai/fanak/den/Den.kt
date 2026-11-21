@@ -196,6 +196,8 @@ class Den private constructor(context: Context, private val config: DenConfig) :
     private val backends: List<DenBackend> = (config.backends ?: defaultBackends()).map { b ->
         when {
             !config.isolate || Build.VERSION.SDK_INT < 29 -> b
+            // A server elsewhere: no engine on the phone to keep apart.
+            (b.about?.location ?: Location.DEVICE) != Location.DEVICE -> b
             EngineService.creatable(b) -> IsolatedBackend(engine, b)
             else -> b.also { Log.w("Den", "${b.id} runs in the app process: no constructor the engine process can call") }
         }
@@ -270,7 +272,14 @@ class Den private constructor(context: Context, private val config: DenConfig) :
 
     suspend fun download(model: String) {
         resolve(model)
-        plan(model).firstOrNull()?.let { store.fetch(it.variant) }
+        val plan = plan(model)
+        val local = plan.firstOrNull { it.location == Location.DEVICE } ?: return
+        try {
+            store.fetch(local.variant)
+        } catch (e: java.io.IOException) {
+            // Refused or offline: a server off the phone can still run it, and the router tries it next.
+            if (plan.none { it.location != Location.DEVICE }) throw e
+        }
     }
 
     /**

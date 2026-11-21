@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Plain HTTP for the LAN servers the user adds on the Den screen (llama-server, Ollama and Lemonade serve HTTP).
+     Downloads stay on HTTPS: the catalogs give https:// URLs. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

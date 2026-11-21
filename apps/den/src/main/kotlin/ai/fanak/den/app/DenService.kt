@@ -4,19 +4,22 @@ import ai.fanak.den.Den
 import ai.fanak.den.DenConfig
 import ai.fanak.den.DenMode
 import ai.fanak.den.DenModel
-import ai.fanak.den.ModelFiles
 import ai.fanak.den.IDenService
 import ai.fanak.den.IGenCallback
 import ai.fanak.den.IOpenCallback
+import ai.fanak.den.ModelFiles
+import ai.fanak.den.backend.llamacpp.LlamaCppBackend
+import ai.fanak.den.backend.openai.OpenAiEndpoints
 import ai.fanak.den.core.backend.BackendDescriptor
 import ai.fanak.den.core.backend.ChatMessage
 import ai.fanak.den.core.backend.GenEvent
 import ai.fanak.den.core.backend.GenRequest
 import ai.fanak.den.core.backend.Role
-import ai.fanak.den.core.router.NoUsableBackendException
 import ai.fanak.den.core.model.DownloadProgress
 import ai.fanak.den.core.model.RemoteFile
 import ai.fanak.den.core.model.Variant
+import ai.fanak.den.core.router.NoUsableBackendException
+import ai.fanak.den.core.router.RoutingPolicy
 import ai.fanak.den.service.OpenAiServer
 import android.app.Notification
 import android.app.NotificationChannel
@@ -58,8 +61,13 @@ class DenService : Service() {
         SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> Log.e("DenService", "uncaught", e) },
     )
     private val den by lazy {
-        // Two apps at once share each decoding step of a model instead of waiting for each other (#154).
-        val config = DenConfig(mode = DenMode.EMBEDDED, parallel = 2, onDownload = ::progress, beforeDownload = ::beforeDownload)
+        // Two apps at once share each decoding step of a model instead of waiting for each other (#154). The LAN
+        // servers of the Den screen run a model only when no file of it runs on the phone; none set, nothing leaves it.
+        val config = DenConfig(
+            mode = DenMode.EMBEDDED, parallel = 2, onDownload = ::progress, beforeDownload = ::beforeDownload,
+            backends = listOf(LlamaCppBackend(), OpenAiEndpoints({ ServerSettings.all(this) })),
+            routing = RoutingPolicy.LOCAL_FIRST,
+        )
         Den.connect(this, config).also { AliasSettings.applyTo(this, it.aliases) }
     }
 

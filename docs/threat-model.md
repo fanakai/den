@@ -56,5 +56,8 @@ it guards against, and what it does not cover yet.
    approval of the repository is the user's check.
 3) Prompts sent over the HTTP endpoint are in clear text on the loopback interface. Other apps cannot read loopback
    traffic without root.
+4) A LAN server the user adds gets the prompts of the models it serves, in clear text when its URL is `http://`, as
+   llama-server, Ollama and Lemonade serve by default. Anyone on that network can read them. The Den app allows plain
+   HTTP for this; downloads from the hubs stay on HTTPS. Per-app consent before a prompt leaves the phone is #62.
 
 Report problems as described in [SECURITY.md](../SECURITY.md).
