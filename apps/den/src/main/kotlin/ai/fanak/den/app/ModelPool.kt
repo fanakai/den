@@ -21,9 +21,13 @@ internal class ModelPool(
     private val log: (String) -> Unit,
     // Kept free on top of what the router asks for: its RAM figures leave out part of the KV cache and buffers.
     private val marginMb: Int = 512,
+    // The accelerator a model would load on when that accelerator holds one model at a time (SlotPolicy.EXCLUSIVE_ACCEL),
+    // e.g. "qnn NPU"; null for the others.
+    private val exclusive: (name: String) -> String? = { null },
 ) {
     private class Slot(val name: String) {
         var model: DenModel? = null
+        var exclusive: String? = null
         var sessions = 0
         var busy = 0
         var lastUsed = 0L
@@ -120,6 +124,7 @@ internal class ModelPool(
                     lock.withLock {
                         val s = slots.getOrPut(name) { Slot(name) }
                         s.model = m
+                        s.exclusive = exclusive(name)
                         s.ramMb = (before - availMb()).coerceAtLeast(0)
                         s.lastUsed = now()
                         log("load $name: ${m.backend} ${m.accel} ${m.quant}, ${s.ramMb} MB, ${now() - t0} ms")
@@ -131,8 +136,14 @@ internal class ModelPool(
 
     // Unloads idle models, least recently used first, until the file the router would pick fits in free RAM.
     private fun makeRoom(s: Slot) {
-        val idle = slots.values.filter { it !== s && it.model != null && it.busy == 0 }.sortedBy { it.lastUsed }
+        var idle = slots.values.filter { it !== s && it.model != null && it.busy == 0 }.sortedBy { it.lastUsed }
         if (idle.isEmpty()) return
+        // An accelerator that holds one model at a time: the idle model on it goes first, whatever the free RAM.
+        exclusive(s.name)?.let { key ->
+            idle.filter { it.exclusive == key }.forEach { unload(it, "${s.name} needs $key") }
+            idle = idle.filter { it.model != null }
+            if (idle.isEmpty()) return
+        }
         var avail = availMb()
         val required = (need(s.name, avail + idle.sumOf { it.ramMb }) ?: return) + marginMb
         for (o in idle) {

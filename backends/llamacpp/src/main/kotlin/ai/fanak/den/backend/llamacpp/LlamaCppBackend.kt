@@ -1,5 +1,7 @@
 package ai.fanak.den.backend.llamacpp
 
+import ai.fanak.den.core.backend.BackendDescriptor
+import ai.fanak.den.core.backend.BackendMode
 import ai.fanak.den.core.backend.Capabilities
 import ai.fanak.den.core.backend.DenBackend
 import ai.fanak.den.core.backend.GenEvent
@@ -8,6 +10,7 @@ import ai.fanak.den.core.backend.GenStats
 import ai.fanak.den.core.backend.Health
 import ai.fanak.den.core.backend.LoadOptions
 import ai.fanak.den.core.backend.Session
+import ai.fanak.den.core.backend.SupportTier
 import ai.fanak.den.core.device.Accel
 import ai.fanak.den.core.device.DeviceProfile
 import ai.fanak.den.core.device.Platform
@@ -22,11 +25,25 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+private val ABOUT = BackendDescriptor(
+    id = "llamacpp",
+    name = "llama.cpp",
+    version = "",
+    author = "The ggml authors; Android build by Fanak Den",
+    licence = "MIT",
+    url = "https://github.com/ggml-org/llama.cpp",
+    tier = SupportTier.CORE,
+    modes = setOf(BackendMode.CHAT),
+    formats = setOf(ModelFormat.GGUF),
+)
+
 class LlamaCppBackend : DenBackend {
     override val id = "llamacpp"
 
     // ggml version and llama.cpp commit, e.g. "0.14.0-a1b2c3d".
     override val version by lazy { LlamaNative.version() }
+
+    override val about get() = ABOUT
 
     @Volatile
     private var lastError: String? = null

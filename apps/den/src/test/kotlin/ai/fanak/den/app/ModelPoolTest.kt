@@ -138,4 +138,34 @@ class ModelPoolTest {
         pool.trim()
         assertEquals(emptyList(), pool.loadedNames())
     }
+
+    @Test
+    fun anExclusiveAcceleratorHoldsOneModel() = runBlocking {
+        // Both fit in RAM, but "npu-a" and "npu-b" run on an NPU that holds one model; "cpu" does not share it.
+        val npu = setOf("npu-a", "npu-b")
+        val held = mutableListOf<String>()
+        val p = ModelPool(
+            load = { name -> loads += name; held += name; object : DenModel() {
+                override val name = name
+                override val backend = "qnn"
+                override val accel = if (name in npu) Accel.NPU else Accel.CPU
+                override val quant = "int4"
+                override val source = Source.RECIPE_SOC
+                override val connected = false
+                override fun chat(request: GenRequest): Flow<GenEvent> = emptyFlow()
+                override fun close() { held -= name }
+            } },
+            need = { _, _ -> 100 },
+            availMb = { 8000 },
+            now = { clock++ },
+            log = {},
+            exclusive = { name -> if (name in npu) "qnn NPU" else null },
+        )
+        p.use("npu-a") {}
+        p.use("cpu") {}
+        p.use("npu-b") {}
+        assertEquals(listOf("cpu", "npu-b"), held)
+        p.use("npu-a") {}
+        assertEquals(listOf("cpu", "npu-a"), held)
+    }
 }

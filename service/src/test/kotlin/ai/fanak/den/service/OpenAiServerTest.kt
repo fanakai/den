@@ -46,6 +46,7 @@ class OpenAiServerTest {
         },
         client = { token -> if (token == TOKEN) "test" else null },
         log = {},
+        systemInfo = { kotlinx.serialization.json.buildJsonObject { put("backends", kotlinx.serialization.json.JsonPrimitive("llamacpp")) } },
     ).apply { start(0) }
 
     private fun client(readTimeout: Duration = Duration.ofSeconds(10)): OpenAIClient = OpenAIOkHttpClient.builder()
@@ -77,6 +78,13 @@ class OpenAiServerTest {
     fun stop() {
         server.stop()
         scope.cancel()
+    }
+
+    @Test
+    fun systemInfoNeedsATokenAndGivesTheJson() {
+        val ok = raw("GET /den/v1/system-info HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer $TOKEN\r\n\r\n")
+        assertTrue(ok.startsWith("HTTP/1.1 200") && ok.endsWith("""{"backends":"llamacpp"}"""), ok)
+        assertTrue(raw("GET /den/v1/system-info HTTP/1.1\r\nHost: x\r\n\r\n").startsWith("HTTP/1.1 401"))
     }
 
     @Test

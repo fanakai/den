@@ -162,6 +162,7 @@ internal class EngineConnection(private val context: Context) : AutoCloseable {
 internal class IsolatedBackend(private val engine: EngineConnection, inner: DenBackend) : DenBackend {
     private val cls = inner.javaClass.name
     override val id = inner.id
+    override val about = inner.about
 
     @Volatile private var ver: String? = null
     @Volatile private var caps: Pair<DeviceProfile, Capabilities>? = null
