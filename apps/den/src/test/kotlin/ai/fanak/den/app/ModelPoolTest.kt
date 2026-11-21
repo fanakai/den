@@ -168,4 +168,74 @@ class ModelPoolTest {
         p.use("npu-a") {}
         assertEquals(listOf("cpu", "npu-a"), held)
     }
+
+    // A pool of 3000 MB free where each model takes 1000 MB, with load times and pins set per test.
+    private class Bench(val pins: MutableSet<String> = mutableSetOf(), val loadMs: Map<String, Long> = emptyMap()) {
+        var free = 3000
+        var clock = 0L
+        val held = mutableListOf<String>()
+        val pool = ModelPool(
+            load = { name ->
+                clock += loadMs[name] ?: 0
+                check(free >= 1000) { "out of memory loading $name" }
+                free -= 1000
+                held += name
+                object : DenModel() {
+                    override val name = name
+                    override val backend = "fake"
+                    override val accel = Accel.CPU
+                    override val quant = "q4_0"
+                    override val source = Source.DEFAULT
+                    override val connected = false
+                    override fun chat(request: GenRequest): Flow<GenEvent> = emptyFlow()
+                    override fun close() { free += 1000; held -= name }
+                }
+            },
+            need = { _, avail -> 500.takeIf { it <= avail } },
+            availMb = { free },
+            now = { clock },
+            log = {},
+            marginMb = 0,
+            pinned = { it in pins },
+        )
+    }
+
+    @Test
+    fun aPinnedModelStaysForRoomIdleAndSessionEnd() = runBlocking {
+        val b = Bench(pins = mutableSetOf("a"))
+        b.pool.acquire("a")
+        b.pool.release("a")
+        b.clock += 3_600_000
+        b.pool.unloadIdle(60_000)
+        b.pool.use("b") {}
+        b.pool.use("c") {}
+        // Room for "d": "b" goes (not pinned), "a" stays.
+        b.pool.use("d") {}
+        assertTrue("a" in b.held && "b" !in b.held, "${b.held}")
+        b.pool.trim()
+        assertEquals(listOf("a"), b.held)
+        b.pool.trim(critical = true)
+        assertEquals(emptyList(), b.held)
+    }
+
+    @Test
+    fun aPoolFullOfPinnedModelsSaysSo() = runBlocking {
+        val b = Bench(pins = mutableSetOf("a", "b", "c"))
+        listOf("a", "b", "c").forEach { b.pool.use(it) {} }
+        val e = runCatching { b.pool.use("d") {} }.exceptionOrNull()
+        assertEquals("not enough free RAM for d: a, b, c kept loaded; turn off Keep loaded for one on the Den screen", e?.message)
+        assertEquals(listOf("a", "b", "c"), b.held)
+    }
+
+    @Test
+    fun theCheapestModelToReloadGoesFirst() = runBlocking {
+        // About the same idle time; "slow" took 14 s to load, "other" 20 s, "quick" 6 s: "quick" is cheapest to get back.
+        val b = Bench(loadMs = mapOf("slow" to 14_000L, "quick" to 6_000L, "other" to 20_000L))
+        b.pool.use("slow") {}
+        b.pool.use("quick") {}
+        b.pool.use("other") {}
+        b.clock += 60_000
+        b.pool.use("new") {}
+        assertEquals(listOf("slow", "other", "new"), b.held)
+    }
 }

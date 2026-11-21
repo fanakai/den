@@ -343,7 +343,12 @@ class MainActivity : Activity() {
             models.addView(TextView(this).apply { text = "${f.model} ${f.quant}: ${f.fileName}, $size, licence ${f.licence ?: "not given"}" })
         }
         list.map { it.model }.distinct().forEach { m ->
-            models.addView(button("Delete $m") { run { DenService.delete(this, m) } })
+            val kept = Pins.has(this, m)
+            models.addView(LinearLayout(this).apply {
+                addView(button("Delete $m") { this@MainActivity.run { DenService.delete(this@MainActivity, m) } })
+                // Kept loaded once loaded: never unloaded for another model or when idle, only by critical memory.
+                addView(button(if (kept) "Kept loaded" else "Keep loaded") { Pins.set(context, m, !kept) })
+            })
         }
         if (list.any { !it.complete }) models.addView(button("Remove unfinished downloads") { run { DenService.deletePartial(this) } })
     }
