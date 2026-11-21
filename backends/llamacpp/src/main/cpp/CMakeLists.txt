@@ -34,6 +34,11 @@ endif()
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../../llama.cpp ${CMAKE_BINARY_DIR}/llama.cpp)
 
+if(DEN_OPENCL)
+    # OpenCL 3.0 functions as weak references, so OpenCL 2.x drivers still load the backend (see opencl_weak.h).
+    target_compile_options(ggml-opencl PRIVATE -include ${CMAKE_CURRENT_SOURCE_DIR}/opencl_weak.h)
+endif()
+
 set(DEN_SOURCES engine.cpp threads.cpp)
 if(DEN_SMOKE)
     add_executable(den-smoke ${DEN_SOURCES} smoke.cpp)
