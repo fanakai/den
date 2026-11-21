@@ -314,12 +314,14 @@ public final class ai/fanak/den/core/backend/Role : java/lang/Enum {
 
 public abstract interface class ai/fanak/den/core/backend/Session {
 	public abstract fun embed (Ljava/util/List;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun fork ()Lai/fanak/den/core/backend/Session;
 	public abstract fun generate (Lai/fanak/den/core/backend/GenRequest;)Lkotlinx/coroutines/flow/Flow;
 	public abstract fun unload ()V
 }
 
 public final class ai/fanak/den/core/backend/Session$DefaultImpls {
 	public static fun embed (Lai/fanak/den/core/backend/Session;Ljava/util/List;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static fun fork (Lai/fanak/den/core/backend/Session;)Lai/fanak/den/core/backend/Session;
 }
 
 public final class ai/fanak/den/core/backend/SlotPolicy : java/lang/Enum {

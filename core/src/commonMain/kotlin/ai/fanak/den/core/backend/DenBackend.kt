@@ -29,6 +29,10 @@ interface DenBackend {
 interface Session {
     fun generate(req: GenRequest): Flow<GenEvent>
 
+    // A second session on the same loaded weights, with its own context: requests on the two run at the same time.
+    // Null when the backend cannot (one context per model), or when memory does not allow it.
+    fun fork(): Session? = null
+
     // One vector per text, for search; a backend without embeddings says so.
     suspend fun embed(texts: List<String>): List<FloatArray> = throw UnsupportedFeatureException("embeddings", "this backend")
 

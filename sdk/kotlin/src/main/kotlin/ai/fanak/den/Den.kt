@@ -10,6 +10,7 @@ import ai.fanak.den.core.backend.GenEvent
 import ai.fanak.den.core.backend.Location
 import ai.fanak.den.core.backend.GenRequest
 import ai.fanak.den.core.backend.Role
+import ai.fanak.den.core.backend.Session
 import ai.fanak.den.core.backend.SlotPolicy
 import ai.fanak.den.core.device.Accel
 import ai.fanak.den.core.device.DeviceProfile
@@ -122,6 +123,10 @@ data class DenConfig(
     // Stable names for roles (den.default, den.small), each with models in order of preference; the Den app's own
     // apply in connected mode, where the user can move them.
     val aliases: Map<String, List<String>> = DEFAULT_ALIASES,
+    // Requests on one model that run at the same time in this process, each on its own context of the same weights
+    // (a KV cache and buffers more each); further ones wait. A new context is made only when free RAM has room.
+    // On the CPU of a phone with few big cores it is slower than waiting: the contexts' threads compete (#85).
+    val parallel: Int = 1,
     // Whether a request may leave the phone, once remote backends exist: LOCAL_ONLY (the default) never sends one.
     val routing: RoutingPolicy = RoutingPolicy.LOCAL_ONLY,
 )
@@ -430,7 +435,9 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         if (target != name) Log.i("Den", "$name is $target")
         val reopen: suspend () -> Opened = { router.open(target, device(), contextLength, config.useMmap, minContextLength) }
         val crashed = { o: Opened, e: Throwable -> router.reportFailure(device(), o.candidate, e) }
-        return LocalModel(target, reopen(), reopen, crashed, probe::thermal) { local -= it }.also {
+        // Another context needs its KV cache and buffers in free RAM; the weights are shared.
+        val room = { o: Opened -> Router.ramNeed(o.candidate.variant, o.contextLength, config.useMmap).freeMb <= device().availRamMb }
+        return LocalModel(target, reopen(), reopen, crashed, probe::thermal, config.parallel, room) { local -= it }.also {
             it.licenceOf = ::licence
             it.alias = name.takeIf { n -> n != target }
             local += it
@@ -524,8 +531,15 @@ internal class LocalModel(
     private val reopen: suspend () -> Opened,
     private val crashed: (Opened, Throwable) -> Unit = { _, _ -> },
     private val thermal: () -> ThermalState = { ThermalState.NONE },
+    // Requests that run at the same time, each on its own context; 1: one after the other.
+    private val parallel: Int = 1,
+    // Whether free RAM allows one more context of this model now.
+    private val roomForContext: (Opened) -> Boolean = { false },
     private val onClose: (LocalModel) -> Unit = {},
 ) : DenModel() {
+    // Contexts besides the first, on the same weights, and the contexts no request holds now.
+    private val forks = mutableListOf<Session>()
+    private val free = ArrayDeque<Session>().apply { addLast(first.session) }
     // Decode threads the engine picked on its own, the base for fewer threads when the phone heats up.
     @Volatile private var autoThreads = 0
     // Guards `opened` and `busy`: a request marks the model busy under the lock, an unload checks it under the lock.
@@ -556,20 +570,30 @@ internal class LocalModel(
         val req = if (cooler != null) request.copy(threads = cooler) else request
         var replayed = false
         while (true) {
-            val o = lock.withLock {
+            val (o, held) = lock.withLock {
                 check(!closed) { "model $name is closed" }
                 val o = opened ?: reopen().also {
                     Log.i("Den", "loaded $name: ${it.candidate.backend.id} ${it.candidate.accel} ${it.candidate.variant.quant}, context ${it.contextLength}")
                     opened = it
                     last = it
+                    forks.clear()
+                    free.clear()
+                    free.addLast(it.session)
                 }
                 busy++
-                o
+                // A free context, else a new one when allowed and RAM has room, else none: the first context, queued.
+                val held = free.removeFirstOrNull()
+                    ?: if (forks.size + 1 < parallel && roomForContext(o)) o.session.fork()?.also {
+                        forks += it
+                        Log.i("Den", "$name: context ${forks.size + 1} for a request beside the others")
+                    } else null
+                o to held
             }
+            val session = held ?: o.session
             var sent = false
             var lost: EngineLostException? = null
             try {
-                o.session.generate(req)
+                session.generate(req)
                     .catch { if (it is EngineLostException) lost = it else throw it }
                     .collect {
                         if (it is GenEvent.Text) sent = true
@@ -580,8 +604,13 @@ internal class LocalModel(
                 withContext(NonCancellable) {
                     lock.withLock {
                         busy--
+                        if (held != null && opened === o) free.addLast(held)
                         // Several requests can lose the same engine; the first one to get here forgets the session.
-                        if (lost != null && opened === o) opened = null
+                        if (lost != null && opened === o) {
+                            opened = null
+                            forks.clear()
+                            free.clear()
+                        }
                     }
                     if (closed) unloadIfIdle("closed")
                 }
@@ -601,6 +630,9 @@ internal class LocalModel(
         try {
             val o = opened ?: return true
             if (busy > 0) return false
+            forks.forEach { it.unload() }
+            forks.clear()
+            free.clear()
             o.session.unload()
             opened = null
             Log.i("Den", "unloaded $name ($why)")

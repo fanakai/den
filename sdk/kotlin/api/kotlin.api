@@ -81,8 +81,8 @@ public final class ai/fanak/den/DenAppKt {
 
 public final class ai/fanak/den/DenConfig {
 	public fun <init> ()V
-	public fun <init> (Ljava/io/File;ILjava/lang/Integer;ZZLkotlin/jvm/functions/Function1;Lai/fanak/den/DenMode;Ljava/util/List;ZLjava/util/List;Ljava/util/List;Lai/fanak/den/core/model/ModelStore;Ljava/util/List;ZZLai/fanak/den/core/router/FailureStore;Lkotlin/jvm/functions/Function3;ZLkotlin/jvm/functions/Function1;ZLjava/util/Map;Lai/fanak/den/core/router/RoutingPolicy;)V
-	public synthetic fun <init> (Ljava/io/File;ILjava/lang/Integer;ZZLkotlin/jvm/functions/Function1;Lai/fanak/den/DenMode;Ljava/util/List;ZLjava/util/List;Ljava/util/List;Lai/fanak/den/core/model/ModelStore;Ljava/util/List;ZZLai/fanak/den/core/router/FailureStore;Lkotlin/jvm/functions/Function3;ZLkotlin/jvm/functions/Function1;ZLjava/util/Map;Lai/fanak/den/core/router/RoutingPolicy;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/io/File;ILjava/lang/Integer;ZZLkotlin/jvm/functions/Function1;Lai/fanak/den/DenMode;Ljava/util/List;ZLjava/util/List;Ljava/util/List;Lai/fanak/den/core/model/ModelStore;Ljava/util/List;ZZLai/fanak/den/core/router/FailureStore;Lkotlin/jvm/functions/Function3;ZLkotlin/jvm/functions/Function1;ZLjava/util/Map;ILai/fanak/den/core/router/RoutingPolicy;)V
+	public synthetic fun <init> (Ljava/io/File;ILjava/lang/Integer;ZZLkotlin/jvm/functions/Function1;Lai/fanak/den/DenMode;Ljava/util/List;ZLjava/util/List;Ljava/util/List;Lai/fanak/den/core/model/ModelStore;Ljava/util/List;ZZLai/fanak/den/core/router/FailureStore;Lkotlin/jvm/functions/Function3;ZLkotlin/jvm/functions/Function1;ZLjava/util/Map;ILai/fanak/den/core/router/RoutingPolicy;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/io/File;
 	public final fun component10 ()Ljava/util/List;
 	public final fun component11 ()Ljava/util/List;
@@ -97,7 +97,8 @@ public final class ai/fanak/den/DenConfig {
 	public final fun component2 ()I
 	public final fun component20 ()Z
 	public final fun component21 ()Ljava/util/Map;
-	public final fun component22 ()Lai/fanak/den/core/router/RoutingPolicy;
+	public final fun component22 ()I
+	public final fun component23 ()Lai/fanak/den/core/router/RoutingPolicy;
 	public final fun component3 ()Ljava/lang/Integer;
 	public final fun component4 ()Z
 	public final fun component5 ()Z
@@ -105,8 +106,8 @@ public final class ai/fanak/den/DenConfig {
 	public final fun component7 ()Lai/fanak/den/DenMode;
 	public final fun component8 ()Ljava/util/List;
 	public final fun component9 ()Z
-	public final fun copy (Ljava/io/File;ILjava/lang/Integer;ZZLkotlin/jvm/functions/Function1;Lai/fanak/den/DenMode;Ljava/util/List;ZLjava/util/List;Ljava/util/List;Lai/fanak/den/core/model/ModelStore;Ljava/util/List;ZZLai/fanak/den/core/router/FailureStore;Lkotlin/jvm/functions/Function3;ZLkotlin/jvm/functions/Function1;ZLjava/util/Map;Lai/fanak/den/core/router/RoutingPolicy;)Lai/fanak/den/DenConfig;
-	public static synthetic fun copy$default (Lai/fanak/den/DenConfig;Ljava/io/File;ILjava/lang/Integer;ZZLkotlin/jvm/functions/Function1;Lai/fanak/den/DenMode;Ljava/util/List;ZLjava/util/List;Ljava/util/List;Lai/fanak/den/core/model/ModelStore;Ljava/util/List;ZZLai/fanak/den/core/router/FailureStore;Lkotlin/jvm/functions/Function3;ZLkotlin/jvm/functions/Function1;ZLjava/util/Map;Lai/fanak/den/core/router/RoutingPolicy;ILjava/lang/Object;)Lai/fanak/den/DenConfig;
+	public final fun copy (Ljava/io/File;ILjava/lang/Integer;ZZLkotlin/jvm/functions/Function1;Lai/fanak/den/DenMode;Ljava/util/List;ZLjava/util/List;Ljava/util/List;Lai/fanak/den/core/model/ModelStore;Ljava/util/List;ZZLai/fanak/den/core/router/FailureStore;Lkotlin/jvm/functions/Function3;ZLkotlin/jvm/functions/Function1;ZLjava/util/Map;ILai/fanak/den/core/router/RoutingPolicy;)Lai/fanak/den/DenConfig;
+	public static synthetic fun copy$default (Lai/fanak/den/DenConfig;Ljava/io/File;ILjava/lang/Integer;ZZLkotlin/jvm/functions/Function1;Lai/fanak/den/DenMode;Ljava/util/List;ZLjava/util/List;Ljava/util/List;Lai/fanak/den/core/model/ModelStore;Ljava/util/List;ZZLai/fanak/den/core/router/FailureStore;Lkotlin/jvm/functions/Function3;ZLkotlin/jvm/functions/Function1;ZLjava/util/Map;ILai/fanak/den/core/router/RoutingPolicy;ILjava/lang/Object;)Lai/fanak/den/DenConfig;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getAliases ()Ljava/util/Map;
 	public final fun getAllowLicence ()Lkotlin/jvm/functions/Function1;
@@ -126,6 +127,7 @@ public final class ai/fanak/den/DenConfig {
 	public final fun getMode ()Lai/fanak/den/DenMode;
 	public final fun getModelDir ()Ljava/io/File;
 	public final fun getOnDownload ()Lkotlin/jvm/functions/Function1;
+	public final fun getParallel ()I
 	public final fun getRecipes ()Ljava/util/List;
 	public final fun getRouting ()Lai/fanak/den/core/router/RoutingPolicy;
 	public final fun getStore ()Lai/fanak/den/core/model/ModelStore;

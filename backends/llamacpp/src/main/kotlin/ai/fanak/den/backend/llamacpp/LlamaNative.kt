@@ -33,6 +33,9 @@ internal object LlamaNative {
         callback: TextCallback,
     ): LongArray
 
+    // Another handle on the same weights, with its own context; free it like any handle.
+    external fun fork(handle: Long): Long
+
     external fun free(handle: Long)
 
     external fun version(): String

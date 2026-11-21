@@ -103,6 +103,17 @@ std::vector<Device> init_backends(const std::string &lib_dir) {
     return out;
 }
 
+// A context with its own KV cache of n_ctx tokens; the threads are set again before each generation.
+static llama_context *new_context(llama_model *model, int n_ctx, int n_threads) {
+    Threads t = n_threads > 0 ? Threads{n_threads, n_threads} : pick_threads();
+    auto cp = llama_context_default_params();
+    cp.n_ctx = n_ctx;
+    cp.n_batch = std::min(n_ctx, 512);
+    cp.n_threads = t.decode;
+    cp.n_threads_batch = t.batch;
+    return llama_init_from_model(model, cp);
+}
+
 std::unique_ptr<Engine> Engine::load(const std::string &path, int n_ctx, int n_threads,
                                      int n_gpu_layers, bool use_mmap, std::string &err) {
     if (ggml_backend_dev_count() == 0) {
@@ -114,20 +125,15 @@ std::unique_ptr<Engine> Engine::load(const std::string &path, int n_ctx, int n_t
     auto mp = llama_model_default_params();
     mp.n_gpu_layers = n_gpu_layers;
     mp.use_mmap = use_mmap;
-    e->model_ = llama_model_load_from_file(path.c_str(), mp);
-    if (!e->model_) {
+    llama_model *model = llama_model_load_from_file(path.c_str(), mp);
+    if (!model) {
         err = "failed to load model: " + path;
         return nullptr;
     }
-
+    e->model_ = std::shared_ptr<llama_model>(model, llama_model_free);
     e->threads_ = n_threads;
-    Threads t = n_threads > 0 ? Threads{n_threads, n_threads} : pick_threads();
-    auto cp = llama_context_default_params();
-    cp.n_ctx = n_ctx;
-    cp.n_batch = std::min(n_ctx, 512);
-    cp.n_threads = t.decode;
-    cp.n_threads_batch = t.batch;
-    e->ctx_ = llama_init_from_model(e->model_, cp);
+    e->n_ctx_ = n_ctx;
+    e->ctx_ = new_context(e->model_.get(), n_ctx, n_threads);
     if (!e->ctx_) {
         err = "failed to create context";
         return nullptr;
@@ -135,9 +141,21 @@ std::unique_ptr<Engine> Engine::load(const std::string &path, int n_ctx, int n_t
     return e;
 }
 
+std::unique_ptr<Engine> Engine::fork(std::string &err) const {
+    std::unique_ptr<Engine> e(new Engine());
+    e->model_ = model_;
+    e->threads_ = threads_;
+    e->n_ctx_ = n_ctx_;
+    e->ctx_ = new_context(model_.get(), n_ctx_, threads_);
+    if (!e->ctx_) {
+        err = "failed to create a second context";
+        return nullptr;
+    }
+    return e;
+}
+
 Engine::~Engine() {
     if (ctx_) llama_free(ctx_);
-    if (model_) llama_model_free(model_);
 }
 
 std::string Engine::format(const Messages &messages, std::string &err) const {
@@ -147,7 +165,7 @@ std::string Engine::format(const Messages &messages, std::string &err) const {
         chat.push_back({m.first.c_str(), m.second.c_str()});
         total += m.first.size() + m.second.size();
     }
-    const char *tmpl = llama_model_chat_template(model_, nullptr);
+    const char *tmpl = llama_model_chat_template(model_.get(), nullptr);
     std::string buf(2 * total + 256, '\0');
     int n = llama_chat_apply_template(tmpl, chat.data(), chat.size(), true, buf.data(), (int) buf.size());
     if (n > (int) buf.size()) {
@@ -168,7 +186,7 @@ bool Engine::generate(const Messages &messages, const GenParams &params, const O
     std::string prompt = format(messages, err);
     if (!err.empty()) return false;
 
-    const llama_vocab *vocab = llama_model_get_vocab(model_);
+    const llama_vocab *vocab = llama_model_get_vocab(model_.get());
     int n = -llama_tokenize(vocab, prompt.c_str(), (int) prompt.size(), nullptr, 0, true, true);
     std::vector<llama_token> tokens(n);
     llama_tokenize(vocab, prompt.c_str(), (int) prompt.size(), tokens.data(), n, true, true);

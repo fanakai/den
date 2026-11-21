@@ -125,6 +125,11 @@ private class LlamaSession(private var handle: Long) : Session {
         awaitClose()
     }
 
+    override fun fork(): Session? = synchronized(lock) {
+        if (handle == 0L) return null
+        runCatching { LlamaSession(LlamaNative.fork(handle)) }.getOrNull()
+    }
+
     override fun unload() = synchronized(lock) {
         if (handle != 0L) {
             LlamaNative.free(handle)

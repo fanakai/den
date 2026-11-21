@@ -81,6 +81,21 @@ Java_ai_fanak_den_backend_llamacpp_LlamaNative_load(JNIEnv *env, jobject, jstrin
     return reinterpret_cast<jlong>(h);
 }
 
+// A second engine on the same weights: its own handle, lock and KV cache. The weights are read-only, so no lock.
+JNIEXPORT jlong JNICALL
+Java_ai_fanak_den_backend_llamacpp_LlamaNative_fork(JNIEnv *env, jobject, jlong ptr) {
+    auto *h = reinterpret_cast<Handle *>(ptr);
+    std::string err;
+    auto engine = h->engine->fork(err);
+    if (!engine) {
+        throw_engine(env, err);
+        return 0;
+    }
+    auto *n = new Handle();
+    n->engine = std::move(engine);
+    return reinterpret_cast<jlong>(n);
+}
+
 // Returns [promptTokens, outputTokens, prefillMs, decodeMs, finish].
 JNIEXPORT jlongArray JNICALL
 Java_ai_fanak_den_backend_llamacpp_LlamaNative_generate(JNIEnv *env, jobject, jlong ptr,
