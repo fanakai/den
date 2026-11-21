@@ -3,6 +3,7 @@ package ai.fanak.den
 import ai.fanak.den.core.backend.BackendDescriptor
 import ai.fanak.den.core.backend.ChatMessage
 import ai.fanak.den.core.backend.Features
+import ai.fanak.den.core.backend.KvCache
 import ai.fanak.den.core.backend.UnsupportedFeatureException
 import ai.fanak.den.core.backend.features
 import ai.fanak.den.core.backend.DenBackend
@@ -360,6 +361,8 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         model: String,
         runs: Int = 5,
         quants: Set<String>? = setOf("q4_0", "q4_k_m"),
+        // Each path once per cache type, F16 first; its reply is the reference of the others.
+        kvCaches: Set<KvCache> = setOf(KvCache.F16),
         onProgress: (String) -> Unit = {},
     ): BenchResult {
         check(appContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE == 0) { "den bench needs a release build" }
@@ -379,6 +382,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         resolve(model)
         val device = device()
         val plan = router.plan(model, device, minContext).filter { quants == null || it.variant.quant in quants }
+            .flatMap { c -> kvCaches.sorted().map { c.copy(kvCache = it) } }
         if (plan.isEmpty()) throw NoUsableBackendException(model, emptyList(), "nothing to measure for $model on this phone")
         val start = conditions()
         val results = Bench(
@@ -396,6 +400,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
             "automatic threads",
             ran?.let { "${it.promptTokens}-token prompt, ${it.outputTokens} tokens greedy" },
             "median of $runs runs",
+            "KV cache " + kvCaches.sorted().joinToString(" and ") { it.name.lowercase() },
             "release build, foreground, screen on",
             "battery ${start.batteryPct}%" + if (start.charging == true) " charging" else "",
             "thermal ${start.thermal}",

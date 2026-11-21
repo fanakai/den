@@ -15,7 +15,8 @@ object Contribute {
         val title = "Recipe: ${r.soc}, ${r.model} (${r.device})"
         val rows = r.candidates.joinToString("\n") { c ->
             val result = if (c.ok) "${c.prefillTps!!.median} | ${c.decodeTps!!.median} | ${c.peakRamMb ?: ""}" else "failed: ${c.error} | |"
-            "| ${c.backend} ${c.accel.name.lowercase()} ${c.quant} | $result |"
+            val kv = if (c.kvCache != ai.fanak.den.core.backend.KvCache.F16) ", KV ${c.kvCache.name.lowercase()}" else ""
+            "| ${c.backend} ${c.accel.name.lowercase()} ${c.quant}$kv | $result |"
         }
         val body = buildString {
             appendLine("Measured with den bench on ${r.device}, ${r.date}.")

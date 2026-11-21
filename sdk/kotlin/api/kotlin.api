@@ -37,8 +37,8 @@ public final class ai/fanak/den/Den : java/lang/AutoCloseable {
 	public final fun addFile (Landroid/net/Uri;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun addFolder (Landroid/net/Uri;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun backendDescriptors (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public final fun bench (Ljava/lang/String;ILjava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public static synthetic fun bench$default (Lai/fanak/den/Den;Ljava/lang/String;ILjava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun bench (Ljava/lang/String;ILjava/util/Set;Ljava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun bench$default (Lai/fanak/den/Den;Ljava/lang/String;ILjava/util/Set;Ljava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public fun close ()V
 	public final fun device ()Lai/fanak/den/core/device/DeviceProfile;
 	public final fun download (Ljava/lang/String;Ljava/util/Set;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
