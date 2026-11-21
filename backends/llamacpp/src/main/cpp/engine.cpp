@@ -18,6 +18,8 @@
 #endif
 
 #include "ggml-backend.h"
+#include "json-schema-to-grammar.h"
+#include <nlohmann/json.hpp>
 #include "llama.h"
 #include "threads.h"
 
@@ -216,7 +218,26 @@ bool Engine::generate(const Messages &messages, const GenParams &params, const O
     int64_t t1 = now_ms();
     stats.prefill_ms = t1 - t0;
 
+    // A grammar first in the chain, so the samplers after it only see tokens the grammar allows.
+    std::string grammar = params.grammar;
+    if (grammar.empty() && !params.json_schema.empty()) {
+        try {
+            grammar = json_schema_to_grammar(nlohmann::ordered_json::parse(params.json_schema));
+        } catch (const std::exception &e) {
+            err = std::string("invalid JSON schema: ") + e.what();
+            return false;
+        }
+    }
     auto *smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
+    if (!grammar.empty()) {
+        auto *g = llama_sampler_init_grammar(vocab, grammar.c_str(), "root");
+        if (!g) {
+            llama_sampler_free(smpl);
+            err = "invalid grammar";
+            return false;
+        }
+        llama_sampler_chain_add(smpl, g);
+    }
     if (params.temperature <= 0.0f) {
         llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
     } else {

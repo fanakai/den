@@ -29,6 +29,9 @@ interface DenBackend {
 interface Session {
     fun generate(req: GenRequest): Flow<GenEvent>
 
+    // One vector per text, for search; a backend without embeddings says so.
+    suspend fun embed(texts: List<String>): List<FloatArray> = throw UnsupportedFeatureException("embeddings", "this backend")
+
     fun unload()
 }
 

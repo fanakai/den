@@ -2,6 +2,9 @@ package ai.fanak.den
 
 import ai.fanak.den.core.backend.BackendDescriptor
 import ai.fanak.den.core.backend.ChatMessage
+import ai.fanak.den.core.backend.Features
+import ai.fanak.den.core.backend.UnsupportedFeatureException
+import ai.fanak.den.core.backend.features
 import ai.fanak.den.core.backend.DenBackend
 import ai.fanak.den.core.backend.GenEvent
 import ai.fanak.den.core.backend.Location
@@ -514,6 +517,10 @@ internal class LocalModel(
     override val failures get() = last.failures
 
     override fun chat(request: GenRequest): Flow<GenEvent> = flow {
+        // Refused here, before the engine: a feature the backend lacks would otherwise be ignored.
+        last.candidate.backend.about?.let { about ->
+            (request.features - about.features).firstOrNull()?.let { throw UnsupportedFeatureException(it, about.name) }
+        }
         // Read before each request: a phone heats up during a session, not at load.
         val cooler = if (request.threads == null) Thermal.threads(autoThreads, thermal()) else null
         if (cooler != null) Log.i("Den", "$name: ${thermal()} thermal state, $cooler threads instead of $autoThreads")

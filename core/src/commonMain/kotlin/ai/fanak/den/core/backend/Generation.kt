@@ -18,7 +18,28 @@ data class GenRequest(
     val cache: Boolean = true,
     // Threads for this request; null lets the engine pick them for the cores it may use.
     val threads: Int? = null,
+    // Constrains the reply: a GBNF grammar, or a JSON schema (as JSON text) the reply must follow.
+    val grammar: String? = null,
+    val jsonSchema: String? = null,
+    // Functions the model may call; a backend without tool calls refuses the request.
+    val tools: List<Tool> = emptyList(),
 )
+
+// A function the model may call, as OpenAI describes one: its parameters are a JSON schema, as JSON text.
+@kotlinx.serialization.Serializable
+data class Tool(val name: String, val description: String = "", val parameters: String = "{}")
+
+// A request asks for something this backend does not do yet (tools, embeddings): said instead of ignored.
+class UnsupportedFeatureException(val feature: String, backend: String) :
+    UnsupportedOperationException("$backend does not support $feature yet")
+
+// The features a request needs, as named in BackendDescriptor.features.
+val GenRequest.features: Set<String>
+    get() = buildSet {
+        if (grammar != null) add(Features.GRAMMAR)
+        if (jsonSchema != null) add(Features.JSON_SCHEMA)
+        if (tools.isNotEmpty()) add(Features.TOOLS)
+    }
 
 // Why the reply ended: end of text or a stop string, `maxTokens`, or a full context.
 enum class Finish { STOP, LENGTH, CONTEXT }

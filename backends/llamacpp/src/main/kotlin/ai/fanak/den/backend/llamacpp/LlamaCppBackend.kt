@@ -4,6 +4,7 @@ import ai.fanak.den.core.backend.BackendDescriptor
 import ai.fanak.den.core.backend.BackendMode
 import ai.fanak.den.core.backend.Capabilities
 import ai.fanak.den.core.backend.DenBackend
+import ai.fanak.den.core.backend.Features
 import ai.fanak.den.core.backend.GenEvent
 import ai.fanak.den.core.backend.GenRequest
 import ai.fanak.den.core.backend.GenStats
@@ -11,6 +12,7 @@ import ai.fanak.den.core.backend.Health
 import ai.fanak.den.core.backend.LoadOptions
 import ai.fanak.den.core.backend.Session
 import ai.fanak.den.core.backend.SupportTier
+import ai.fanak.den.core.backend.UnsupportedFeatureException
 import ai.fanak.den.core.device.Accel
 import ai.fanak.den.core.device.DeviceProfile
 import ai.fanak.den.core.device.Platform
@@ -21,6 +23,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.channels.trySendBlocking
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -35,6 +38,7 @@ private val ABOUT = BackendDescriptor(
     tier = SupportTier.CORE,
     modes = setOf(BackendMode.CHAT),
     formats = setOf(ModelFormat.GGUF),
+    features = setOf(Features.GRAMMAR, Features.JSON_SCHEMA),
 )
 
 class LlamaCppBackend : DenBackend {
@@ -69,7 +73,7 @@ class LlamaCppBackend : DenBackend {
                 LlamaNative.load(artifact.path, opts.contextLength, threads, gpuLayers, opts.mmap).also { h ->
                     // Warm-up with a prompt as long as a real one: a 1-token "hi" left the first request at
                     // 3.8 tok/s prefill on the A52s, against ~75 for the next ones.
-                    LlamaNative.generate(h, arrayOf("user"), arrayOf(WARMUP.encodeToByteArray()), 2, 0f, 1f, emptyArray(), false, 0) { true }
+                    LlamaNative.generate(h, arrayOf("user"), arrayOf(WARMUP.encodeToByteArray()), 2, 0f, 1f, emptyArray(), false, 0, emptyArray()) { true }
                 }
             } catch (e: EngineException) {
                 lastError = e.message
@@ -86,7 +90,13 @@ class LlamaCppBackend : DenBackend {
 private class LlamaSession(private var handle: Long) : Session {
     private val lock = Any()
 
-    override fun generate(req: GenRequest): Flow<GenEvent> = callbackFlow {
+    // Tool calls need the model's own chat template with tools, which this engine does not apply yet.
+    override fun generate(req: GenRequest): Flow<GenEvent> =
+        if (req.tools.isNotEmpty()) flow { throw UnsupportedFeatureException("tools", "llama.cpp") } else text(req)
+
+    override suspend fun embed(texts: List<String>): List<FloatArray> = throw UnsupportedFeatureException("embeddings", "llama.cpp")
+
+    private fun text(req: GenRequest): Flow<GenEvent> = callbackFlow {
         launch(Dispatchers.IO) {
             try {
                 val s = synchronized(lock) {
@@ -101,6 +111,7 @@ private class LlamaSession(private var handle: Long) : Session {
                         req.stop.map { it.encodeToByteArray() }.toTypedArray(),
                         req.cache,
                         req.threads ?: 0,
+                        arrayOf((req.grammar ?: "").encodeToByteArray(), (req.jsonSchema ?: "").encodeToByteArray()),
                     ) { utf8 ->
                         trySendBlocking(GenEvent.Text(utf8.decodeToString())).isSuccess && isActive
                     }

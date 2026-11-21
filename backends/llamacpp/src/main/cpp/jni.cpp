@@ -86,7 +86,8 @@ JNIEXPORT jlongArray JNICALL
 Java_ai_fanak_den_backend_llamacpp_LlamaNative_generate(JNIEnv *env, jobject, jlong ptr,
                                                          jobjectArray roles, jobjectArray contents,
                                                          jint max_tokens, jfloat temperature, jfloat top_p,
-                                                         jobjectArray stop, jboolean cache, jint threads, jobject callback) {
+                                                         jobjectArray stop, jboolean cache, jint threads,
+                                                         jobjectArray constraints, jobject callback) {
     auto *h = reinterpret_cast<Handle *>(ptr);
     std::lock_guard<std::mutex> guard(h->lock);
 
@@ -102,6 +103,10 @@ Java_ai_fanak_den_backend_llamacpp_LlamaNative_generate(JNIEnv *env, jobject, jl
     params.stop = utf8s(env, stop);
     params.cache = cache;
     params.threads = threads;
+    // [grammar, json schema], each empty when unused.
+    auto k = utf8s(env, constraints);
+    if (k.size() > 0) params.grammar = k[0];
+    if (k.size() > 1) params.json_schema = k[1];
 
     // Bytes, not a jstring: NewStringUTF uses modified UTF-8 and breaks 4-byte characters.
     jmethodID on_text = env->GetMethodID(env->GetObjectClass(callback), "onText", "([B)Z");
