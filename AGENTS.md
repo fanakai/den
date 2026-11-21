@@ -27,6 +27,7 @@ git submodule update --init
 
 - After a change to an AIDL file or another interface, run `./gradlew build --rerun-tasks` before opening a PR: an incremental build can miss a class that implements the interface.
 - The public API of `core/`, `sdk/kotlin/` and `backends/llamacpp/` is in their `api/*.api` files, and `./gradlew build` fails when it changes. After an intended change, run `./gradlew apiDump` and commit the updated files with it.
+- The table in `recipes/README.md` is made from the recipe files, and `./gradlew build` fails when it differs. After a recipe change, run `./gradlew :core:jvmTest -Pden.writeTable` and commit the README with it.
 - CI (`.github/workflows/build.yml`) runs `./gradlew build` on every pull request and must pass before merging.
 - On Linux and macOS, `./gradlew :backends:llamacpp:test` also builds the engine for the machine (cmake and a C++ compiler needed) and runs it through JNI on a 1.2 MB model: generation, stop strings, cancel, context limits. On Windows these tests are skipped; CI runs them.
 

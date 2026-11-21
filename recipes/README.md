@@ -37,13 +37,15 @@ In CI, unknown fields are rejected, so a typo fails the build; `RecipeLintTest` 
 
 ## Current recipes
 
-| Phone | Model size | First choice | Prefill (tok/s) | Decode (tok/s) |
-|---|---|---|---|---|
-| Galaxy S25 (SM8750) | Qwen3 0.6B | llamacpp, CPU, Q4_0 | 213.8 | 40.9 |
-| Galaxy S25 (SM8750) | Qwen3 1.7B | llamacpp, GPU, Q4_0 | 196.4 | 24.3 |
-| Galaxy A52s (SM7325) | Qwen3 0.6B | llamacpp, CPU, Q4_0 | 43.6 | 30.0 |
-| Galaxy A52s (SM7325) | Qwen3 1.7B | llamacpp, CPU, Q4_0 | 33.3 | 12.8 |
-| ZTE Blade A75 5G (Unisoc T760) | Qwen3 0.6B | llamacpp, CPU, Q4_0 | 166.4 | 13.6 |
+<!-- Made from the recipe files by RecipeTableTest; do not edit. -->
+| Phone | Model size | First choice | Then | Prefill (tok/s) | Decode (tok/s) | Measured |
+|---|---|---|---|---|---|---|
+| Galaxy A52s 5G (SM7325) | Qwen3 0.6B | llamacpp, CPU, Q4_0 | llamacpp, CPU, Q4_K_M | 43.6 | 30.0 | 2026-11-19 |
+| Galaxy A52s 5G (SM7325) | Qwen3 1.7B | llamacpp, CPU, Q4_0 | llamacpp, CPU, Q4_K_M | 33.3 | 12.8 | 2026-11-19 |
+| Galaxy S25 (SM8750) | Qwen3 0.6B | llamacpp, CPU, Q4_0 | llamacpp, GPU, Q4_0; llamacpp, CPU, Q4_K_M | 213.8 | 40.9 | 2026-11-20 |
+| Galaxy S25 (SM8750) | Qwen3 1.7B | llamacpp, GPU, Q4_0 | llamacpp, CPU, Q4_0; llamacpp, CPU, Q4_K_M | 196.4 | 24.3 | 2026-11-19 |
+| ZTE Blade A75 5G (T760) | Qwen3 0.6B | llamacpp, CPU, Q4_0 | llamacpp, CPU, Q4_K_M | 166.4 | 13.6 | 2026-11-20 |
+<!-- End of the generated table. -->
 
 On the S25 the CPU decodes 0.6B faster than the GPU, while the GPU is 2.7x faster at prefill on 1.7B with the same decode.
 On the A52s the OpenCL driver is too old for llama.cpp and the Vulkan path is slower than the CPU.
@@ -54,3 +56,4 @@ With 3.4 GB of RAM it has about 1.2 GB free, so only the 0.6B size is measured.
 ## Contributing
 
 Run the benchmark on your phone and open a pull request with the file. `den bench` (#14) will generate it.
+Then run `./gradlew :core:jvmTest -Pden.writeTable` to update the table above, which CI checks against the files.
