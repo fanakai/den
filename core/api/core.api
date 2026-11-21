@@ -1092,6 +1092,21 @@ public final class ai/fanak/den/core/model/OfflineException : java/io/IOExceptio
 	public fun <init> (Ljava/lang/String;)V
 }
 
+public final class ai/fanak/den/core/model/OllamaCatalog : ai/fanak/den/core/model/ModelCatalog {
+	public static final field Companion Lai/fanak/den/core/model/OllamaCatalog$Companion;
+	public fun <init> (Ljava/io/File;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function2;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/io/File;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function2;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun getModels ()Ljava/util/List;
+	public fun licence (Ljava/lang/String;)Ljava/lang/String;
+	public fun newerCommit (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun remote (Lai/fanak/den/core/model/Variant;)Lai/fanak/den/core/model/RemoteFile;
+	public fun resolve (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun variants (Ljava/lang/String;)Ljava/util/List;
+}
+
+public final class ai/fanak/den/core/model/OllamaCatalog$Companion {
+}
+
 public final class ai/fanak/den/core/model/RemoteFile {
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;Ljava/lang/String;)V
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
