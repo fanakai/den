@@ -1,0 +1,45 @@
+name: llama.cpp head
+
+# Weekly: the engine built at the latest commit of llama.cpp, with the core and engine tests, so an upstream change
+# that breaks Den is known before a bump. A scheduled failure opens an issue. A bump of the submodule still lands only
+# after a measurement on phones.
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  head:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Move llama.cpp to its latest commit
+        run: |
+          git -C backends/llamacpp/llama.cpp fetch --depth 1 origin master
+          git -C backends/llamacpp/llama.cpp checkout -q FETCH_HEAD
+          echo "LLAMA=$(git -C backends/llamacpp/llama.cpp log -1 --format='%h %s')" >> "$GITHUB_ENV"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ hashFiles('build.gradle.kts') }}
+      - run: ./gradlew :core:jvmTest :backends:llamacpp:testReleaseUnitTest --console=plain
+      - name: Open an issue
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Engine fails at llama.cpp HEAD"
+          open=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq length)
+          [ "$open" = "0" ] || exit 0
+          gh issue create --title "$title" --body "The weekly run at llama.cpp \`$LLAMA\` failed: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID. Close this issue when the engine builds and passes again."
