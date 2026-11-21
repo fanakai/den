@@ -176,7 +176,7 @@ internal class IsolatedBackend(private val engine: EngineConnection, inner: DenB
         val entries = call { it.engine.probe(cls, EngineService.JSON.encodeToString(DeviceProfile.serializer(), d)) }
         val c = Capabilities(
             entries.filter { it.startsWith("accel:") }.map { Accel.valueOf(it.removePrefix("accel:")) }.toSet(),
-            entries.filter { it.startsWith("format:") }.map { ModelFormat.valueOf(it.removePrefix("format:")) }.toSet(),
+            entries.filter { it.startsWith("format:") }.map { ModelFormat(it.removePrefix("format:").lowercase()) }.toSet(),
             entries.filter { it.startsWith("arch:") }.map { it.removePrefix("arch:") }.toSet().ifEmpty { null },
         )
         caps = d to c

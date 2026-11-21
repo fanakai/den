@@ -1,4 +1,4 @@
-﻿package ai.fanak.den.core.recipe
+package ai.fanak.den.core.recipe
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -25,5 +25,15 @@ class RecipeParseTest {
         assertEquals(null, RecipeFiles.parseOrNull(recipe().replace("schema: 1", "schema: 2")))
         assertEquals(null, RecipeFiles.parseOrNull("not: [a recipe"))
     }
-}
 
+    @Test
+    fun aFormatOfANewEngineNeedsNoChangeToCore() {
+        val r = RecipeFiles.parse(recipe(choices = "      - { backend: mnn, accel: cpu, format: mnn, quant: q4 }\n"))
+        val format = r.rankings.single().choices.single().format
+        assertEquals(ai.fanak.den.core.model.ModelFormat("mnn"), format)
+        assertEquals("mnn", format.toString())
+        // Written back as it was read.
+        assertEquals(r, RecipeFiles.parse(RecipeFiles.encode(r)))
+        assertEquals(ai.fanak.den.core.model.ModelFormat.GGUF, RecipeFiles.parse(recipe(choices = "      - { backend: b, accel: cpu, format: gguf, quant: q }\n")).rankings.single().choices.single().format)
+    }
+}
