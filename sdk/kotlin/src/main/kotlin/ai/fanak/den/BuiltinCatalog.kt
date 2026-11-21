@@ -9,7 +9,7 @@ import ai.fanak.den.core.model.Variant
 import java.io.File
 import java.io.FileNotFoundException
 
-data class CatalogEntry(
+internal data class CatalogEntry(
     val variant: Variant,
     val fileName: String,
     val url: String,
@@ -20,7 +20,7 @@ data class CatalogEntry(
 )
 
 // Until the live catalog (#31). minRamMb is a rough margin until den bench measures peak RAM (#14).
-object BuiltinCatalog : ModelCatalog {
+internal object BuiltinCatalog : ModelCatalog {
     private const val HF = "https://huggingface.co/unsloth"
 
     // Parameter counts from the GGUF metadata of the unsloth repositories (Hugging Face `expand[]=gguf`).
@@ -64,7 +64,7 @@ object BuiltinCatalog : ModelCatalog {
 }
 
 // Model files already on disk, with no download (DenConfig.download = false).
-class FileModelStore(val dir: File, private val catalog: ModelCatalog = BuiltinCatalog) : ModelStore {
+internal class FileModelStore(val dir: File, private val catalog: ModelCatalog = BuiltinCatalog) : ModelStore {
     override suspend fun fetch(variant: Variant): Artifact {
         val r = catalog.remote(variant) ?: throw FileNotFoundException("no file for $variant in the catalog")
         // Placed by hand: under its path, or directly in the folder.

@@ -34,7 +34,7 @@ import kotlinx.serialization.json.Json
  * Runs the backends in their own process (`:den_engine`), so a native crash, e.g. a GPU driver abort, kills this
  * process and not the app. Backends are created here again from their class name.
  */
-class EngineService : Service() {
+internal class EngineService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> Log.e(TAG, "uncaught", e) })
     private val backends = ConcurrentHashMap<String, DenBackend>()
     private val sessions = ConcurrentHashMap<Long, Session>()
