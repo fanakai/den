@@ -26,4 +26,11 @@ interface IDenService {
 
     // Version 4: the port of the OpenAI-compatible endpoint on 127.0.0.1, or -1 when it is off.
     int httpPort();
+
+    // Version 5: open() with the app's options as JSON, e.g. {"contextLength":4096,"minContextLength":2048}. The
+    // callback gets onContext before onOpened, and onFailed instead of onError.
+    oneway void openWith(String model, String options, IOpenCallback callback);
+
+    // Version 5: the Den app's route for the model on this phone, one "backend accel quant source" per candidate.
+    String[] plan(String model, String options);
 }

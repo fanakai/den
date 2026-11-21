@@ -42,6 +42,10 @@ fun Context.remoteCheck(model: String, prompt: String) {
                 override fun onProgress(file: String, bytes: Long, total: Long) { log("download $file ${bytes shr 20}/${total shr 20} MB") }
 
                 override fun onApproval(screen: android.app.PendingIntent) { log("approval screen offered") }
+
+                override fun onContext(contextLength: Int) { log("context $contextLength") }
+
+                override fun onFailed(kind: String, message: String) { log("open failed ($kind): $message") }
             })
         }
 

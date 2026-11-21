@@ -18,6 +18,8 @@ fun Context.testDen(
     crash: Boolean = false,
     denCertificates: List<String> = DEN_CERTIFICATES,
     bundledRecipes: Boolean = true,
+    contextLength: Int = 4096,
+    minContextLength: Int? = null,
 ) = Den.connect(
     this,
     DenConfig(
@@ -26,6 +28,8 @@ fun Context.testDen(
         mode = mode,
         denCertificates = denCertificates,
         bundledRecipes = bundledRecipes,
+        contextLength = contextLength,
+        minContextLength = minContextLength,
         backends = if (crash) listOf(CrashBackend(this), LlamaCppBackend()) else null,
         onDownload = { Log.i("DenTest", "download ${it.fileName} ${it.bytes shr 20}/${it.total shr 20} MB") },
     ),
