@@ -5,6 +5,7 @@ import ai.fanak.den.core.device.DeviceProfile
 import ai.fanak.den.core.model.Artifact
 import ai.fanak.den.core.model.ModelFormat
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 interface DenBackend {
@@ -55,6 +56,13 @@ data class Capabilities(
     }
 }
 
+/** The type of the KV cache. A q8_0 cache takes 34 bytes per 32 values, against 64 for F16. */
+@Serializable
+enum class KvCache {
+    @SerialName("f16") F16,
+    @SerialName("q8_0") Q8_0,
+}
+
 @Serializable
 data class LoadOptions(
     val accel: Accel,
@@ -65,6 +73,8 @@ data class LoadOptions(
     // Requests that run at the same time on this session, each a sequence of contextLength tokens in one KV cache,
     // decoded together in batches; further ones wait. Backends that cannot run several take them one after another.
     val sequences: Int = 1,
+    // A backend that has one type only ignores it.
+    val kvCache: KvCache = KvCache.F16,
 )
 
 sealed interface Health {

@@ -44,7 +44,10 @@ int main(int argc, char **argv) {
     }
 
     std::string err;
-    auto engine = den::Engine::load(argv[1], 2048, threads, gpu_layers, std::getenv("DEN_NO_MMAP") == nullptr, err);
+    // DEN_KV=q8_0: the q8_0 KV cache, as a recipe can choose it.
+    const char *kv = std::getenv("DEN_KV");
+    auto engine = den::Engine::load(argv[1], 2048, threads, gpu_layers, std::getenv("DEN_NO_MMAP") == nullptr, err, 1,
+                                    kv != nullptr && std::string(kv) == "q8_0");
     if (!engine) {
         std::fprintf(stderr, "load: %s\n", err.c_str());
         return 1;

@@ -16,7 +16,7 @@ internal object LlamaNative {
     external fun devices(): Array<String>
 
     // nSeq: requests that generate on the handle at the same time, decoded together; further ones wait.
-    external fun load(path: String, nCtx: Int, nThreads: Int, nGpuLayers: Int, useMmap: Boolean, nSeq: Int): Long
+    external fun load(path: String, nCtx: Int, nThreads: Int, nGpuLayers: Int, useMmap: Boolean, nSeq: Int, kvQ8: Boolean): Long
 
     // [promptTokens, outputTokens, prefillMs, decodeMs, finish, cachedTokens, threads]; contents and stop strings
     // as UTF-8. Several threads may call it at once; free must wait for them.

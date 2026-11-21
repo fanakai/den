@@ -254,20 +254,35 @@ public final class ai/fanak/den/core/backend/Health$Ok : ai/fanak/den/core/backe
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class ai/fanak/den/core/backend/KvCache : java/lang/Enum {
+	public static final field Companion Lai/fanak/den/core/backend/KvCache$Companion;
+	public static final field F16 Lai/fanak/den/core/backend/KvCache;
+	public static final field Q8_0 Lai/fanak/den/core/backend/KvCache;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lai/fanak/den/core/backend/KvCache;
+	public static fun values ()[Lai/fanak/den/core/backend/KvCache;
+}
+
+public final class ai/fanak/den/core/backend/KvCache$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public final class ai/fanak/den/core/backend/LoadOptions {
 	public static final field Companion Lai/fanak/den/core/backend/LoadOptions$Companion;
-	public fun <init> (Lai/fanak/den/core/device/Accel;ILjava/lang/Integer;ZI)V
-	public synthetic fun <init> (Lai/fanak/den/core/device/Accel;ILjava/lang/Integer;ZIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lai/fanak/den/core/device/Accel;ILjava/lang/Integer;ZILai/fanak/den/core/backend/KvCache;)V
+	public synthetic fun <init> (Lai/fanak/den/core/device/Accel;ILjava/lang/Integer;ZILai/fanak/den/core/backend/KvCache;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lai/fanak/den/core/device/Accel;
 	public final fun component2 ()I
 	public final fun component3 ()Ljava/lang/Integer;
 	public final fun component4 ()Z
 	public final fun component5 ()I
-	public final fun copy (Lai/fanak/den/core/device/Accel;ILjava/lang/Integer;ZI)Lai/fanak/den/core/backend/LoadOptions;
-	public static synthetic fun copy$default (Lai/fanak/den/core/backend/LoadOptions;Lai/fanak/den/core/device/Accel;ILjava/lang/Integer;ZIILjava/lang/Object;)Lai/fanak/den/core/backend/LoadOptions;
+	public final fun component6 ()Lai/fanak/den/core/backend/KvCache;
+	public final fun copy (Lai/fanak/den/core/device/Accel;ILjava/lang/Integer;ZILai/fanak/den/core/backend/KvCache;)Lai/fanak/den/core/backend/LoadOptions;
+	public static synthetic fun copy$default (Lai/fanak/den/core/backend/LoadOptions;Lai/fanak/den/core/device/Accel;ILjava/lang/Integer;ZILai/fanak/den/core/backend/KvCache;ILjava/lang/Object;)Lai/fanak/den/core/backend/LoadOptions;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getAccel ()Lai/fanak/den/core/device/Accel;
 	public final fun getContextLength ()I
+	public final fun getKvCache ()Lai/fanak/den/core/backend/KvCache;
 	public final fun getMmap ()Z
 	public final fun getSequences ()I
 	public final fun getThreads ()Ljava/lang/Integer;
@@ -1377,17 +1392,20 @@ public final class ai/fanak/den/core/recipe/Recipe$Companion {
 
 public final class ai/fanak/den/core/recipe/RecipeChoice {
 	public static final field Companion Lai/fanak/den/core/recipe/RecipeChoice$Companion;
-	public synthetic fun <init> (Ljava/lang/String;Lai/fanak/den/core/device/Accel;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Lai/fanak/den/core/device/Accel;Ljava/lang/String;Ljava/lang/String;Lai/fanak/den/core/backend/KvCache;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Lai/fanak/den/core/device/Accel;Ljava/lang/String;Ljava/lang/String;Lai/fanak/den/core/backend/KvCache;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Lai/fanak/den/core/device/Accel;
 	public final fun component3-WHKAPV0 ()Ljava/lang/String;
 	public final fun component4 ()Ljava/lang/String;
-	public final fun copy-nUfgums (Ljava/lang/String;Lai/fanak/den/core/device/Accel;Ljava/lang/String;Ljava/lang/String;)Lai/fanak/den/core/recipe/RecipeChoice;
-	public static synthetic fun copy-nUfgums$default (Lai/fanak/den/core/recipe/RecipeChoice;Ljava/lang/String;Lai/fanak/den/core/device/Accel;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lai/fanak/den/core/recipe/RecipeChoice;
+	public final fun component5 ()Lai/fanak/den/core/backend/KvCache;
+	public final fun copy-mjJIo6g (Ljava/lang/String;Lai/fanak/den/core/device/Accel;Ljava/lang/String;Ljava/lang/String;Lai/fanak/den/core/backend/KvCache;)Lai/fanak/den/core/recipe/RecipeChoice;
+	public static synthetic fun copy-mjJIo6g$default (Lai/fanak/den/core/recipe/RecipeChoice;Ljava/lang/String;Lai/fanak/den/core/device/Accel;Ljava/lang/String;Ljava/lang/String;Lai/fanak/den/core/backend/KvCache;ILjava/lang/Object;)Lai/fanak/den/core/recipe/RecipeChoice;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getAccel ()Lai/fanak/den/core/device/Accel;
 	public final fun getBackend ()Ljava/lang/String;
 	public final fun getFormat-WHKAPV0 ()Ljava/lang/String;
+	public final fun getKvCache ()Lai/fanak/den/core/backend/KvCache;
 	public final fun getQuant ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
@@ -1431,16 +1449,19 @@ public abstract interface class ai/fanak/den/core/recipe/RecipeStore {
 }
 
 public final class ai/fanak/den/core/router/Candidate {
-	public fun <init> (Lai/fanak/den/core/backend/DenBackend;Lai/fanak/den/core/device/Accel;Lai/fanak/den/core/model/Variant;Lai/fanak/den/core/router/Source;)V
+	public fun <init> (Lai/fanak/den/core/backend/DenBackend;Lai/fanak/den/core/device/Accel;Lai/fanak/den/core/model/Variant;Lai/fanak/den/core/router/Source;Lai/fanak/den/core/backend/KvCache;)V
+	public synthetic fun <init> (Lai/fanak/den/core/backend/DenBackend;Lai/fanak/den/core/device/Accel;Lai/fanak/den/core/model/Variant;Lai/fanak/den/core/router/Source;Lai/fanak/den/core/backend/KvCache;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lai/fanak/den/core/backend/DenBackend;
 	public final fun component2 ()Lai/fanak/den/core/device/Accel;
 	public final fun component3 ()Lai/fanak/den/core/model/Variant;
 	public final fun component4 ()Lai/fanak/den/core/router/Source;
-	public final fun copy (Lai/fanak/den/core/backend/DenBackend;Lai/fanak/den/core/device/Accel;Lai/fanak/den/core/model/Variant;Lai/fanak/den/core/router/Source;)Lai/fanak/den/core/router/Candidate;
-	public static synthetic fun copy$default (Lai/fanak/den/core/router/Candidate;Lai/fanak/den/core/backend/DenBackend;Lai/fanak/den/core/device/Accel;Lai/fanak/den/core/model/Variant;Lai/fanak/den/core/router/Source;ILjava/lang/Object;)Lai/fanak/den/core/router/Candidate;
+	public final fun component5 ()Lai/fanak/den/core/backend/KvCache;
+	public final fun copy (Lai/fanak/den/core/backend/DenBackend;Lai/fanak/den/core/device/Accel;Lai/fanak/den/core/model/Variant;Lai/fanak/den/core/router/Source;Lai/fanak/den/core/backend/KvCache;)Lai/fanak/den/core/router/Candidate;
+	public static synthetic fun copy$default (Lai/fanak/den/core/router/Candidate;Lai/fanak/den/core/backend/DenBackend;Lai/fanak/den/core/device/Accel;Lai/fanak/den/core/model/Variant;Lai/fanak/den/core/router/Source;Lai/fanak/den/core/backend/KvCache;ILjava/lang/Object;)Lai/fanak/den/core/router/Candidate;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getAccel ()Lai/fanak/den/core/device/Accel;
 	public final fun getBackend ()Lai/fanak/den/core/backend/DenBackend;
+	public final fun getKvCache ()Lai/fanak/den/core/backend/KvCache;
 	public final fun getLocation ()Lai/fanak/den/core/backend/Location;
 	public final fun getSource ()Lai/fanak/den/core/router/Source;
 	public final fun getVariant ()Lai/fanak/den/core/model/Variant;
@@ -1632,8 +1653,8 @@ public final class ai/fanak/den/core/router/Router {
 }
 
 public final class ai/fanak/den/core/router/Router$Companion {
-	public final fun ramNeed (Lai/fanak/den/core/model/Variant;IZ)Lai/fanak/den/core/router/Router$RamNeed;
-	public static synthetic fun ramNeed$default (Lai/fanak/den/core/router/Router$Companion;Lai/fanak/den/core/model/Variant;IZILjava/lang/Object;)Lai/fanak/den/core/router/Router$RamNeed;
+	public final fun ramNeed (Lai/fanak/den/core/model/Variant;IZLai/fanak/den/core/backend/KvCache;)Lai/fanak/den/core/router/Router$RamNeed;
+	public static synthetic fun ramNeed$default (Lai/fanak/den/core/router/Router$Companion;Lai/fanak/den/core/model/Variant;IZLai/fanak/den/core/backend/KvCache;ILjava/lang/Object;)Lai/fanak/den/core/router/Router$RamNeed;
 }
 
 public final class ai/fanak/den/core/router/Router$RamNeed {

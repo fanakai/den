@@ -1,5 +1,6 @@
 package ai.fanak.den.core.recipe
 
+import ai.fanak.den.core.backend.KvCache
 import ai.fanak.den.core.device.Accel
 import ai.fanak.den.core.device.DeviceProfile
 import ai.fanak.den.core.model.ModelFormat
@@ -14,6 +15,8 @@ data class RecipeChoice(
     val accel: Accel,
     val format: ModelFormat,
     val quant: String,
+    // Only where it was measured on that phone: F16 otherwise.
+    @SerialName("kv_cache") val kvCache: KvCache = KvCache.F16,
 )
 
 @Serializable

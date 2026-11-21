@@ -67,10 +67,10 @@ Java_ai_fanak_den_backend_llamacpp_LlamaNative_devices(JNIEnv *env, jobject) {
 JNIEXPORT jlong JNICALL
 Java_ai_fanak_den_backend_llamacpp_LlamaNative_load(JNIEnv *env, jobject, jstring path, jint n_ctx,
                                                      jint n_threads, jint n_gpu_layers, jboolean use_mmap,
-                                                     jint n_seq) {
+                                                     jint n_seq, jboolean kv_q8) {
     den::init_backends("");
     std::string err;
-    auto engine = den::Engine::load(str(env, path), n_ctx, n_threads, n_gpu_layers, use_mmap, err, n_seq);
+    auto engine = den::Engine::load(str(env, path), n_ctx, n_threads, n_gpu_layers, use_mmap, err, n_seq, kv_q8);
     if (!engine) {
         throw_engine(env, err);
         return 0;

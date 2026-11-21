@@ -57,8 +57,8 @@ class EngineTest {
         return text.toString() to GenStats.of(s)
     }
 
-    private fun withEngine(nCtx: Int = 256, nSeq: Int = 1, block: (Long) -> Unit) {
-        val h = LlamaNative.load(model.path, nCtx, 2, 0, true, nSeq)
+    private fun withEngine(nCtx: Int = 256, nSeq: Int = 1, kvQ8: Boolean = false, block: (Long) -> Unit) {
+        val h = LlamaNative.load(model.path, nCtx, 2, 0, true, nSeq, kvQ8)
         try {
             block(h)
         } finally {
@@ -169,6 +169,13 @@ class EngineTest {
         val (_, s) = gen(h, PROMPT, 500)
         assertEquals(Finish.CONTEXT, s.finish)
         assertEquals(256, s.promptTokens + s.outputTokens)
+    }
+
+    // The test model has heads of 8 values; a q8_0 cache stores blocks of 32. The load fails, so the router tries the
+    // next choice; on the PC, Qwen3-0.6B loads and generates with it.
+    @Test
+    fun aQ8CacheTheModelCannotHoldFailsToLoad() {
+        assertFailsWith<EngineException> { LlamaNative.load(model.path, 256, 2, 0, true, 1, true) }
     }
 
     @Test

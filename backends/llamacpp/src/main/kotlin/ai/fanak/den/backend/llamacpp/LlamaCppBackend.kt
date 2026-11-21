@@ -3,6 +3,7 @@ package ai.fanak.den.backend.llamacpp
 import ai.fanak.den.core.backend.BackendDescriptor
 import ai.fanak.den.core.backend.BackendMode
 import ai.fanak.den.core.backend.Capabilities
+import ai.fanak.den.core.backend.KvCache
 import ai.fanak.den.core.backend.DenBackend
 import ai.fanak.den.core.backend.Features
 import ai.fanak.den.core.backend.GenEvent
@@ -73,7 +74,7 @@ class LlamaCppBackend : DenBackend {
         val threads = opts.threads ?: 0
         val handle = withContext(Dispatchers.IO) {
             try {
-                LlamaNative.load(artifact.path, opts.contextLength, threads, gpuLayers, opts.mmap, opts.sequences.coerceAtLeast(1)).also { h ->
+                LlamaNative.load(artifact.path, opts.contextLength, threads, gpuLayers, opts.mmap, opts.sequences.coerceAtLeast(1), opts.kvCache == KvCache.Q8_0).also { h ->
                     // Warm-up with a prompt as long as a real one: a 1-token "hi" left the first request at
                     // 3.8 tok/s prefill on the A52s, against ~75 for the next ones.
                     LlamaNative.generate(h, arrayOf("user"), arrayOf(WARMUP.encodeToByteArray()), 2, 0f, 1f, emptyArray(), false, 0, emptyArray()) { true }

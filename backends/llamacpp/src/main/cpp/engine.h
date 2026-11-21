@@ -62,9 +62,11 @@ std::vector<Device> init_backends(const std::string &lib_dir);
 class Engine {
 public:
     // n_threads <= 0 picks threads automatically before each generation. n_seq: requests that run at the same
-    // time, each a sequence of n_ctx tokens in one context; they share each decoding step.
+    // time, each a sequence of n_ctx tokens in one context; they share each decoding step. kv_q8: a q8_0 KV cache,
+    // with flash attention, instead of F16.
     static std::unique_ptr<Engine> load(const std::string &path, int n_ctx, int n_threads,
-                                        int n_gpu_layers, bool use_mmap, std::string &err, int n_seq = 1);
+                                        int n_gpu_layers, bool use_mmap, std::string &err, int n_seq = 1,
+                                        bool kv_q8 = false);
     ~Engine();
 
     // Safe to call from several threads at once: up to n_seq requests run together, further ones wait.
@@ -86,6 +88,7 @@ private:
     // Shared by the forks: freed with the last one.
     std::shared_ptr<llama_model> model_;
     int n_ctx_ = 0;
+    bool kv_q8_ = false;
     llama_context *ctx_ = nullptr;
     int threads_ = 0;
 
