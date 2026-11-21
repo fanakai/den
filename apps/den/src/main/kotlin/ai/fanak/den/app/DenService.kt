@@ -91,6 +91,7 @@ class DenService : Service() {
         now = SystemClock::elapsedRealtime,
         log = ::log,
         exclusive = { name -> den.exclusiveAccelerator(name) },
+        pinned = { name -> Pins.has(this, name) },
     )
     private val sessions = ConcurrentHashMap<Long, Session>()
     private val nextId = AtomicLong(1)
@@ -330,7 +331,9 @@ class DenService : Service() {
     override fun onTrimMemory(level: Int) {
         if (level >= TRIM_MEMORY_RUNNING_LOW) {
             log("trim memory, level $level")
-            scope.launch { pool.trim() }
+            // Pinned models go only when the system is about to kill processes.
+            val critical = level == TRIM_MEMORY_RUNNING_CRITICAL || level >= TRIM_MEMORY_COMPLETE
+            scope.launch { pool.trim(critical) }
         }
     }
 

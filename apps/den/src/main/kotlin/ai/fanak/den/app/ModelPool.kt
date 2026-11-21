@@ -24,6 +24,8 @@ internal class ModelPool(
     // The accelerator a model would load on when that accelerator holds one model at a time (SlotPolicy.EXCLUSIVE_ACCEL),
     // e.g. "qnn NPU"; null for the others.
     private val exclusive: (name: String) -> String? = { null },
+    // Models the user keeps loaded: never unloaded for room, when idle or without sessions; only by critical memory.
+    private val pinned: (name: String) -> Boolean = { false },
 ) {
     private class Slot(val name: String) {
         var model: DenModel? = null
@@ -32,6 +34,7 @@ internal class ModelPool(
         var busy = 0
         var lastUsed = 0L
         var ramMb = 0
+        var loadMs = 0L
     }
 
     private val slots = mutableMapOf<String, Slot>()
@@ -47,7 +50,7 @@ internal class ModelPool(
 
     suspend fun release(name: String) = lock.withLock {
         val s = slots[name] ?: return@withLock
-        if (--s.sessions <= 0 && s.busy == 0) unload(s, "no sessions")
+        if (--s.sessions <= 0 && s.busy == 0 && !pinned(name)) unload(s, "no sessions")
     }
 
     suspend fun <T> use(name: String, block: suspend (DenModel) -> T): T {
@@ -66,7 +69,7 @@ internal class ModelPool(
     }
 
     suspend fun unloadIdle(idleMs: Long) = lock.withLock {
-        slots.values.filter { it.model != null && it.busy == 0 && now() - it.lastUsed >= idleMs }
+        slots.values.filter { it.model != null && it.busy == 0 && now() - it.lastUsed >= idleMs && !pinned(it.name) }
             .forEach { unload(it, "idle") }
     }
 
@@ -78,8 +81,9 @@ internal class ModelPool(
         true
     }
 
-    suspend fun trim() = lock.withLock {
-        slots.values.filter { it.model != null && it.busy == 0 }.forEach { unload(it, "low memory") }
+    // [critical]: the system is about to kill processes; pinned models go too.
+    suspend fun trim(critical: Boolean = false) = lock.withLock {
+        slots.values.filter { it.model != null && it.busy == 0 && (critical || !pinned(it.name)) }.forEach { unload(it, "low memory") }
     }
 
     suspend fun loadedNames(): List<String> = lock.withLock { slots.values.filter { it.model != null }.map { it.name } }
@@ -126,6 +130,7 @@ internal class ModelPool(
                         s.model = m
                         s.exclusive = exclusive(name)
                         s.ramMb = (before - availMb()).coerceAtLeast(0)
+                        s.loadMs = now() - t0
                         s.lastUsed = now()
                         log("load $name: ${m.backend} ${m.accel} ${m.quant}, ${s.ramMb} MB, ${now() - t0} ms")
                     }
@@ -134,25 +139,37 @@ internal class ModelPool(
         }
     }
 
-    // Unloads idle models, least recently used first, until the file the router would pick fits in free RAM.
+    /**
+     * Unloads idle models until the file the router would pick fits in free RAM: the cheapest to get back first, that
+     * is the most idle time per second of reload (a model that took 14 s to load stays longer than one of 6 s). Pinned
+     * models stay; when only they are in the way, the load fails and says so.
+     */
     private fun makeRoom(s: Slot) {
-        var idle = slots.values.filter { it !== s && it.model != null && it.busy == 0 }.sortedBy { it.lastUsed }
-        if (idle.isEmpty()) return
+        val loaded = slots.values.filter { it !== s && it.model != null && it.busy == 0 }
+        val held = loaded.filter { pinned(it.name) }
+        var idle = loaded.filter { !pinned(it.name) }
+            .sortedByDescending { (now() - it.lastUsed).toDouble() / maxOf(it.loadMs, 1) }
         // An accelerator that holds one model at a time: the idle model on it goes first, whatever the free RAM.
         exclusive(s.name)?.let { key ->
+            held.firstOrNull { it.exclusive == key }?.let { refuse(s, "${it.name} is kept loaded on $key") }
             idle.filter { it.exclusive == key }.forEach { unload(it, "${s.name} needs $key") }
             idle = idle.filter { it.model != null }
-            if (idle.isEmpty()) return
         }
         var avail = availMb()
-        val required = (need(s.name, avail + idle.sumOf { it.ramMb }) ?: return) + marginMb
+        val required = need(s.name, avail + idle.sumOf { it.ramMb })?.plus(marginMb)
+            ?: if (held.isEmpty()) return else refuse(s, "${held.joinToString { it.name }} kept loaded")
         for (o in idle) {
             if (avail >= required) break
             unload(o, "room for ${s.name}")
             avail += o.ramMb
         }
+        if (avail < required && held.isNotEmpty()) refuse(s, "${held.joinToString { it.name }} kept loaded")
     }
 
+    private fun refuse(s: Slot, why: String): Nothing {
+        if (s.model == null && s.sessions <= 0 && s.busy == 0) slots.remove(s.name)
+        throw IllegalStateException("not enough free RAM for ${s.name}: $why; turn off Keep loaded for one on the Den screen")
+    }
     private fun unload(s: Slot, why: String) {
         val m = s.model
         if (m != null) {
