@@ -48,7 +48,7 @@ class HuggingFaceCatalog(
     @Serializable
     private data class RepoFile(val path: String, val size: Long, val sha256: String)
 
-    private class Resolved(val variants: List<Variant>, val remote: Map<Variant, RemoteFile>)
+    private class Resolved(val variants: List<Variant>, val remote: Map<Variant, RemoteFile>, val commit: String)
 
     private val resolved = ConcurrentHashMap<String, Resolved>()
     private val json = Json { ignoreUnknownKeys = true }
@@ -70,16 +70,29 @@ class HuggingFaceCatalog(
         return build(id, ref, repo).also { resolved[id] = it }.variants
     }
 
-    private data class Ref(val owner: String, val repo: String, val revision: String) {
+    // hf:owner/repo, with @revision and :QUANT optional; the quant keeps only the files of that quant.
+    private data class Ref(val owner: String, val repo: String, val revision: String, val quant: String? = null) {
         val name get() = "$owner/$repo"
     }
 
     private fun parse(id: String): Ref? {
         if (!id.startsWith("hf:")) return null
-        val (name, rev) = id.removePrefix("hf:").split('@', limit = 2).let { it[0] to it.getOrElse(1) { "main" } }
+        val (repoRev, quant) = id.removePrefix("hf:").split(':', limit = 2).let { it[0] to it.getOrNull(1)?.ifBlank { null } }
+        val (name, rev) = repoRev.split('@', limit = 2).let { it[0] to it.getOrElse(1) { "main" } }
         val parts = name.split('/')
         if (parts.size != 2 || parts.any { it.isBlank() }) return null
-        return Ref(parts[0], parts[1], rev)
+        return Ref(parts[0], parts[1], rev, quant)
+    }
+
+    /**
+     * The repository's latest commit when it differs from the one this model was resolved with: an update to
+     * download. Null when up to date, unknown, or pinned to a commit.
+     */
+    override suspend fun newerCommit(id: String): String? {
+        val ref = parse(id) ?: return null
+        val known = resolved[id]?.commit ?: cached(ref)?.commit ?: return null
+        val info = json.parseToJsonElement(fetch("$host/api/models/${ref.name}/revision/${ref.revision}?expand[]=sha")).jsonObject
+        return info.str("sha")?.takeIf { it != known }
     }
 
     private suspend fun load(id: String, ref: Ref): Repo {
@@ -114,7 +127,8 @@ class HuggingFaceCatalog(
         val remote = GgufFiles.variants(id, files, store, repo.arch, repo.params, repo.licence, repo.maxContext, repo.kvBytesPerToken) {
             "$host/${ref.name}/resolve/${repo.commit}/${it.path}"
         }
-        return Resolved(remote.keys.toList(), remote)
+        val kept = remote.filterKeys { v -> ref.quant == null || v.quant.equals(ref.quant, ignoreCase = true) }
+        return Resolved(kept.keys.toList(), kept, repo.commit)
     }
 
     private fun cacheFile(ref: Ref) = cacheDir?.let { File(it, "hf/${ref.owner}/${ref.repo}@${ref.revision}.json") }
