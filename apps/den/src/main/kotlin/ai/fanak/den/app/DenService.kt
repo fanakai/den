@@ -20,6 +20,7 @@ import ai.fanak.den.core.model.DownloadProgress
 import ai.fanak.den.core.model.RemoteFile
 import ai.fanak.den.core.model.Variant
 import ai.fanak.den.core.router.NoUsableBackendException
+import ai.fanak.den.core.router.RouteHint
 import ai.fanak.den.core.router.RoutingPolicy
 import ai.fanak.den.service.OpenAiServer
 import android.app.Notification
@@ -75,7 +76,10 @@ class DenService : Service() {
     }
 
     // Holds the client's binder: a death link on a binder that is garbage-collected never fires.
-    private class Session(val model: String, val uid: Int, val pkg: String, val client: IBinder, var death: IBinder.DeathRecipient? = null, var job: Job? = null)
+    private class Session(
+        val model: String, val uid: Int, val pkg: String, val hint: RouteHint?, val client: IBinder,
+        var death: IBinder.DeathRecipient? = null, var job: Job? = null,
+    )
 
     // Opens still in progress, by the client's callback binder; they get the download progress of their model.
     private class Pending(var model: String, val uid: Int, val callback: IOpenCallback, var job: Job? = null)
@@ -109,23 +113,23 @@ class DenService : Service() {
     private val nextId = AtomicLong(1)
 
     private val binder = object : IDenService.Stub() {
-        override fun version() = 6
+        override fun version() = 7
 
         override fun httpPort() = if (HttpSettings.enabled(this@DenService)) http.port else -1
 
         override fun models() = den.models.toTypedArray()
 
-        override fun open(model: String, callback: IOpenCallback) = start(model, callback, null)
+        override fun open(model: String, callback: IOpenCallback) = start(model, callback, null, null)
 
         override fun openWith(model: String, options: String, callback: IOpenCallback) =
-            start(model, callback, runCatching { contextOf(options) }.getOrNull())
+            start(model, callback, runCatching { contextOf(options) }.getOrNull(), hintOf(options))
 
         override fun plan(model: String, options: String): Array<String> {
             val (_, min) = runCatching { contextOf(options) }.getOrNull() ?: (0 to 0)
             // Binder thread: hf: names need the network once, then their cache.
             runCatching { kotlinx.coroutines.runBlocking { kotlinx.coroutines.withTimeout(30_000) { den.resolve(model) } } }
             val target = runCatching { kotlinx.coroutines.runBlocking { den.resolveAlias(model) } }.getOrDefault(model)
-            val reach = Reach.of(this@DenService, callerPackage(Binder.getCallingUid()))
+            val reach = reachOf(callerPackage(Binder.getCallingUid()), hintOf(options))
             return den.plan(target, minContextLength = min, reach = reach).map { "${it.backend.id} ${it.accel} ${it.variant.quant} ${it.source}" }.toTypedArray()
         }
 
@@ -134,7 +138,7 @@ class DenService : Service() {
         }
 
         // [context]: (length, shortest accepted) from a version 5 client, which also gets onContext and onFailed.
-        private fun start(model: String, callback: IOpenCallback, context: Pair<Int, Int>?) {
+        private fun start(model: String, callback: IOpenCallback, context: Pair<Int, Int>?, hint: RouteHint?) {
             val v5 = context != null
             fun fail(kind: String, message: String) =
                 runCatching { if (v5) callback.onFailed(kind, message) else callback.onError(message) }
@@ -158,7 +162,7 @@ class DenService : Service() {
                     val target = den.resolveAlias(model)
                     p.model = target
                     if (context != null) wanted[target] = context
-                    val reach = Reach.of(this@DenService, pkg)
+                    val reach = reachOf(pkg, hint)
                     var m = pool.acquire(target, reach)
                     // Loaded for another app with a shorter context than this one accepts: reloaded when it is idle.
                     if (context != null && m.contextLength in 1 until context.second) {
@@ -168,7 +172,7 @@ class DenService : Service() {
                     }
                     val id = nextId.getAndIncrement()
                     // A client that dies releases its sessions.
-                    val session = Session(target, uid, pkg, client)
+                    val session = Session(target, uid, pkg, hint, client)
                     sessions[id] = session
                     session.death = IBinder.DeathRecipient { scope.launch { release(id) } }.also { client.linkToDeath(it, 0) }
                     log("open $target for ${caller(uid)}: session $id, ${m.backend} ${m.accel} ${m.quant}, sessions ${pool.sessions(target)}")
@@ -212,7 +216,7 @@ class DenService : Service() {
                             ChatMessage(requireNotNull(Role.entries.find { it.name == r.uppercase() }) { "unknown role $r" }, c)
                         }
                         // Read on each request, so a level the user lowers applies to open sessions too.
-                        pool.use(s.model, Reach.of(this@DenService, s.pkg)) { m -> recorded(s.model, m, m.chat(GenRequest(messages, maxTokens, temperature, topP, stop.toList())), s.pkg).collect { e ->
+                        pool.use(s.model, reachOf(s.pkg, s.hint)) { m -> recorded(s.model, m, m.chat(GenRequest(messages, maxTokens, temperature, topP, stop.toList())), s.pkg).collect { e ->
                             when (e) {
                                 is GenEvent.Text -> callback.onText(e.text)
                                 is GenEvent.Done -> e.stats.run {
@@ -341,6 +345,16 @@ class DenService : Service() {
     }
 
     // {"contextLength":4096,"minContextLength":2048} -> (4096, 2048).
+    // What the user allows the client, narrowed by what the app asked for this model.
+    private fun reachOf(client: String, hint: RouteHint?): Set<Location> = Reach.of(this, client).let { hint?.limit(it) ?: it }
+
+    // {"hint":"private"} -> PRIVATE; null without one. An unknown one, from a newer SDK, keeps the model on the phone.
+    private fun hintOf(options: String): RouteHint? {
+        val h = runCatching { org.json.JSONObject(options).optString("hint", "") }.getOrDefault("")
+        if (h.isEmpty()) return null
+        return RouteHint.entries.find { it.name.equals(h, ignoreCase = true) } ?: RouteHint.PRIVATE
+    }
+
     private fun contextOf(options: String): Pair<Int, Int> {
         val o = org.json.JSONObject(options)
         val length = o.getInt("contextLength").coerceIn(256, 1 shl 20)

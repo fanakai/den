@@ -57,8 +57,8 @@ public final class ai/fanak/den/Den : java/lang/AutoCloseable {
 	public final fun getRecipes ()Ljava/util/List;
 	public final fun httpEndpoint (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun licence (Ljava/lang/String;)Ljava/lang/String;
-	public final fun model (Ljava/lang/String;IILjava/util/Set;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public static synthetic fun model$default (Lai/fanak/den/Den;Ljava/lang/String;IILjava/util/Set;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun model (Ljava/lang/String;IILjava/util/Set;Lai/fanak/den/core/router/RouteHint;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun model$default (Lai/fanak/den/Den;Ljava/lang/String;IILjava/util/Set;Lai/fanak/den/core/router/RouteHint;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun newerCommit (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun plan (Ljava/lang/String;Lai/fanak/den/core/device/DeviceProfile;ILjava/util/Set;)Ljava/util/List;
 	public static synthetic fun plan$default (Lai/fanak/den/Den;Ljava/lang/String;Lai/fanak/den/core/device/DeviceProfile;ILjava/util/Set;ILjava/lang/Object;)Ljava/util/List;

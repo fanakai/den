@@ -517,6 +517,36 @@ class RouterTest {
     }
 
     @Test
+    fun eachHintPicksBetweenPhoneLanAndCloud() {
+        val dev = ai.fanak.den.core.backend.Location.DEVICE
+        val lan = ai.fanak.den.core.backend.Location.LAN
+        val cloud = ai.fanak.den.core.backend.Location.CLOUD
+        val r = policyRouter(RoutingPolicy.REMOTE_FIRST)
+        fun where(hint: RouteHint?, reach: Set<ai.fanak.den.core.backend.Location>? = null) =
+            r.plan(model, device, reach = hint?.limit(reach) ?: reach).map { it.location }.distinct()
+        assertEquals(listOf(lan, cloud, dev), where(null))
+        assertEquals(listOf(dev), where(RouteHint.PRIVATE))
+        assertEquals(listOf(lan, dev), where(RouteHint.CHEAP))
+        // A hint never widens what the user allowed.
+        assertEquals(listOf(dev), where(RouteHint.CHEAP, setOf(dev)))
+        assertEquals(listOf(dev), where(RouteHint.PRIVATE, setOf(dev, lan, cloud)))
+    }
+
+    @Test
+    fun aHotPhoneMovesToTheLanWhenAllowed() {
+        val dev = ai.fanak.den.core.backend.Location.DEVICE
+        val lan = ai.fanak.den.core.backend.Location.LAN
+        val cloud = ai.fanak.den.core.backend.Location.CLOUD
+        val r = policyRouter(RoutingPolicy.LOCAL_FIRST)
+        val hot = device.copy(thermal = ThermalState.SEVERE)
+        assertEquals(listOf(dev, lan, cloud), r.plan(model, device).map { it.location }.distinct())
+        assertEquals(listOf(lan, dev, cloud), r.plan(model, hot).map { it.location }.distinct())
+        // Not allowed off the phone: it stays there, hot or not.
+        assertEquals(listOf(dev), r.plan(model, hot, reach = setOf(dev)).map { it.location }.distinct())
+        assertEquals(listOf(dev), policyRouter(RoutingPolicy.LOCAL_ONLY).plan(model, hot).map { it.location }.distinct())
+    }
+
+    @Test
     fun aReachOnThePhoneLeavesTheServersOut() = runTest {
         val phone = setOf(ai.fanak.den.core.backend.Location.DEVICE)
         val r = policyRouter(RoutingPolicy.REMOTE_FIRST)

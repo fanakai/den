@@ -41,10 +41,27 @@ data class Candidate(
 
 /**
  * Whether the router may send a request off the phone. LOCAL_ONLY: never (the default). LOCAL_FIRST: remote candidates
- * after the local ones, when none fits or all fail. REMOTE_FIRST: remote ones first. Remote ones go LAN before cloud,
- * and only when the phone is online.
+ * after the local ones, when none fits or all fail; on a hot phone, LAN servers before the phone. REMOTE_FIRST: remote
+ * ones first. Remote ones go LAN before cloud, and only when the phone is online.
  */
 enum class RoutingPolicy { LOCAL_ONLY, LOCAL_FIRST, REMOTE_FIRST }
+
+/** What an app asks of one model, within the reach the user gave it: a hint only narrows it. */
+enum class RouteHint {
+    // The prompt stays on the phone.
+    PRIVATE,
+
+    // No paid endpoint: the phone and LAN servers.
+    CHEAP;
+
+    fun limit(reach: Set<Location>?): Set<Location> {
+        val allowed = when (this) {
+            PRIVATE -> setOf(Location.DEVICE)
+            CHEAP -> setOf(Location.DEVICE, Location.LAN)
+        }
+        return reach?.intersect(allowed) ?: allowed
+    }
+}
 
 data class Failure(val candidate: Candidate, val error: Throwable)
 
@@ -172,7 +189,12 @@ class Router(
         val remote = remote(model, device, minContext, caps)
         val ordered = when (policy) {
             RoutingPolicy.LOCAL_ONLY -> onPhone
-            RoutingPolicy.LOCAL_FIRST -> onPhone + remote
+            // Hot: a LAN server spares the phone; the cloud still comes last.
+            RoutingPolicy.LOCAL_FIRST -> if (Thermal.hot(device.thermal)) {
+                remote.filter { it.location == Location.LAN } + onPhone + remote.filter { it.location != Location.LAN }
+            } else {
+                onPhone + remote
+            }
             RoutingPolicy.REMOTE_FIRST -> remote + onPhone
         }
         return if (reach == null) ordered else ordered.filter { it.location in reach }

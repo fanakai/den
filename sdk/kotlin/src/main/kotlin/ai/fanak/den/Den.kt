@@ -38,6 +38,7 @@ import ai.fanak.den.core.router.Rejection
 import ai.fanak.den.core.router.RouteExplanation
 import ai.fanak.den.core.router.Router
 import ai.fanak.den.core.router.RoutingPolicy
+import ai.fanak.den.core.router.RouteHint
 import ai.fanak.den.core.router.Source
 import ai.fanak.den.core.router.EngineCrashedException
 import ai.fanak.den.core.router.EngineLostException
@@ -427,18 +428,20 @@ class Den private constructor(context: Context, private val config: DenConfig) :
 
     /**
      * [contextLength] and [minContextLength] replace the config's for this model, e.g. per client in the Den app.
-     * [reach]: where it may run in this process; the Den app applies its own for each app.
+     * [reach]: where it may run in this process; the Den app applies its own for each app. [hint]: what the app asks
+     * for this model, e.g. that the prompt stays on the phone; it narrows the reach, in either mode.
      */
     suspend fun model(
         name: String,
         contextLength: Int = config.contextLength,
         minContextLength: Int = minOf(minContext, contextLength),
         reach: Set<Location>? = null,
+        hint: RouteHint? = null,
     ): DenModel {
         val status = if (config.mode == DenMode.EMBEDDED) DenAppStatus.MISSING else app.status()
         if (status == DenAppStatus.OK) {
             val m = try {
-                app.open(name, contextLength, minContextLength).also { it.licenceOf = ::licence }
+                app.open(name, contextLength, minContextLength, hint).also { it.licenceOf = ::licence }
             } catch (e: Exception) {
                 // A model no backend can run fails the same way here; and the app may refuse the fallback.
                 if (config.mode == DenMode.CONNECTED || !config.fallback || e is NoUsableBackendException) throw e
@@ -464,7 +467,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         if (backends.isEmpty()) throw noBackend(name)
         val target = resolveAlias(name)
         if (target != name) Log.i("Den", "$name is $target")
-        val reopen: suspend () -> Opened = { router.open(target, device(), contextLength, config.useMmap, minContextLength, config.parallel, reach) }
+        val reopen: suspend () -> Opened = { router.open(target, device(), contextLength, config.useMmap, minContextLength, config.parallel, hint?.limit(reach) ?: reach) }
         val crashed = { o: Opened, e: Throwable -> router.reportFailure(device(), o.candidate, e) }
         return LocalModel(target, reopen(), reopen, crashed, probe::thermal) { local -= it }.also {
             it.licenceOf = ::licence
