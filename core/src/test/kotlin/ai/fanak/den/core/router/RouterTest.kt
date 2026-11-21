@@ -10,6 +10,8 @@ import ai.fanak.den.core.backend.Session
 import ai.fanak.den.core.device.Accel
 import ai.fanak.den.core.device.DeviceProfile
 import ai.fanak.den.core.device.Platform
+import ai.fanak.den.core.device.Thermal
+import ai.fanak.den.core.device.ThermalState
 import ai.fanak.den.core.model.Artifact
 import ai.fanak.den.core.model.ModelCatalog
 import ai.fanak.den.core.model.ModelFormat
@@ -402,5 +404,27 @@ class RouterTest {
     fun aModelLargerThanThePhoneIsSaidSo() = runTest {
         val e = assertFailsWith<NoUsableBackendException> { sizedRouter().open(model, device.copy(ramMb = 1_000)) }
         assertEquals("no file of $model fits in this phone's 1000 MB of RAM: the smallest needs 1332 MB", e.message)
+    }
+
+    @Test
+    fun aHotPhoneTriesSmallerFilesFirst() {
+        val r = router(listOf(llama()))
+        val cool = r.plan(model, device)
+        assertEquals(q4km, cool.first().variant)
+        val hot = r.plan(model, device.copy(thermal = ThermalState.SEVERE))
+        // q4_0 (1000 bytes) before q4_k_m (1100); otherwise the cool order, so each file keeps its accelerator order.
+        assertEquals(cool.sortedBy { it.variant.sizeBytes }, hot)
+        assertEquals(q40 to Accel.CPU, hot.first().variant to hot.first().accel)
+        assertEquals(cool, r.plan(model, device.copy(thermal = ThermalState.MODERATE)))
+    }
+
+    @Test
+    fun aSessionThatHeatsUpUsesFewerThreads() {
+        assertEquals(null, Thermal.threads(4, ThermalState.LIGHT))
+        assertEquals(3, Thermal.threads(4, ThermalState.MODERATE))
+        assertEquals(2, Thermal.threads(4, ThermalState.SEVERE))
+        assertEquals(1, Thermal.threads(1, ThermalState.CRITICAL))
+        // Unknown engine choice: left to the engine.
+        assertEquals(null, Thermal.threads(0, ThermalState.SEVERE))
     }
 }

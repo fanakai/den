@@ -19,6 +19,8 @@ struct GenParams {
     std::vector<std::string> stop;
     // Reuse the KV cache of the previous call for the prompt prefix both share; false prefills it all again.
     bool cache = true;
+    // Threads for this call (decode and batch); 0 keeps the engine's choice.
+    int threads = 0;
 };
 
 struct GenStats {

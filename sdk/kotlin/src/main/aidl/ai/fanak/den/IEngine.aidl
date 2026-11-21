@@ -16,7 +16,7 @@ interface IEngine {
 
     // Within one APK, so the app and its engine always match: parameters may change in place.
     oneway void generate(long session, in String[] roles, in String[] contents, int maxTokens,
-            float temperature, float topP, in String[] stop, boolean cache, IGenCallback callback);
+            float temperature, float topP, in String[] stop, boolean cache, int threads, IGenCallback callback);
 
     oneway void cancel(IGenCallback callback);
 

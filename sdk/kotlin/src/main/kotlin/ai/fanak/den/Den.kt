@@ -8,6 +8,8 @@ import ai.fanak.den.core.backend.GenRequest
 import ai.fanak.den.core.backend.Role
 import ai.fanak.den.core.device.Accel
 import ai.fanak.den.core.device.DeviceProfile
+import ai.fanak.den.core.device.Thermal
+import ai.fanak.den.core.device.ThermalState
 import ai.fanak.den.core.model.DownloadProgress
 import ai.fanak.den.core.model.CompositeCatalog
 import ai.fanak.den.core.model.HttpModelStore
@@ -321,7 +323,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         }
         val reopen: suspend () -> Opened = { router.open(name, device(), config.contextLength, config.useMmap, minContext) }
         val crashed = { o: Opened, e: Throwable -> router.reportFailure(device(), o.candidate, e) }
-        return LocalModel(name, reopen(), reopen, crashed) { local -= it }.also { it.licenceOf = ::licence; local += it }
+        return LocalModel(name, reopen(), reopen, crashed, probe::thermal) { local -= it }.also { it.licenceOf = ::licence; local += it }
     }
 
     // Closes the models this Den opened in the app process, and the connection to the Den app.
@@ -376,8 +378,11 @@ internal class LocalModel(
     first: Opened,
     private val reopen: suspend () -> Opened,
     private val crashed: (Opened, Throwable) -> Unit = { _, _ -> },
+    private val thermal: () -> ThermalState = { ThermalState.NONE },
     private val onClose: (LocalModel) -> Unit = {},
 ) : DenModel() {
+    // Decode threads the engine picked on its own, the base for fewer threads when the phone heats up.
+    @Volatile private var autoThreads = 0
     // Guards `opened` and `busy`: a request marks the model busy under the lock, an unload checks it under the lock.
     private val lock = Mutex()
     private var opened: Opened? = first
@@ -393,6 +398,10 @@ internal class LocalModel(
     override val failures get() = last.failures
 
     override fun chat(request: GenRequest): Flow<GenEvent> = flow {
+        // Read before each request: a phone heats up during a session, not at load.
+        val cooler = if (request.threads == null) Thermal.threads(autoThreads, thermal()) else null
+        if (cooler != null) Log.i("Den", "$name: ${thermal()} thermal state, $cooler threads instead of $autoThreads")
+        val req = if (cooler != null) request.copy(threads = cooler) else request
         var replayed = false
         while (true) {
             val o = lock.withLock {
@@ -408,10 +417,11 @@ internal class LocalModel(
             var sent = false
             var lost: EngineLostException? = null
             try {
-                o.session.generate(request)
+                o.session.generate(req)
                     .catch { if (it is EngineLostException) lost = it else throw it }
                     .collect {
                         if (it is GenEvent.Text) sent = true
+                        if (it is GenEvent.Done && req.threads == null && it.stats.threads > 0) autoThreads = it.stats.threads
                         emit(it)
                     }
             } finally {

@@ -5,6 +5,7 @@ import ai.fanak.den.core.backend.LoadOptions
 import ai.fanak.den.core.backend.Session
 import ai.fanak.den.core.device.Accel
 import ai.fanak.den.core.device.DeviceProfile
+import ai.fanak.den.core.device.Thermal
 import ai.fanak.den.core.model.ModelCatalog
 import ai.fanak.den.core.model.ModelStore
 import ai.fanak.den.core.model.Variant
@@ -120,6 +121,8 @@ class Router(
         return (fromRecipes + fromLocal + defaults)
             .distinctBy { Triple(it.backend.id, it.accel, it.variant) }
             .filterNot { failures.isBlocked(key(device, it)) }
+            // Hot: smaller files first, each still on its accelerators in order (a stable sort).
+            .let { plan -> if (Thermal.hot(device.thermal)) plan.sortedBy { it.variant.sizeBytes } else plan }
     }
 
     /**

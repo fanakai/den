@@ -38,6 +38,7 @@ class EngineTest {
         maxTokens: Int,
         stop: List<String> = emptyList(),
         cache: Boolean = true,
+        threads: Int = 0,
         roles: List<String> = listOf("user"),
         contents: List<String> = listOf(prompt),
         keepGoing: (String) -> Boolean = { true },
@@ -45,7 +46,7 @@ class EngineTest {
         val text = StringBuilder()
         val s = LlamaNative.generate(
             h, roles.toTypedArray(), contents.map { it.encodeToByteArray() }.toTypedArray(), maxTokens, 0f, 1f,
-            stop.map { it.encodeToByteArray() }.toTypedArray(), cache,
+            stop.map { it.encodeToByteArray() }.toTypedArray(), cache, threads,
         ) { utf8 ->
             text.append(utf8.decodeToString())
             keepGoing(text.toString())
@@ -88,6 +89,12 @@ class EngineTest {
         val (full, none) = gen(h, "", 16, cache = false, roles = roles, contents = contents)
         assertEquals(0, none.cachedTokens)
         assertEquals(full, cached)
+    }
+
+    @Test
+    fun threadsCanBeSetPerRequest() = withEngine { h ->
+        assertEquals(2, gen(h, PROMPT, 4).second.threads)
+        assertEquals(1, gen(h, PROMPT, 4, threads = 1).second.threads)
     }
 
     @Test

@@ -27,6 +27,7 @@ internal object LlamaNative {
         topP: Float,
         stop: Array<ByteArray>,
         cache: Boolean,
+        threads: Int,
         callback: TextCallback,
     ): LongArray
 

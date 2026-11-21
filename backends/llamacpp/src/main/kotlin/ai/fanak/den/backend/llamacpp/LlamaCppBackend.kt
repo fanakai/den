@@ -52,7 +52,7 @@ class LlamaCppBackend : DenBackend {
                 LlamaNative.load(artifact.path, opts.contextLength, threads, gpuLayers, opts.mmap).also { h ->
                     // Warm-up with a prompt as long as a real one: a 1-token "hi" left the first request at
                     // 3.8 tok/s prefill on the A52s, against ~75 for the next ones.
-                    LlamaNative.generate(h, arrayOf("user"), arrayOf(WARMUP.encodeToByteArray()), 2, 0f, 1f, emptyArray(), false) { true }
+                    LlamaNative.generate(h, arrayOf("user"), arrayOf(WARMUP.encodeToByteArray()), 2, 0f, 1f, emptyArray(), false, 0) { true }
                 }
             } catch (e: EngineException) {
                 lastError = e.message
@@ -83,6 +83,7 @@ private class LlamaSession(private var handle: Long) : Session {
                         req.topP,
                         req.stop.map { it.encodeToByteArray() }.toTypedArray(),
                         req.cache,
+                        req.threads ?: 0,
                     ) { utf8 ->
                         trySendBlocking(GenEvent.Text(utf8.decodeToString())).isSuccess && isActive
                     }
