@@ -31,7 +31,19 @@ internal object Downloads {
     private fun prefs(c: Context) = c.getSharedPreferences("downloads", Context.MODE_PRIVATE)
 
     // Any repository on a hub; curated and built-in names were reviewed when they were added.
-    fun needsApproval(model: String) = model.startsWith("hf:") || model.startsWith("ms:")
+    fun needsApproval(model: String) = HUBS.any { model.startsWith(it) }
+
+    // Model names from hubs Den has not reviewed: each repository or tag is approved by the user once.
+    private val HUBS = listOf("hf:", "ms:", "ollama:")
+
+    // The hub's name and the model without its prefix, for the approval screen and the notification.
+    fun hubOf(model: String) = when {
+        model.startsWith("ms:") -> "ModelScope"
+        model.startsWith("ollama:") -> "the Ollama registry"
+        else -> "Hugging Face"
+    }
+
+    fun shortName(model: String) = HUBS.fold(model) { m, p -> m.removePrefix(p) }
 
     // By name, revision included: hf:owner/repo and hf:owner/repo@rev are asked separately.
     fun approved(c: Context): Set<String> = prefs(c).getStringSet("repos", emptySet()).orEmpty().toSortedSet()
@@ -145,7 +157,7 @@ internal object Downloads {
         )
         val n = Notification.Builder(c, "approvals")
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("Download ${a.model.removePrefix("hf:").removePrefix("ms:")}?")
+            .setContentTitle("Download ${shortName(a.model)}?")
             .setContentText(describe(a))
             .setContentIntent(screen(c, a.model))
             .addAction(Notification.Action.Builder(null, "Download", action(true)).build())

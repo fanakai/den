@@ -24,6 +24,7 @@ import ai.fanak.den.core.model.ModelIndex
 import ai.fanak.den.core.model.ModelAliases
 import ai.fanak.den.core.model.ModelCatalog
 import ai.fanak.den.core.model.ModelStore
+import ai.fanak.den.core.model.OllamaCatalog
 import ai.fanak.den.core.model.RemoteFile
 import ai.fanak.den.core.model.Variant
 import ai.fanak.den.core.recipe.InMemoryRecipeStore
@@ -590,10 +591,11 @@ internal class LocalModel(
 
 private fun defaultCatalogs(context: Context): List<ModelCatalog> {
     val hf = HuggingFaceCatalog(File(context.filesDir, "den/catalog"))
+    val ollama = OllamaCatalog(File(context.filesDir, "den/catalog"))
     val index = (context.assets.list("den/models") ?: emptyArray()).filter { it.endsWith(".yaml") }.map { name ->
         ModelIndex.parse(context.assets.open("den/models/$name").bufferedReader().readText(), name)
     }
-    return listOf(BuiltinCatalog, IndexCatalog(index, hf), hf)
+    return listOf(BuiltinCatalog, IndexCatalog(index, CompositeCatalog(listOf(hf, ollama))), hf, ollama)
 }
 
 internal fun AssetManager.recipes(path: String): List<Recipe> =

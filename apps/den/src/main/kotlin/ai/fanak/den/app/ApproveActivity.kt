@@ -28,8 +28,8 @@ class ApproveActivity : Activity() {
             val a = Downloads.asking(r) ?: return finish()
             return show(
                 null,
-                "Download ${r.removePrefix("hf:").removePrefix("ms:")} for ${a.by}?",
-                "${Downloads.describe(a)}\n\nFrom ${if (r.startsWith("ms:")) "ModelScope" else "Hugging Face"}, " +
+                "Download ${Downloads.shortName(r)} for ${a.by}?",
+                "${Downloads.describe(a)}\n\nFrom ${Downloads.hubOf(r)}, " +
                     "a repository Den has not reviewed. Check its licence before you use it.",
                 "Download",
             )
