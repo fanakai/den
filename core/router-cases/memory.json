@@ -1,0 +1,71 @@
+{
+  "description": "With mmap, free RAM holds the KV cache and buffers, the phone's RAM also the weights",
+  "device": {
+    "platform": "ANDROID",
+    "osApi": 34,
+    "soc": "SM7325",
+    "socFamily": "snapdragon-778g",
+    "abi": "arm64-v8a",
+    "ramMb": 2000,
+    "availRamMb": 1200
+  },
+  "backends": [
+    {
+      "id": "llamacpp",
+      "accels": [
+        "cpu",
+        "gpu"
+      ],
+      "formats": [
+        "gguf"
+      ]
+    }
+  ],
+  "variants": [
+    {
+      "model": "qwen3-0.6b",
+      "format": "gguf",
+      "quant": "q4_0",
+      "sizeBytes": 400000000,
+      "minRamMb": 381,
+      "arch": "qwen3",
+      "params": 596049920,
+      "kvBytesPerToken": 114688
+    },
+    {
+      "model": "qwen3-0.6b",
+      "format": "gguf",
+      "quant": "f16",
+      "sizeBytes": 1200000000,
+      "minRamMb": 1144,
+      "arch": "qwen3",
+      "params": 596049920,
+      "kvBytesPerToken": 114688
+    },
+    {
+      "model": "qwen3-0.6b",
+      "format": "gguf",
+      "quant": "q4_1",
+      "sizeBytes": 400000000,
+      "minRamMb": 381,
+      "arch": "qwen3",
+      "params": 596049920,
+      "kvBytesPerToken": 229376
+    }
+  ],
+  "request": {
+    "model": "qwen3-0.6b",
+    "minContext": 4096
+  },
+  "expect": {
+    "plan": [
+      "llamacpp cpu q4_0",
+      "llamacpp gpu q4_0"
+    ],
+    "source": "DEFAULT",
+    "rejected": [
+      "f16 PHONE_RAM",
+      "q4_1 RAM"
+    ]
+  }
+}

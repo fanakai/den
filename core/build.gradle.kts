@@ -32,4 +32,6 @@ tasks.named<Test>("jvmTest") {
     useJUnitPlatform()
     systemProperty("den.recipes", rootProject.file("recipes").absolutePath)
     systemProperty("den.models", rootProject.file("models").absolutePath)
+    systemProperty("den.routerCases", file("router-cases").absolutePath)
+    inputs.dir(file("router-cases"))
 }

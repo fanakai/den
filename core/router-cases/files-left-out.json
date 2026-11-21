@@ -1,0 +1,110 @@
+{
+  "description": "A file for another chip, one no backend reads, an architecture the engine lacks, a 2-bit file, and a short context",
+  "device": {
+    "platform": "ANDROID",
+    "osApi": 34,
+    "soc": "SM7325",
+    "socFamily": "snapdragon-778g",
+    "abi": "arm64-v8a",
+    "ramMb": 5500,
+    "availRamMb": 1900
+  },
+  "backends": [
+    {
+      "id": "llamacpp",
+      "accels": [
+        "cpu",
+        "gpu"
+      ],
+      "formats": [
+        "gguf"
+      ],
+      "architectures": [
+        "qwen3",
+        "llama"
+      ]
+    }
+  ],
+  "variants": [
+    {
+      "model": "qwen3-0.6b",
+      "format": "gguf",
+      "quant": "q4_0",
+      "sizeBytes": 400000000,
+      "minRamMb": 381,
+      "arch": "qwen3",
+      "params": 596049920,
+      "kvBytesPerToken": 114688
+    },
+    {
+      "model": "qwen3-0.6b",
+      "format": "gguf",
+      "quant": "q4_0_npu",
+      "sizeBytes": 400000000,
+      "minRamMb": 381,
+      "arch": "qwen3",
+      "params": 596049920,
+      "kvBytesPerToken": 114688,
+      "soc": "SM8750"
+    },
+    {
+      "model": "qwen3-0.6b",
+      "format": "pte",
+      "quant": "int4",
+      "sizeBytes": 400000000,
+      "minRamMb": 381,
+      "arch": "qwen3",
+      "params": 596049920,
+      "kvBytesPerToken": 114688
+    },
+    {
+      "model": "qwen3-0.6b",
+      "format": "gguf",
+      "quant": "q4_k_s",
+      "sizeBytes": 400000000,
+      "minRamMb": 381,
+      "arch": "newarch",
+      "params": 596049920,
+      "kvBytesPerToken": 114688
+    },
+    {
+      "model": "qwen3-0.6b",
+      "format": "gguf",
+      "quant": "q2_k",
+      "sizeBytes": 250000000,
+      "minRamMb": 238,
+      "arch": "qwen3",
+      "params": 596049920,
+      "kvBytesPerToken": 114688
+    },
+    {
+      "model": "qwen3-0.6b",
+      "format": "gguf",
+      "quant": "q5_0",
+      "sizeBytes": 450000000,
+      "minRamMb": 429,
+      "arch": "qwen3",
+      "params": 596049920,
+      "kvBytesPerToken": 114688,
+      "maxContext": 1024
+    }
+  ],
+  "request": {
+    "model": "qwen3-0.6b",
+    "minContext": 4096
+  },
+  "expect": {
+    "plan": [
+      "llamacpp cpu q4_0",
+      "llamacpp gpu q4_0"
+    ],
+    "source": "DEFAULT",
+    "rejected": [
+      "q4_0_npu OTHER_SOC",
+      "int4 NO_BACKEND",
+      "q4_k_s ARCHITECTURE",
+      "q2_k LOW_BIT",
+      "q5_0 CONTEXT"
+    ]
+  }
+}

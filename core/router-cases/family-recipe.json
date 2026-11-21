@@ -1,0 +1,86 @@
+{
+  "description": "A chip of a family with a recipe for the family only",
+  "device": {
+    "platform": "ANDROID",
+    "osApi": 34,
+    "soc": "SM7350",
+    "socFamily": "snapdragon-778g",
+    "abi": "arm64-v8a",
+    "ramMb": 5500,
+    "availRamMb": 1900
+  },
+  "backends": [
+    {
+      "id": "llamacpp",
+      "accels": [
+        "cpu",
+        "gpu"
+      ],
+      "formats": [
+        "gguf"
+      ]
+    }
+  ],
+  "variants": [
+    {
+      "model": "qwen3-0.6b",
+      "format": "gguf",
+      "quant": "q4_0",
+      "sizeBytes": 400000000,
+      "minRamMb": 381,
+      "arch": "qwen3",
+      "params": 596049920,
+      "kvBytesPerToken": 114688
+    },
+    {
+      "model": "qwen3-0.6b",
+      "format": "gguf",
+      "quant": "q4_k_m",
+      "sizeBytes": 420000000,
+      "minRamMb": 400,
+      "arch": "qwen3",
+      "params": 596049920,
+      "kvBytesPerToken": 114688
+    }
+  ],
+  "recipes": [
+    {
+      "soc_family": "snapdragon-778g",
+      "rankings": [
+        {
+          "model": {
+            "arch": "qwen3",
+            "params_b": 0.6
+          },
+          "choices": [
+            {
+              "backend": "llamacpp",
+              "accel": "gpu",
+              "format": "gguf",
+              "quant": "q4_0"
+            },
+            {
+              "backend": "llamacpp",
+              "accel": "cpu",
+              "format": "gguf",
+              "quant": "q4_0"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "request": {
+    "model": "qwen3-0.6b",
+    "minContext": 4096
+  },
+  "expect": {
+    "plan": [
+      "llamacpp gpu q4_0",
+      "llamacpp cpu q4_0",
+      "llamacpp cpu q4_k_m",
+      "llamacpp gpu q4_k_m"
+    ],
+    "source": "RECIPE_FAMILY"
+  }
+}
