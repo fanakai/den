@@ -17,6 +17,8 @@ struct GenParams {
     float temperature = 0.7f;
     float top_p = 0.95f;
     std::vector<std::string> stop;
+    // Reuse the KV cache of the previous call for the prompt prefix both share; false prefills it all again.
+    bool cache = true;
 };
 
 struct GenStats {
@@ -24,6 +26,8 @@ struct GenStats {
     int threads_batch = 0;
     int prompt_tokens = 0;
     int output_tokens = 0;
+    // Prompt tokens taken from the KV cache, not prefilled.
+    int cached_tokens = 0;
     int64_t prefill_ms = 0;
     int64_t decode_ms = 0;
     // 0: end of text or stop string, 1: max_tokens, 2: context full.
@@ -63,6 +67,8 @@ private:
     llama_model *model_ = nullptr;
     llama_context *ctx_ = nullptr;
     int threads_ = 0;
+    // The tokens in the KV cache, in order.
+    std::vector<int32_t> cached_;
 };
 
 } // namespace den

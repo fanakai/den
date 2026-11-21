@@ -26,6 +26,7 @@ internal object LlamaNative {
         temperature: Float,
         topP: Float,
         stop: Array<ByteArray>,
+        cache: Boolean,
         callback: TextCallback,
     ): LongArray
 

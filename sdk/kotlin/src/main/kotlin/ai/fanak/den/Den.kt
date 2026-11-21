@@ -331,6 +331,9 @@ abstract class DenModel : AutoCloseable {
         chat(prompt, maxTokens, temperature).filterIsInstance<GenEvent.Text>().fold(StringBuilder()) { sb, t ->
             sb.append(t.text)
         }.toString()
+
+    // A conversation that keeps its messages; turns after the first reuse the engine's cache for the history.
+    fun newChat(system: String? = null, maxTokens: Int = 512, temperature: Float = 0.7f) = Chat(this, system, maxTokens, temperature)
 }
 
 /**

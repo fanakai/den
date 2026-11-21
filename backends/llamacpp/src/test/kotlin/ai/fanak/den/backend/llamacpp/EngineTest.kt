@@ -37,12 +37,15 @@ class EngineTest {
         prompt: String,
         maxTokens: Int,
         stop: List<String> = emptyList(),
+        cache: Boolean = true,
+        roles: List<String> = listOf("user"),
+        contents: List<String> = listOf(prompt),
         keepGoing: (String) -> Boolean = { true },
     ): Pair<String, GenStats> {
         val text = StringBuilder()
         val s = LlamaNative.generate(
-            h, arrayOf("user"), arrayOf(prompt.encodeToByteArray()), maxTokens, 0f, 1f,
-            stop.map { it.encodeToByteArray() }.toTypedArray(),
+            h, roles.toTypedArray(), contents.map { it.encodeToByteArray() }.toTypedArray(), maxTokens, 0f, 1f,
+            stop.map { it.encodeToByteArray() }.toTypedArray(), cache,
         ) { utf8 ->
             text.append(utf8.decodeToString())
             keepGoing(text.toString())
@@ -66,6 +69,25 @@ class EngineTest {
         assertTrue(a.isNotBlank(), "no text")
         assertEquals(a, b)
         assertTrue(s.promptTokens > 0 && s.outputTokens > 0, "stats $s")
+    }
+
+    @Test
+    fun aChatReusesItsHistory() = withEngine(nCtx = 512) { h ->
+        val (reply, first) = gen(h, PROMPT, 16)
+        assertEquals(0, first.cachedTokens)
+        // The same prompt again: all but the last token come from the cache, with the same reply.
+        val (again, s) = gen(h, PROMPT, 16)
+        assertEquals(reply, again)
+        assertEquals(s.promptTokens - 1, s.cachedTokens)
+
+        // Turn 2 shares the first turn's prompt; the reply is the one a full prefill gives.
+        val roles = listOf("user", "assistant", "user")
+        val contents = listOf(PROMPT, reply, "Then what happened?")
+        val (cached, turn2) = gen(h, "", 16, roles = roles, contents = contents)
+        assertTrue(turn2.cachedTokens > 0 && turn2.cachedTokens < turn2.promptTokens, "stats $turn2")
+        val (full, none) = gen(h, "", 16, cache = false, roles = roles, contents = contents)
+        assertEquals(0, none.cachedTokens)
+        assertEquals(full, cached)
     }
 
     @Test

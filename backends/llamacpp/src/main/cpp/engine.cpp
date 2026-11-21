@@ -183,17 +183,33 @@ bool Engine::generate(const Messages &messages, const GenParams &params, const O
     stats.threads = t.decode;
     stats.threads_batch = t.batch;
 
-    llama_memory_clear(llama_get_memory(ctx_), true);
+    // The prompt prefix already in the KV cache, e.g. the history of a chat; at least one token is decoded again
+    // for the logits of the next one.
+    auto *mem = llama_get_memory(ctx_);
+    int keep = 0;
+    if (params.cache) {
+        size_t limit = n > 1 ? std::min(cached_.size(), (size_t) (n - 1)) : 0;
+        while ((size_t) keep < limit && cached_[keep] == tokens[keep]) ++keep;
+    }
+    if (keep == 0 || !llama_memory_seq_rm(mem, 0, keep, -1)) {
+        llama_memory_clear(mem, true);
+        keep = 0;
+    }
+    cached_.assign(tokens.begin(), tokens.begin() + keep);
     stats.prompt_tokens = n;
+    stats.cached_tokens = keep;
 
     int64_t t0 = now_ms();
     const int n_batch = (int) llama_n_batch(ctx_);
-    for (int i = 0; i < n; i += n_batch) {
-        auto batch = llama_batch_get_one(tokens.data() + i, std::min(n_batch, n - i));
-        if (llama_decode(ctx_, batch) != 0) {
+    for (int i = keep; i < n; i += n_batch) {
+        int len = std::min(n_batch, n - i);
+        if (llama_decode(ctx_, llama_batch_get_one(tokens.data() + i, len)) != 0) {
             err = "prefill failed";
+            cached_.clear();
+            llama_memory_clear(mem, true);
             return false;
         }
+        cached_.insert(cached_.end(), tokens.begin() + i, tokens.begin() + i + len);
     }
     int64_t t1 = now_ms();
     stats.prefill_ms = t1 - t0;
@@ -249,6 +265,7 @@ bool Engine::generate(const Messages &messages, const GenParams &params, const O
             err = "decode failed";
             break;
         }
+        cached_.push_back(tok);
     }
     if (go && !pending.empty()) on_text(pending.substr(0, utf8_complete(pending)));
 

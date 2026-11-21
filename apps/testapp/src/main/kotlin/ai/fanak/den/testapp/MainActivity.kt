@@ -143,6 +143,34 @@ class MainActivity : Activity() {
                 log("using ${m.backend} ${m.accel} ${m.quant} (${m.source}), connected ${m.connected}, load ${System.currentTimeMillis() - t0} ms, free ${den.device().availRamMb} MB")
                 if (m.connected) log("http endpoint ${den.httpEndpoint()}")
 
+                // A chat of --ei turns N: each turn's first token should not grow with the history.
+                val turns = intent.getIntExtra("turns", 0)
+                if (turns > 0) {
+                    val chat = m.newChat(maxTokens = 96, temperature = 0f)
+                    // --ez cache false: the same turns, each prefilling the whole history (the baseline).
+                    val cache = intent.getBooleanExtra("cache", true)
+                    val history = mutableListOf<ChatMessage>()
+                    repeat(turns) { i ->
+                        val start = System.currentTimeMillis()
+                        var first = 0L
+                        val text = if (i == 0) prompt.text.toString() else "Tell me more about that, please. /no_think"
+                        val reply = StringBuilder()
+                        val events = if (cache) chat.send(text) else {
+                            history += ChatMessage(Role.USER, text)
+                            m.chat(GenRequest(history.toList(), 96, 0f, cache = false))
+                        }
+                        events.collect { e ->
+                            if (e is GenEvent.Text) reply.append(e.text)
+                            if (e is GenEvent.Done && !cache) history += ChatMessage(Role.ASSISTANT, reply.toString())
+                            if (e is GenEvent.Text && first == 0L) first = System.currentTimeMillis() - start
+                            if (e is GenEvent.Done) e.stats.run {
+                                log("turn ${i + 1}: first token $first ms, prompt $promptTokens tok ($cachedTokens cached), prefill $prefillMs ms, output $outputTokens tok, %.1f tok/s".format(decodeTps))
+                            }
+                        }
+                    }
+                    return@launch
+                }
+
                 val req = GenRequest(listOf(ChatMessage(Role.USER, prompt.text.toString())), maxTokens = 128, temperature = 0f)
                 repeat(intent.getIntExtra("repeat", 1)) { i ->
                 // For trim tests: a wait between requests, while adb sends a trim-memory signal.
