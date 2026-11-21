@@ -42,11 +42,37 @@ data class Variant(
     val kvBytesPerToken: Long? = null,
 )
 
+// What a file of an artifact is for.
+@Serializable
+enum class FileRole {
+    @SerialName("model") MODEL,
+    // The vision encoder of a multimodal GGUF (mmproj).
+    @SerialName("projector") PROJECTOR,
+    @SerialName("tokenizer") TOKENIZER,
+    @SerialName("other") OTHER,
+}
+
+/**
+ * A variant on disk: its files by role. One GGUF has only a model file; a VLM adds its projector, and a QNN or Genie
+ * build has several binaries and a tokenizer.
+ */
 @Serializable
 data class Artifact(
     val variant: Variant,
-    val path: String,
-)
+    val files: Map<FileRole, String>,
+) {
+    init {
+        require(FileRole.MODEL in files) { "an artifact needs its model file" }
+    }
+
+    // A single model file.
+    constructor(variant: Variant, path: String) : this(variant, mapOf(FileRole.MODEL to path))
+
+    // The model file.
+    val path: String get() = files.getValue(FileRole.MODEL)
+
+    fun file(role: FileRole): String? = files[role]
+}
 
 interface ModelCatalog {
     // The model names this catalog knows.
