@@ -20,4 +20,7 @@ interface IEngine {
     oneway void cancel(IGenCallback callback);
 
     void unload(long session);
+
+    // Resident memory of the engine process in kB (VmRSS); the app cannot read another process's /proc.
+    long residentKb();
 }

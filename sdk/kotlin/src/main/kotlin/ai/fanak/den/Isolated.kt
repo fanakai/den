@@ -85,6 +85,9 @@ internal class EngineConnection(private val context: Context) : AutoCloseable {
 
     fun alive(b: Bound) = synchronized(lock) { bound?.generation == b.generation }
 
+    // Resident memory of the engine process when it runs, in kB; does not start it.
+    fun residentKb(): Long? = synchronized(lock) { bound }?.let { b -> runCatching { b.engine.residentKb() }.getOrNull()?.takeIf { it >= 0 } }
+
     // False when the engine of `b` is already gone.
     fun watch(b: Bound, onDeath: () -> Unit): Boolean = synchronized(lock) {
         if (bound?.generation != b.generation) return false

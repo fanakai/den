@@ -30,13 +30,22 @@ import ai.fanak.den.core.router.EngineCrashedException
 import ai.fanak.den.core.router.EngineLostException
 import ai.fanak.den.core.router.FailureStore
 import ai.fanak.den.core.router.FileFailureStore
+import ai.fanak.den.core.bench.Bench
+import ai.fanak.den.core.bench.BenchResult
+import ai.fanak.den.core.bench.Conditions
+import ai.fanak.den.core.router.NoUsableBackendException
+import android.app.ActivityManager
 import android.content.ComponentCallbacks2
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.content.res.Configuration
 import android.content.res.AssetManager
+import android.os.BatteryManager
 import android.os.Build
+import android.os.PowerManager
 import android.util.Log
 import java.io.File
+import java.time.LocalDate
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -167,6 +176,73 @@ class Den private constructor(context: Context, private val config: DenConfig) :
 
     // Looks a model up in the catalogs (network for hf: names, then cached); plan() and fileName() use the result.
     suspend fun resolve(model: String) = catalog.resolve(model)
+
+    /**
+     * den bench: measures each file of [model] the router would try on this phone, by default the 4-bit ones, and
+     * gives the results with a recipe (BenchResult.recipe()). Runs in this app, so it needs a release build, in the
+     * foreground with the screen on: debug builds and background apps run the engine several times slower.
+     */
+    suspend fun bench(
+        model: String,
+        runs: Int = 5,
+        quants: Set<String>? = setOf("q4_0", "q4_k_m"),
+        onProgress: (String) -> Unit = {},
+    ): BenchResult {
+        check(appContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE == 0) { "den bench needs a release build" }
+        val power = appContext.getSystemService(PowerManager::class.java)
+        // Checked again before each file: the numbers no longer hold once one of these changes.
+        fun notReady(): String? {
+            val state = ActivityManager.RunningAppProcessInfo().also { ActivityManager.getMyMemoryState(it) }
+            return when {
+                !power.isInteractive -> "the screen is off"
+                power.isPowerSaveMode -> "power saving is on; it lowers the CPU clocks"
+                state.importance != ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND -> "the app is not in the foreground"
+                else -> null
+            }
+        }
+        notReady()?.let { throw IllegalStateException("den bench cannot start: $it") }
+
+        resolve(model)
+        val device = device()
+        val plan = router.plan(model, device).filter { quants == null || it.variant.quant in quants }
+        if (plan.isEmpty()) throw NoUsableBackendException(model, emptyList(), "nothing to measure for $model on this phone")
+        val start = conditions()
+        val results = Bench(
+            store, runs, config.contextLength,
+            sha256 = { catalog.remote(it)?.sha256 },
+            // The engine process when the backends run there, else this one.
+            ramMb = { ((engine.residentKb() ?: residentKb("self")) ?: 0L).takeIf { it > 0 }?.let { (it / 1024).toInt() } },
+            onProgress = onProgress,
+            check = ::notReady,
+        ).run(plan)
+        val end = conditions()
+        val ran = results.firstOrNull { it.ok }
+        val protocol = listOfNotNull(
+            "den bench",
+            results.mapNotNull { it.engine }.distinct().joinToString().ifEmpty { null },
+            "automatic threads",
+            ran?.let { "${it.promptTokens}-token prompt, ${it.outputTokens} tokens greedy" },
+            "median of $runs runs",
+            "release build, foreground, screen on",
+            "battery ${start.batteryPct}%" + if (start.charging == true) " charging" else "",
+            "thermal ${start.thermal}",
+        ).joinToString(", ")
+        val v = plan.first().variant
+        return BenchResult(
+            model, v.arch, v.params, "${Build.MANUFACTURER} ${Build.MODEL}", device.soc, device.socFamily,
+            LocalDate.now().toString(), protocol, start, end, results,
+        )
+    }
+
+    private fun conditions(): Conditions {
+        val bm = appContext.getSystemService(BatteryManager::class.java)
+        return Conditions(
+            bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)?.takeIf { it in 0..100 },
+            bm?.isCharging,
+            device().thermal.name,
+        )
+    }
+
 
     // Whether model() will use the Den app.
     val connected: Boolean get() = config.mode != DenMode.EMBEDDED && app.status() == DenAppStatus.OK

@@ -1,5 +1,6 @@
 package ai.fanak.den.core.recipe
 
+import com.charleskorn.kaml.SingleLineStringStyle
 import com.charleskorn.kaml.Yaml
 import com.charleskorn.kaml.YamlConfiguration
 import java.io.File
@@ -31,6 +32,22 @@ object RecipeFiles {
         }
         if (r.rankings.map { it.model }.distinct().size != r.rankings.size) bad("two rankings for one model size")
         return r
+    }
+
+    // As the hand-written files: plain strings on one line, no empty or default fields.
+    private val writer = Yaml(
+        configuration = YamlConfiguration(
+            encodeDefaults = false,
+            singleLineStringStyle = SingleLineStringStyle.Plain,
+            breakScalarsAt = Int.MAX_VALUE,
+        ),
+    )
+
+    // A recipe as it is written to recipes/<soc>.yaml, e.g. by den bench.
+    fun encode(recipe: Recipe): String {
+        val body = writer.encodeToString(Recipe.serializer(), recipe)
+        // The schema is a default, so the writer leaves it out; files always say it.
+        return (if (body.startsWith("schema:")) body else "schema: ${recipe.schema}\n$body").trimEnd() + "\n"
     }
 
     // On the phone: null when unreadable or of a newer schema, so the other recipes still apply.
