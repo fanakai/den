@@ -21,6 +21,9 @@ struct GenParams {
     bool cache = true;
     // Threads for this call (decode and batch); 0 keeps the engine's choice.
     int threads = 0;
+    // Constrains the output: a GBNF grammar, or a JSON schema turned into one. Empty: free text.
+    std::string grammar;
+    std::string json_schema;
 };
 
 struct GenStats {

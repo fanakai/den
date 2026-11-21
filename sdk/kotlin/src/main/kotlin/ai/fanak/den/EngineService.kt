@@ -4,6 +4,8 @@ import ai.fanak.den.core.backend.ChatMessage
 import ai.fanak.den.core.backend.DenBackend
 import ai.fanak.den.core.backend.GenEvent
 import ai.fanak.den.core.backend.GenRequest
+import ai.fanak.den.core.backend.Tool
+import kotlinx.serialization.builtins.ListSerializer
 import ai.fanak.den.core.backend.LoadOptions
 import ai.fanak.den.core.backend.Role
 import ai.fanak.den.core.backend.Session
@@ -73,7 +75,8 @@ class EngineService : Service() {
 
         override fun generate(
             session: Long, roles: Array<String>, contents: Array<String>, maxTokens: Int,
-            temperature: Float, topP: Float, stop: Array<String>, cache: Boolean, threads: Int, callback: IGenCallback,
+            temperature: Float, topP: Float, stop: Array<String>, cache: Boolean, threads: Int,
+            constraints: Array<String>, callback: IGenCallback,
         ) {
             val s = sessions[session] ?: return run { runCatching { callback.onError("unknown session $session") } }
             // Keyed by the callback: several requests of a shared model can wait on one session.
@@ -81,7 +84,12 @@ class EngineService : Service() {
             val job = scope.launch(start = CoroutineStart.LAZY) {
                 try {
                     val messages = roles.zip(contents) { r, c -> ChatMessage(Role.valueOf(r), c) }
-                    s.generate(GenRequest(messages, maxTokens, temperature, topP, stop.toList(), cache, threads.takeIf { it > 0 })).collect { e ->
+                    s.generate(GenRequest(
+                        messages, maxTokens, temperature, topP, stop.toList(), cache, threads.takeIf { it > 0 },
+                        grammar = constraints.getOrNull(0)?.ifEmpty { null },
+                        jsonSchema = constraints.getOrNull(1)?.ifEmpty { null },
+                        tools = constraints.getOrNull(2)?.let { JSON.decodeFromString(ListSerializer(Tool.serializer()), it) }.orEmpty(),
+                    )).collect { e ->
                         when (e) {
                             is GenEvent.Text -> callback.onText(e.text)
                             is GenEvent.Done -> callback.onDone(e.stats.toLongs())

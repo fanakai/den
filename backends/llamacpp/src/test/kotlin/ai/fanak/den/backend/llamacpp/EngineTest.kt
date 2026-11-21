@@ -39,6 +39,8 @@ class EngineTest {
         stop: List<String> = emptyList(),
         cache: Boolean = true,
         threads: Int = 0,
+        // [grammar, JSON schema], each empty when unused.
+        constraints: List<String> = listOf("", ""),
         roles: List<String> = listOf("user"),
         contents: List<String> = listOf(prompt),
         keepGoing: (String) -> Boolean = { true },
@@ -47,6 +49,7 @@ class EngineTest {
         val s = LlamaNative.generate(
             h, roles.toTypedArray(), contents.map { it.encodeToByteArray() }.toTypedArray(), maxTokens, 0f, 1f,
             stop.map { it.encodeToByteArray() }.toTypedArray(), cache, threads,
+            constraints.map { it.encodeToByteArray() }.toTypedArray(),
         ) { utf8 ->
             text.append(utf8.decodeToString())
             keepGoing(text.toString())
@@ -95,6 +98,16 @@ class EngineTest {
     fun threadsCanBeSetPerRequest() = withEngine { h ->
         assertEquals(2, gen(h, PROMPT, 4).second.threads)
         assertEquals(1, gen(h, PROMPT, 4, threads = 1).second.threads)
+    }
+
+    @Test
+    fun aGrammarOrAJsonSchemaConstrainsTheReply() = withEngine { h ->
+        val (word, _) = gen(h, PROMPT, 16, constraints = listOf("root ::= \"yes\" | \"no\"", ""))
+        assertTrue(word in setOf("yes", "no"), "not in the grammar: '$word'")
+        // The JSON grammar allows whitespace after the value.
+        val (bool, _) = gen(h, PROMPT, 16, constraints = listOf("", """{"type":"boolean"}"""))
+        assertTrue(bool.trim() in setOf("true", "false"), "not a JSON boolean: '$bool'")
+        assertFailsWith<EngineException> { gen(h, PROMPT, 4, constraints = listOf("", "{not json")) }
     }
 
     @Test

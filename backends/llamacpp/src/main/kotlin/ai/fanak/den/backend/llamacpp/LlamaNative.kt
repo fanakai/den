@@ -28,6 +28,8 @@ internal object LlamaNative {
         stop: Array<ByteArray>,
         cache: Boolean,
         threads: Int,
+        // [grammar, JSON schema], each empty when unused.
+        constraints: Array<ByteArray>,
         callback: TextCallback,
     ): LongArray
 

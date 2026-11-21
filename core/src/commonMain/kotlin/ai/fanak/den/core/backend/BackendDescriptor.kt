@@ -23,6 +23,14 @@ enum class Location { DEVICE, LAN, CLOUD }
 @Serializable
 enum class SlotPolicy { STANDARD, EXCLUSIVE_ACCEL, UNMETERED }
 
+// Names of BackendDescriptor.features.
+object Features {
+    const val GRAMMAR = "grammar"
+    const val JSON_SCHEMA = "json_schema"
+    const val TOOLS = "tools"
+    const val EMBEDDINGS = "embeddings"
+}
+
 /** What a backend is, as plain data: what the router, the pool and the Den screen read instead of its id. */
 @Serializable
 data class BackendDescriptor(
@@ -37,6 +45,8 @@ data class BackendDescriptor(
     val formats: Set<ModelFormat>,
     val slots: SlotPolicy = SlotPolicy.STANDARD,
     val location: Location = Location.DEVICE,
+    // What requests may ask beyond plain chat (Features); the rest is refused before it reaches the backend.
+    val features: Set<String> = emptySet(),
 ) {
     // The fields left empty; a descriptor with any is incomplete.
     fun missing(): List<String> = buildList {

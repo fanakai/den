@@ -27,9 +27,14 @@ class OpenAiServerTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var loadDelayMs = 0L
 
-    // Repeats the last message word by word, after an optional reasoning block.
+    // The last request the echo backend got.
+    @Volatile private var last: GenRequest? = null
+
+    // Repeats the last message word by word, after an optional reasoning block; like llama.cpp, no tools.
     private val echo: Chat = { req: GenRequest ->
+        last = req
         flow {
+            if (req.tools.isNotEmpty()) throw ai.fanak.den.core.backend.UnsupportedFeatureException("tools", "echo")
             val words = req.messages.last().content.split(" ")
             words.forEach { emit(GenEvent.Text("$it ")) }
             emit(GenEvent.Done(GenStats(words.size, words.size, 1, 1)))
@@ -127,13 +132,25 @@ class OpenAiServerTest {
     }
 
     @Test
-    fun refusesFieldsItWouldIgnore() {
+    fun mapsJsonAndToolsAndRefusesWhatTheBackendCannotDo() {
         val msg = """"messages":[{"role":"user","content":"hi"}]"""
-        val tools = """"tools":[{"type":"function","function":{"name":"f","parameters":{}}}]"""
-        assertTrue(post("""{"model":"echo",$msg,$tools}""").startsWith("HTTP/1.1 400"))
-        assertTrue(post("""{"model":"echo",$msg,"response_format":{"type":"json_object"}}""").startsWith("HTTP/1.1 400"))
+        // Tools reach the backend, which refuses them: 400 with its reason, never a reply in prose.
+        val tools = """"tools":[{"type":"function","function":{"name":"f","description":"d","parameters":{"type":"object"}}}]"""
+        val refused = post("""{"model":"echo",$msg,$tools}""")
+        assertTrue(refused.startsWith("HTTP/1.1 400") && "echo does not support tools yet" in refused, refused)
+        assertEquals(listOf(ai.fanak.den.core.backend.Tool("f", "d", """{"type":"object"}""")), last?.tools)
+
+        assertTrue(post("""{"model":"echo",$msg,"response_format":{"type":"json_object"}}""").startsWith("HTTP/1.1 200"))
+        assertEquals("""{"type":"object"}""", last?.jsonSchema)
+        val schema = """{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}"""
+        assertTrue(post("""{"model":"echo",$msg,"response_format":{"type":"json_schema","json_schema":{"name":"x","schema":$schema}}}""").startsWith("HTTP/1.1 200"))
+        assertEquals(schema, last?.jsonSchema)
+        assertTrue(post("""{"model":"echo",$msg,"response_format":{"type":"json_schema"}}""").startsWith("HTTP/1.1 400"))
+
         assertTrue(post("""{"model":"echo",$msg,"n":2}""").startsWith("HTTP/1.1 400"))
         assertTrue(post("""{"model":"echo",$msg,"response_format":{"type":"text"},"tools":[]}""").startsWith("HTTP/1.1 200"))
+        assertEquals(null, last?.jsonSchema)
+        assertTrue(raw("POST /v1/embeddings HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer $TOKEN\r\nContent-Length: 2\r\n\r\n{}").startsWith("HTTP/1.1 400"))
     }
 
     @Test

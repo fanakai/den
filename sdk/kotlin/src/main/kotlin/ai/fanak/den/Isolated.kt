@@ -4,6 +4,8 @@ import ai.fanak.den.core.backend.Capabilities
 import ai.fanak.den.core.backend.DenBackend
 import ai.fanak.den.core.backend.GenEvent
 import ai.fanak.den.core.backend.GenRequest
+import ai.fanak.den.core.backend.Tool
+import kotlinx.serialization.builtins.ListSerializer
 import ai.fanak.den.core.backend.GenStats
 import ai.fanak.den.core.backend.Health
 import ai.fanak.den.core.backend.LoadOptions
@@ -240,7 +242,9 @@ private class IsolatedSession(
             try {
                 b.engine.generate(
                     id, req.messages.map { it.role.name }.toTypedArray(), req.messages.map { it.content }.toTypedArray(),
-                    req.maxTokens, req.temperature, req.topP, req.stop.toTypedArray(), req.cache, req.threads ?: 0, callback,
+                    req.maxTokens, req.temperature, req.topP, req.stop.toTypedArray(), req.cache, req.threads ?: 0,
+                    arrayOf(req.grammar.orEmpty(), req.jsonSchema.orEmpty(), EngineService.JSON.encodeToString(ListSerializer(Tool.serializer()), req.tools)),
+                    callback,
                 )
             } catch (e: RemoteException) {
                 close(engine.error(b, e))

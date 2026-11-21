@@ -3,6 +3,8 @@ package ai.fanak.den
 import ai.fanak.den.core.backend.GenEvent
 import ai.fanak.den.core.backend.GenRequest
 import ai.fanak.den.core.backend.GenStats
+import ai.fanak.den.core.backend.UnsupportedFeatureException
+import ai.fanak.den.core.backend.features
 import ai.fanak.den.core.device.Accel
 import ai.fanak.den.core.model.DownloadProgress
 import ai.fanak.den.core.router.NoUsableBackendException
@@ -203,6 +205,8 @@ internal class RemoteModel(
     override val connected = true
 
     override fun chat(request: GenRequest): Flow<GenEvent> = callbackFlow {
+        // The AIDL request has no grammar, schema or tools yet; the Den app's HTTP endpoint has them.
+        request.features.firstOrNull()?.let { throw UnsupportedFeatureException(it, "the Den app connection") }
         var done = false
         svc.generate(
             session,

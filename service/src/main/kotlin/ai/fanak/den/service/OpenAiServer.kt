@@ -5,6 +5,8 @@ import ai.fanak.den.core.backend.Finish
 import ai.fanak.den.core.backend.GenEvent
 import ai.fanak.den.core.backend.GenRequest
 import ai.fanak.den.core.backend.Role
+import ai.fanak.den.core.backend.Tool
+import ai.fanak.den.core.backend.UnsupportedFeatureException
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -138,10 +140,13 @@ class OpenAiServer(
                 method == "GET" && path == "/v1/models" -> out.json(200, modelList())
                 method == "GET" && path == "/den/v1/system-info" -> out.json(200, systemInfo())
                 method == "POST" && path == "/v1/chat/completions" -> chat(body.decodeToString(), out)
+                method == "POST" && path == "/v1/embeddings" -> throw HttpError(400, "embeddings are not supported by the backends here yet")
                 else -> throw HttpError(404, "not found: $method $path")
             }
         } catch (e: HttpError) {
             out.json(e.code, error(e.message ?: ""))
+        } catch (e: UnsupportedFeatureException) {
+            out.json(400, error(e.message ?: ""))
         } catch (e: IOException) {
             throw e
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -165,12 +170,16 @@ class OpenAiServer(
         val name = req.str("model") ?: throw HttpError(400, "model is required")
         // hf:owner/repo names are resolved on demand, so they are not in /v1/models.
         if (name !in models() && !name.startsWith("hf:")) throw HttpError(404, "unknown model $name; see /v1/models")
-        // Not supported until #81; ignoring them would answer in prose where the client expects a tool call or JSON.
-        listOf("tools", "functions").forEach { f ->
-            if ((req[f] as? JsonArray)?.isNotEmpty() == true) throw HttpError(400, "$f is not supported yet")
-        }
-        (req["response_format"] as? JsonObject)?.str("type")?.takeIf { it != "text" }?.let {
-            throw HttpError(400, "response_format $it is not supported yet")
+        // Tools and JSON go to the backend, which refuses what it cannot do: never prose where the client expects JSON.
+        val tools = (req["tools"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonObject)?.get("function") as? JsonObject } +
+            (req["functions"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+        val format = req["response_format"] as? JsonObject
+        val jsonSchema = when (val type = format?.str("type")) {
+            null, "text" -> null
+            "json_object" -> """{"type":"object"}"""
+            "json_schema" -> ((format["json_schema"] as? JsonObject)?.get("schema") as? JsonObject)?.toString()
+                ?: throw HttpError(400, "response_format json_schema needs json_schema.schema")
+            else -> throw HttpError(400, "response_format $type is not supported")
         }
         req["n"]?.takeIf { it !is JsonNull }?.jsonPrimitive?.intOrNull?.takeIf { it > 1 }?.let {
             throw HttpError(400, "n = $it is not supported; send one request per reply")
@@ -192,6 +201,10 @@ class OpenAiServer(
             req["temperature"]?.jsonPrimitive?.floatOrNull ?: 0.7f,
             req["top_p"]?.jsonPrimitive?.floatOrNull ?: 0.95f,
             stop,
+            jsonSchema = jsonSchema,
+            tools = tools.map { t ->
+                Tool(t.str("name") ?: throw HttpError(400, "a tool needs a name"), t.str("description").orEmpty(), t["parameters"]?.toString() ?: "{}")
+            },
         )
         if (req["stream"]?.jsonPrimitive?.booleanOrNull == true) {
             stream(name, gen, out)
