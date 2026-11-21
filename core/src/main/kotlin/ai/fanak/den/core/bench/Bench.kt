@@ -230,7 +230,7 @@ class Bench(
         var first: Long? = null
         val text = StringBuilder()
         var stats: GenStats? = null
-        session.generate(GenRequest(listOf(ChatMessage(Role.USER, prompt)), maxTokens, temperature = 0f)).collect { e ->
+        session.generate(GenRequest(listOf(ChatMessage(Role.USER, prompt)), maxTokens, temperature = 0f, cache = false)).collect { e ->
             when (e) {
                 is GenEvent.Text -> {
                     if (first == null) first = clock() - t0

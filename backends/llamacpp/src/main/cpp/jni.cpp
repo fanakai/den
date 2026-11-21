@@ -86,7 +86,7 @@ JNIEXPORT jlongArray JNICALL
 Java_ai_fanak_den_backend_llamacpp_LlamaNative_generate(JNIEnv *env, jobject, jlong ptr,
                                                          jobjectArray roles, jobjectArray contents,
                                                          jint max_tokens, jfloat temperature, jfloat top_p,
-                                                         jobjectArray stop, jobject callback) {
+                                                         jobjectArray stop, jboolean cache, jobject callback) {
     auto *h = reinterpret_cast<Handle *>(ptr);
     std::lock_guard<std::mutex> guard(h->lock);
 
@@ -100,6 +100,7 @@ Java_ai_fanak_den_backend_llamacpp_LlamaNative_generate(JNIEnv *env, jobject, jl
     params.temperature = temperature;
     params.top_p = top_p;
     params.stop = utf8s(env, stop);
+    params.cache = cache;
 
     // Bytes, not a jstring: NewStringUTF uses modified UTF-8 and breaks 4-byte characters.
     jmethodID on_text = env->GetMethodID(env->GetObjectClass(callback), "onText", "([B)Z");
@@ -119,9 +120,10 @@ Java_ai_fanak_den_backend_llamacpp_LlamaNative_generate(JNIEnv *env, jobject, jl
         throw_engine(env, err);
         return nullptr;
     }
-    jlong out[5] = {stats.prompt_tokens, stats.output_tokens, stats.prefill_ms, stats.decode_ms, stats.finish};
-    jlongArray arr = env->NewLongArray(5);
-    env->SetLongArrayRegion(arr, 0, 5, out);
+    jlong out[6] = {stats.prompt_tokens, stats.output_tokens, stats.prefill_ms, stats.decode_ms, stats.finish,
+                    stats.cached_tokens};
+    jlongArray arr = env->NewLongArray(6);
+    env->SetLongArrayRegion(arr, 0, 6, out);
     return arr;
 }
 

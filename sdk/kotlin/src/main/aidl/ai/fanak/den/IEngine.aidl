@@ -14,8 +14,9 @@ interface IEngine {
     // Returns a session id; a failed load throws IllegalStateException with the message.
     long load(String backend, String artifact, String options);
 
+    // Within one APK, so the app and its engine always match: parameters may change in place.
     oneway void generate(long session, in String[] roles, in String[] contents, int maxTokens,
-            float temperature, float topP, in String[] stop, IGenCallback callback);
+            float temperature, float topP, in String[] stop, boolean cache, IGenCallback callback);
 
     oneway void cancel(IGenCallback callback);
 

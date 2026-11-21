@@ -53,6 +53,8 @@ int main(int argc, char **argv) {
     den::GenParams params;
     params.max_tokens = 64;
     params.temperature = 0.0f;
+    // Each run measures a full prefill.
+    params.cache = false;
     den::GenStats s;
     bool ok = engine->generate({{"user", prompt}}, params, [](const std::string &t) {
         std::fputs(t.c_str(), stdout);

@@ -73,7 +73,7 @@ class EngineService : Service() {
 
         override fun generate(
             session: Long, roles: Array<String>, contents: Array<String>, maxTokens: Int,
-            temperature: Float, topP: Float, stop: Array<String>, callback: IGenCallback,
+            temperature: Float, topP: Float, stop: Array<String>, cache: Boolean, callback: IGenCallback,
         ) {
             val s = sessions[session] ?: return run { runCatching { callback.onError("unknown session $session") } }
             // Keyed by the callback: several requests of a shared model can wait on one session.
@@ -81,7 +81,7 @@ class EngineService : Service() {
             val job = scope.launch(start = CoroutineStart.LAZY) {
                 try {
                     val messages = roles.zip(contents) { r, c -> ChatMessage(Role.valueOf(r), c) }
-                    s.generate(GenRequest(messages, maxTokens, temperature, topP, stop.toList())).collect { e ->
+                    s.generate(GenRequest(messages, maxTokens, temperature, topP, stop.toList(), cache)).collect { e ->
                         when (e) {
                             is GenEvent.Text -> callback.onText(e.text)
                             is GenEvent.Done -> callback.onDone(e.stats.toLongs())
