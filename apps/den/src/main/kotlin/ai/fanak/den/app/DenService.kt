@@ -3,6 +3,7 @@ package ai.fanak.den.app
 import ai.fanak.den.Den
 import ai.fanak.den.DenConfig
 import ai.fanak.den.DenMode
+import ai.fanak.den.DenModel
 import ai.fanak.den.ModelFiles
 import ai.fanak.den.IDenService
 import ai.fanak.den.IGenCallback
@@ -37,6 +38,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 
 // Hosts the engine for every app on the phone: one loaded copy of each model, shared by all callers.
@@ -150,7 +154,7 @@ class DenService : Service() {
                         val messages = roles.zip(contents) { r, c ->
                             ChatMessage(requireNotNull(Role.entries.find { it.name == r.uppercase() }) { "unknown role $r" }, c)
                         }
-                        pool.use(s.model) { m -> m.chat(GenRequest(messages, maxTokens, temperature, topP, stop.toList())).collect { e ->
+                        pool.use(s.model) { m -> recorded(s.model, m, m.chat(GenRequest(messages, maxTokens, temperature, topP, stop.toList()))).collect { e ->
                             when (e) {
                                 is GenEvent.Text -> callback.onText(e.text)
                                 is GenEvent.Done -> e.stats.run {
@@ -191,7 +195,7 @@ class DenService : Service() {
     private val http = OpenAiServer(
         scope,
         models = { den.models },
-        use = { name, block -> pool.use(name) { m -> block { req -> m.chat(req) } } },
+        use = { name, block -> pool.use(name) { m -> block { req -> recorded(name, m, m.chat(req)) } } },
         client = { HttpSettings.name(this, it) },
         log = ::log,
     )
@@ -223,6 +227,20 @@ class DenService : Service() {
         log("download ${p.fileName} ${p.bytes shr 20}/${p.total shr 20} MB")
         val model = downloads[p.fileName] ?: return
         pending.values.filter { it.model == model }.forEach { runCatching { it.callback.onProgress(p.fileName, p.bytes, p.total) } }
+    }
+
+    // For the diagnostics file: speeds and the path taken, never the text.
+    private fun recorded(model: String, m: DenModel, events: Flow<GenEvent>): Flow<GenEvent> {
+        var t0 = 0L
+        var first: Long? = null
+        return events.onStart { t0 = System.currentTimeMillis() }.onEach { e ->
+            when (e) {
+                is GenEvent.Text -> if (first == null) first = System.currentTimeMillis() - t0
+                is GenEvent.Done -> Diagnostics.record(
+                    Diagnostics.Request(t0, model, m.backend, m.accel.name, m.quant, first, e.stats, den.device().thermal.name),
+                )
+            }
+        }
     }
 
     private fun caller(uid: Int) = packageManager.getNameForUid(uid) ?: uid.toString()

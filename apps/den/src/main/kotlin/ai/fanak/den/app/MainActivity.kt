@@ -43,6 +43,7 @@ class MainActivity : Activity() {
     private lateinit var http: LinearLayout
     private lateinit var downloads: LinearLayout
     private lateinit var bench: LinearLayout
+    private lateinit var diag: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -65,6 +66,7 @@ class MainActivity : Activity() {
         http = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         downloads = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         bench = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        diag = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(32, 32, 32, 32)
@@ -74,6 +76,7 @@ class MainActivity : Activity() {
             addView(bench)
             addView(apps)
             addView(http)
+            addView(diag)
         }
         setContentView(ScrollView(this).apply { addView(root) })
     }
@@ -87,6 +90,7 @@ class MainActivity : Activity() {
         showBench()
         showApps()
         showHttp()
+        showDiagnostics()
     }
 
     private fun showDownloads() {
@@ -126,8 +130,9 @@ class MainActivity : Activity() {
         }
     }
 
-    // den bench on the downloaded files only: a benchmark never downloads.
-    private val benchDen by lazy { Den.connect(this, DenConfig(mode = DenMode.EMBEDDED, download = false)) }
+    // On the downloaded files only, for den bench and the diagnostics: never downloads.
+    private val benchDenLazy = lazy { Den.connect(this, DenConfig(mode = DenMode.EMBEDDED, download = false)) }
+    private val benchDen by benchDenLazy
     private var benchJob: Job? = null
     private var benchRunning = false
     private var benchLines = listOf<String>()
@@ -205,6 +210,36 @@ class MainActivity : Activity() {
         showBench()
     }
 
+    // The diagnostics file, shown before it is shared; null until the user asks for it.
+    private var diagnostics: File? = null
+
+    private fun showDiagnostics() {
+        diag.removeAllViews()
+        diag.addView(TextView(this).apply { text = "\nDiagnostics"; textSize = 18f })
+        diag.addView(TextView(this).apply {
+            text = "A file with this phone, the recorded failures, recent speeds and the Den log, to attach to a bug report " +
+                "or a recipe. It holds no prompt or reply text, and leaves the phone only if you share it."
+        })
+        diag.addView(button("Prepare diagnostics") {
+            scope.launch {
+                diagnostics = withContext(Dispatchers.IO) {
+                    val dir = DiagnosticsProvider.dir(this@MainActivity).apply { mkdirs(); listFiles()?.forEach { it.delete() } }
+                    File(dir, "den-diagnostics-${java.time.LocalDate.now()}.txt").apply { writeText(Diagnostics.build(this@MainActivity, benchDen)) }
+                }
+                showDiagnostics()
+            }
+        })
+        val f = diagnostics ?: return
+        diag.addView(button("Share ${f.name}") {
+            val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+                .putExtra(Intent.EXTRA_STREAM, DiagnosticsProvider.uri(f))
+                .putExtra(Intent.EXTRA_SUBJECT, "Fanak Den diagnostics")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            startActivity(Intent.createChooser(send, null))
+        })
+        diag.addView(TextView(this).apply { text = f.readText(); textSize = 10f; typeface = Typeface.MONOSPACE; setTextIsSelectable(true) })
+    }
+
     private fun showApps() {
         apps.removeAllViews()
         apps.addView(TextView(this).apply { text = "\nApps"; textSize = 18f })
@@ -255,7 +290,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         scope.cancel()
-        if (benchJob != null) benchDen.close()
+        if (benchDenLazy.isInitialized()) benchDen.close()
         super.onDestroy()
     }
 
@@ -311,6 +346,6 @@ class MainActivity : Activity() {
 
     private fun button(label: String, onClick: () -> Unit) = Button(this).apply {
         text = label
-        setOnClickListener { onClick(); showModels(); showDownloads(); showBench(); showApps(); showHttp() }
+        setOnClickListener { onClick(); showModels(); showDownloads(); showBench(); showApps(); showHttp(); showDiagnostics() }
     }
 }
