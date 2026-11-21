@@ -28,6 +28,7 @@ up on demand; a request may still name one.
 | `temperature`, `top_p` | 0.7 and 0.95 when not given; `temperature` 0 is greedy. |
 | `stop` | A string or a list of strings. |
 | `stream` | Server-sent events, `chat.completion.chunk` objects, then `data: [DONE]`. |
+| `stream_options.include_usage` | A last chunk with `usage` (prompt and completion tokens) and no choices. |
 | `response_format` | `text`; `json_object` (the reply is a JSON object); `json_schema` with `json_schema.schema` (the reply follows the schema). |
 | `tools`, `functions` | Passed to the backend; a backend without tool calls answers 400 with its reason. |
 | `n` | 1 only; more gets 400. |

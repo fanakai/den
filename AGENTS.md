@@ -9,6 +9,7 @@ Instructions for coding agents and contributors working on Fanak Den. Den runs o
 | `core/` | Router, backend interface, model files, recipes. Kotlin Multiplatform (JVM and `linuxX64`), no Android dependency; files and network in `jvmMain`. |
 | `service/` | The OpenAI-compatible HTTP server, plain Kotlin (JVM), tested with the OpenAI Java client. |
 | `backends/llamacpp/` | llama.cpp through JNI (`llama.cpp` is a git submodule), CPU and Adreno OpenCL. |
+| `backends/openai/` | OpenAI-compatible servers on the LAN or in the cloud, plain Kotlin (JVM), tested against `service/`. |
 | `sdk/kotlin/` | Android SDK: device probe, built-in catalog, downloads, connected mode (AIDL client). No backend: an app adds `backends/llamacpp` for embedded mode. |
 | `apps/den/` | The Den app: AIDL service, model pool, app approvals, OpenAI-compatible HTTP endpoint. |
 | `apps/testapp/`, `apps/demo/` | Test app (driven from adb) and a second app that uses only the SDK. |
@@ -26,7 +27,7 @@ git submodule update --init
 ```
 
 - After a change to an AIDL file or another interface, run `./gradlew build --rerun-tasks` before opening a PR: an incremental build can miss a class that implements the interface.
-- The public API of `core/`, `sdk/kotlin/` and `backends/llamacpp/` is in their `api/*.api` files, and `./gradlew build` fails when it changes. After an intended change, run `./gradlew apiDump` and commit the updated files with it.
+- The public API of `core/`, `sdk/kotlin/`, `backends/llamacpp/` and `backends/openai/` is in their `api/*.api` files, and `./gradlew build` fails when it changes. After an intended change, run `./gradlew apiDump` and commit the updated files with it.
 - The table in `recipes/README.md` is made from the recipe files, and `./gradlew build` fails when it differs. After a recipe change, run `./gradlew :core:jvmTest -Pden.writeTable` and commit the README with it.
 - CI (`.github/workflows/build.yml`) runs `./gradlew build` on every pull request and must pass before merging.
 - On Linux and macOS, `./gradlew :backends:llamacpp:test` also builds the engine for the machine (cmake and a C++ compiler needed) and runs it through JNI on a 1.2 MB model: generation, stop strings, cancel, context limits. On Windows these tests are skipped; CI runs them.

@@ -207,7 +207,8 @@ class OpenAiServer(
             },
         )
         if (req["stream"]?.jsonPrimitive?.booleanOrNull == true) {
-            stream(name, gen, out)
+            val usage = ((req["stream_options"] as? JsonObject)?.get("include_usage") as? JsonPrimitive)?.booleanOrNull == true
+            stream(name, gen, out, usage)
             return
         }
         var loaded = false
@@ -227,7 +228,8 @@ class OpenAiServer(
 
     // The header goes out before the model loads, and a comment every few seconds until the first token: a first
     // load takes 10 to 35 s on a phone, and HTTP clients give up on a silent connection.
-    private suspend fun stream(name: String, gen: GenRequest, out: OutputStream): Unit = coroutineScope {
+    // [usage]: a last chunk with the token counts and no choices, as OpenAI sends for stream_options.include_usage.
+    private suspend fun stream(name: String, gen: GenRequest, out: OutputStream, usage: Boolean = false): Unit = coroutineScope {
         val id = completionId()
         val created = System.currentTimeMillis() / 1000
         fun chunk(delta: JsonObject, finish: String?) = buildJsonObject {
@@ -272,6 +274,15 @@ class OpenAiServer(
                         is GenEvent.Done -> {
                             send(split.flush())
                             event(chunk(JsonObject(emptyMap()), finish(e)).toString())
+                            if (usage) event(buildJsonObject {
+                                put("id", id); put("object", "chat.completion.chunk"); put("created", created); put("model", name)
+                                putJsonArray("choices") {}
+                                putJsonObject("usage") {
+                                    put("prompt_tokens", e.stats.promptTokens)
+                                    put("completion_tokens", e.stats.outputTokens)
+                                    put("total_tokens", e.stats.promptTokens + e.stats.outputTokens)
+                                }
+                            }.toString())
                         }
                     }
                 }

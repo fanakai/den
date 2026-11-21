@@ -115,6 +115,15 @@ class OpenAiServerTest {
     }
 
     @Test
+    fun aStreamEndsWithTheUsageWhenAsked() {
+        val p = params("one two three").toBuilder()
+            .streamOptions(com.openai.models.chat.completions.ChatCompletionStreamOptions.builder().includeUsage(true).build()).build()
+        val usage = client().chat().completions().createStreaming(p).use { s -> s.stream().toList().last().usage().orElseThrow() }
+        assertEquals(3, usage.promptTokens())
+        assertEquals(3, usage.completionTokens())
+    }
+
+    @Test
     fun keepAlivesCarryAStreamThroughASlowLoad() {
         // A 5 s load against a 4 s read timeout: only the early header and the keep-alives keep the client waiting.
         loadDelayMs = 5_000
