@@ -1,11 +1,14 @@
 package ai.fanak.den.core.router
 
+import ai.fanak.den.core.backend.Capabilities
 import ai.fanak.den.core.backend.DenBackend
+import ai.fanak.den.core.backend.Location
 import ai.fanak.den.core.backend.LoadOptions
 import ai.fanak.den.core.backend.Session
 import ai.fanak.den.core.device.Accel
 import ai.fanak.den.core.device.DeviceProfile
 import ai.fanak.den.core.device.Thermal
+import ai.fanak.den.core.model.Artifact
 import ai.fanak.den.core.model.ModelCatalog
 import ai.fanak.den.core.model.ModelStore
 import ai.fanak.den.core.model.Variant
@@ -29,7 +32,17 @@ data class Candidate(
     val accel: Accel,
     val variant: Variant,
     val source: Source,
-)
+) {
+    // Where it runs, from its backend's descriptor; a backend without one runs on the phone.
+    val location: Location get() = backend.about?.location ?: Location.DEVICE
+}
+
+/**
+ * Whether the router may send a request off the phone. LOCAL_ONLY: never (the default). LOCAL_FIRST: remote candidates
+ * after the local ones, when none fits or all fail. REMOTE_FIRST: remote ones first. Remote ones go LAN before cloud,
+ * and only when the phone is online.
+ */
+enum class RoutingPolicy { LOCAL_ONLY, LOCAL_FIRST, REMOTE_FIRST }
 
 data class Failure(val candidate: Candidate, val error: Throwable)
 
@@ -63,6 +76,9 @@ class Router(
     private val allowLicence: (String?) -> Boolean = { true },
     // Free RAM now, in MB, read again before each candidate is fetched and loaded; default: the device profile's.
     private val freeRamMb: (() -> Int)? = null,
+    private val policy: RoutingPolicy = RoutingPolicy.LOCAL_ONLY,
+    // Whether the phone has a network now; remote candidates need one.
+    private val online: () -> Boolean = { true },
 ) {
     // Variants measured by the first run in this process, so a run that saved nothing is not repeated on each open.
     private val measured = java.util.Collections.synchronizedSet(mutableSetOf<Variant>())
@@ -118,11 +134,31 @@ class Router(
                 }
             }
 
-        return (fromRecipes + fromLocal + defaults)
+        val onPhone = (fromRecipes + fromLocal + defaults)
+            .filter { it.location == Location.DEVICE }
             .distinctBy { Triple(it.backend.id, it.accel, it.variant) }
             .filterNot { failures.isBlocked(key(device, it)) }
             // Hot: smaller files first, each still on its accelerators in order (a stable sort).
             .let { plan -> if (Thermal.hot(device.thermal)) plan.sortedBy { it.variant.sizeBytes } else plan }
+        val remote = remote(model, device, minContext, caps)
+        return when (policy) {
+            RoutingPolicy.LOCAL_ONLY -> onPhone
+            RoutingPolicy.LOCAL_FIRST -> onPhone + remote
+            RoutingPolicy.REMOTE_FIRST -> remote + onPhone
+        }
+    }
+
+    // Candidates off the phone, LAN before cloud: the phone's RAM and disk do not limit them, the network does.
+    private fun remote(model: String, device: DeviceProfile, minContext: Int?, caps: Map<DenBackend, Capabilities?>): List<Candidate> {
+        if (policy == RoutingPolicy.LOCAL_ONLY || !online()) return emptyList()
+        val off = backends.filter { (it.about?.location ?: Location.DEVICE) != Location.DEVICE }
+        if (off.isEmpty()) return emptyList()
+        val variants = catalog.variants(model).filter { (it.soc == null || it.soc == device.soc) && fitsContext(it, minContext) && licenceOk(it) }
+            .sortedWith(compareBy<Variant> { quantRank(it.quant) }.thenByDescending { it.sizeBytes })
+        return off.sortedBy { it.about!!.location }.flatMap { b ->
+            val c = caps[b] ?: return@flatMap emptyList()
+            variants.flatMap { v -> c.accels.filter { c.supports(it, v.format) && c.loads(v.arch) }.map { Candidate(b, it, v, Source.DEFAULT) } }
+        }.filterNot { failures.isBlocked(key(device, it)) }
     }
 
     /**
@@ -141,7 +177,7 @@ class Router(
         var plan = plan(model, device, minContext, mmap)
         if (plan.isEmpty()) throw NoUsableBackendException(model, tried, emptyPlanReason(model, device, minContext, mmap))
         val first = plan.first()
-        if (firstRun != null && first.source == Source.DEFAULT && measured.add(first.variant)) {
+        if (firstRun != null && first.source == Source.DEFAULT && first.location == Location.DEVICE && measured.add(first.variant)) {
             try {
                 firstRun.measure(device, plan) { c, e -> failures.record(key(device, c), e) }
             } catch (e: CancellationException) {
@@ -152,15 +188,18 @@ class Router(
             plan = plan(model, device, minContext, mmap).ifEmpty { plan }
         }
         for (c in plan) {
+            val onPhone = c.location == Location.DEVICE
             // Free RAM changes while files download and other apps run: checked again for each candidate.
             val free = freeRamMb?.invoke() ?: device.availRamMb
-            val context = contextFor(c.variant, contextLength, minContext, device, mmap, free)
+            val context = if (onPhone) contextFor(c.variant, contextLength, minContext, device, mmap, free)
+                else minOf(contextLength, c.variant.maxContext ?: contextLength)
             if (context == null) {
                 tried += Failure(c, NotEnoughMemoryException("${c.variant.quant} needs ${ramNeed(c.variant, minContext, mmap).freeMb} MB free, $free MB free now"))
                 continue
             }
             try {
-                val artifact = try {
+                // A remote backend has the file itself: nothing is downloaded to the phone.
+                val artifact = if (!onPhone) Artifact(c.variant, "") else try {
                     store.fetch(c.variant)
                 } catch (e: IOException) {
                     // Without network, or when the download is refused, every other file fails the same way.

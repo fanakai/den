@@ -439,4 +439,59 @@ class RouterTest {
         val first = router(listOf(llama()), listOf(series)).plan(model, sm7450).first()
         assertEquals(Source.RECIPE_FAMILY to q40, first.source to first.variant)
     }
+
+    // A server on the network: no RAM or disk on the phone, no download.
+    private class Remote(override val id: String, val where: ai.fanak.den.core.backend.Location) : DenBackend {
+        val loaded = mutableListOf<String>()
+        override val about = ai.fanak.den.core.backend.BackendDescriptor(
+            id, id, "1", "test", "MIT", "https://example.org", ai.fanak.den.core.backend.SupportTier.EXPERIMENTAL,
+            setOf(ai.fanak.den.core.backend.BackendMode.CHAT), setOf(ModelFormat.GGUF), location = where,
+        )
+        override fun probe(device: DeviceProfile) = Capabilities(setOf(Accel.CPU), setOf(ModelFormat.GGUF))
+        override suspend fun load(artifact: Artifact, opts: LoadOptions): Session {
+            loaded += artifact.variant.quant
+            return object : Session {
+                override fun generate(req: GenRequest): Flow<GenEvent> = emptyFlow()
+                override fun unload() {}
+            }
+        }
+        override fun health() = Health.Ok
+    }
+
+    private fun policyRouter(policy: RoutingPolicy, online: Boolean = true, local: DenBackend = llama(), s: ModelStore = store) = Router(
+        listOf(Remote("cloud", ai.fanak.den.core.backend.Location.CLOUD), local, Remote("lan", ai.fanak.den.core.backend.Location.LAN)),
+        InMemoryRecipeStore(emptyList()), catalog, s, policy = policy, online = { online },
+    )
+
+    @Test
+    fun localOnlyIsTheDefaultAndKeepsEverythingOnThePhone() {
+        val plan = policyRouter(RoutingPolicy.LOCAL_ONLY).plan(model, device)
+        assertTrue(plan.isNotEmpty() && plan.all { it.location == ai.fanak.den.core.backend.Location.DEVICE })
+        // The constructor's default.
+        assertTrue(Router(listOf(Remote("lan", ai.fanak.den.core.backend.Location.LAN)), InMemoryRecipeStore(emptyList()), catalog, store).plan(model, device).isEmpty())
+    }
+
+    @Test
+    fun localFirstAddsTheNetworkAfterThePhoneLanBeforeCloud() = runTest {
+        val plan = policyRouter(RoutingPolicy.LOCAL_FIRST).plan(model, device).map { it.location }
+        val firstRemote = plan.indexOfFirst { it != ai.fanak.den.core.backend.Location.DEVICE }
+        assertTrue(plan.take(firstRemote).all { it == ai.fanak.den.core.backend.Location.DEVICE })
+        assertEquals(ai.fanak.den.core.backend.Location.LAN, plan[firstRemote])
+        assertTrue(plan.indexOfFirst { it == ai.fanak.den.core.backend.Location.CLOUD } > plan.indexOfLast { it == ai.fanak.den.core.backend.Location.LAN })
+
+        // Nothing fits on the phone: the LAN server runs it, with no download to the phone.
+        var fetches = 0
+        val counting = object : ModelStore { override suspend fun fetch(variant: Variant) = Artifact(variant, "/m").also { fetches++ } }
+        val opened = policyRouter(RoutingPolicy.LOCAL_FIRST, local = llama(failOn = setOf(Accel.CPU, Accel.GPU)), s = counting).open(model, device.copy(availRamMb = 6_000))
+        assertEquals("lan", opened.candidate.backend.id)
+        assertEquals(opened.failures.size, fetches)
+    }
+
+    @Test
+    fun remoteFirstPutsTheNetworkFirstAndOfflineDropsIt() {
+        val plan = policyRouter(RoutingPolicy.REMOTE_FIRST).plan(model, device)
+        assertEquals(ai.fanak.den.core.backend.Location.LAN, plan.first().location)
+        val offline = policyRouter(RoutingPolicy.REMOTE_FIRST, online = false).plan(model, device)
+        assertTrue(offline.isNotEmpty() && offline.all { it.location == ai.fanak.den.core.backend.Location.DEVICE })
+    }
 }
