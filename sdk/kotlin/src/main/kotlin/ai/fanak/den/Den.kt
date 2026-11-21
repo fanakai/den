@@ -99,6 +99,9 @@ data class DenConfig(
     // Embedded mode, when no recipe matches the phone: the first load measures the first file on each accelerator
     // (a few seconds each) and keeps the order on the phone, in <filesDir>/den/local-recipes.
     val firstRunBenchmark: Boolean = true,
+    // Whether the app may use a model under this licence id (null: none given), e.g. { !Licences.nonCommercial(it) }.
+    // Embedded mode; in connected mode it is checked when the model opens.
+    val allowLicence: (String?) -> Boolean = { true },
 )
 
 enum class DenMode {
@@ -178,6 +181,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
             sha256 = { catalog.remote(it)?.sha256 }, ramMb = ::engineRamMb, contextLength = config.contextLength,
             onProgress = { Log.i("Den", it) },
         ),
+        config.allowLicence,
     )
 
     private val minContext = config.minContextLength?.coerceAtMost(config.contextLength) ?: config.contextLength
@@ -191,6 +195,14 @@ class Den private constructor(context: Context, private val config: DenConfig) :
 
     // The file the router would pick on this phone, and its download without loading it. Runs in this process.
     fun fileName(model: String): String? = plan(model).firstOrNull()?.let { catalog.remote(it.variant)?.fileName }
+
+    // The licence id of the file the router would pick, else of any file of the model (e.g. apache-2.0); null when
+    // the source gives none.
+    fun licence(model: String): String? = plan(model).firstOrNull()?.let { catalog.remote(it.variant)?.licence }
+        ?: catalog.variants(model).firstNotNullOfOrNull { catalog.remote(it)?.licence } ?: catalog.licence(model)
+
+    private fun licence(model: String, quant: String): String? =
+        catalog.variants(model).firstOrNull { it.quant == quant }?.let { catalog.remote(it)?.licence }
 
     suspend fun download(model: String) {
         resolve(model)
@@ -279,11 +291,20 @@ class Den private constructor(context: Context, private val config: DenConfig) :
     suspend fun model(name: String): DenModel {
         val status = if (config.mode == DenMode.EMBEDDED) DenAppStatus.MISSING else app.status()
         if (status == DenAppStatus.OK) {
-            try {
-                return app.open(name)
+            val m = try {
+                app.open(name).also { it.licenceOf = ::licence }
             } catch (e: Exception) {
                 if (config.mode == DenMode.CONNECTED) throw e
                 Log.w("Den", "Den app unavailable, running $name in the app: $e")
+                null
+            }
+            if (m != null) {
+                // The Den app does not know this app's rule; refused here, not run in the app instead.
+                if (!config.allowLicence(m.licence)) {
+                    m.close()
+                    throw NoUsableBackendException(name, emptyList(), "this app does not allow the licence of $name (${m.licence ?: "none given"})")
+                }
+                return m
             }
         } else if (config.mode == DenMode.CONNECTED) {
             throw IllegalStateException(
@@ -295,7 +316,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         }
         val reopen: suspend () -> Opened = { router.open(name, device(), config.contextLength, config.useMmap, minContext) }
         val crashed = { o: Opened, e: Throwable -> router.reportFailure(device(), o.candidate, e) }
-        return LocalModel(name, reopen(), reopen, crashed) { local -= it }.also { local += it }
+        return LocalModel(name, reopen(), reopen, crashed) { local -= it }.also { it.licenceOf = ::licence; local += it }
     }
 
     // Closes the models this Den opened in the app process, and the connection to the Den app.
@@ -317,6 +338,11 @@ abstract class DenModel : AutoCloseable {
     abstract val accel: Accel
     abstract val quant: String
     abstract val source: Source
+
+    internal var licenceOf: (String, String) -> String? = { _, _ -> null }
+
+    // Licence id of the file in use (e.g. apache-2.0), from the catalog; null when the source gives none.
+    val licence: String? get() = licenceOf(name, quant)
 
     // True when the model runs in the Den app, shared with other apps.
     abstract val connected: Boolean

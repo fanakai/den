@@ -16,6 +16,7 @@ data class CatalogEntry(
     val sha256: String,
     // Where the file is stored, relative to the model folder.
     val path: String = fileName,
+    val licence: String? = null,
 )
 
 // Until the live catalog (#31). minRamMb is a rough margin until den bench measures peak RAM (#14).
@@ -33,6 +34,8 @@ object BuiltinCatalog : ModelCatalog {
             "$HF/Qwen3-$size-GGUF/resolve/main/$file",
             sha256,
             "hf/unsloth/Qwen3-$size-GGUF/$file",
+            // As on the model cards of Qwen and unsloth.
+            "apache-2.0",
         )
     }
 
@@ -49,9 +52,11 @@ object BuiltinCatalog : ModelCatalog {
 
     fun entry(variant: Variant) = entries.first { it.variant == variant }
 
+    override fun licence(model: String) = entries.firstOrNull { it.variant.model == model }?.licence
+
     override fun remote(variant: Variant) =
         entries.firstOrNull { it.variant == variant }?.let {
-            RemoteFile(it.fileName, it.url, it.sha256, variant.sizeBytes, it.path)
+            RemoteFile(it.fileName, it.url, it.sha256, variant.sizeBytes, it.path, it.licence)
         }
 }
 

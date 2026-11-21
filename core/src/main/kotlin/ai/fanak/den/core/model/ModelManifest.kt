@@ -16,6 +16,8 @@ data class ManifestEntry(
     val sizeBytes: Long,
     val url: String,
     val complete: Boolean,
+    // The licence id the catalog gave (e.g. apache-2.0); null in manifests written before it was kept.
+    val licence: String? = null,
 ) {
     val fileName: String get() = path.substringAfterLast('/')
 }
