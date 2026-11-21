@@ -65,11 +65,17 @@ public:
     bool generate(const Messages &messages, const GenParams &params, const OnText &on_text,
                   GenStats &stats, std::string &err);
 
+    // Another engine on the same weights, with its own context and KV cache: a second request runs beside the first
+    // instead of waiting. Null when the context cannot be made (memory).
+    std::unique_ptr<Engine> fork(std::string &err) const;
+
 private:
     Engine() = default;
     std::string format(const Messages &messages, std::string &err) const;
 
-    llama_model *model_ = nullptr;
+    // Shared by the forks: freed with the last one.
+    std::shared_ptr<llama_model> model_;
+    int n_ctx_ = 0;
     llama_context *ctx_ = nullptr;
     int threads_ = 0;
     // The tokens in the KV cache, in order.

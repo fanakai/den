@@ -130,6 +130,11 @@ internal class EngineService : Service() {
             jobs[callback.asBinder()]?.second?.cancel()
         }
 
+        override fun fork(session: Long): Long = guard {
+            val forked = sessions[session]?.fork() ?: return@guard -1L
+            nextId.getAndIncrement().also { sessions[it] = forked }
+        }
+
         override fun unload(session: Long) = guard {
             jobs.values.filter { it.first == session }.forEach { it.second.cancel() }
             sessions.remove(session)?.unload()

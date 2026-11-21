@@ -111,6 +111,25 @@ class EngineTest {
     }
 
     @Test
+    fun aForkRunsBesideTheFirstOnTheSameWeights() = withEngine { h ->
+        val alone = gen(h, PROMPT, 24).first
+        val f = LlamaNative.fork(h)
+        try {
+            // Both at once, each on its own context: the same greedy reply as alone.
+            val other = java.util.concurrent.Executors.newSingleThreadExecutor()
+            val fromFork = other.submit<String> { gen(f, PROMPT, 24, cache = false).first }
+            val fromFirst = gen(h, PROMPT, 24, cache = false).first
+            assertEquals(alone, fromFirst)
+            assertEquals(alone, fromFork.get())
+            other.shutdown()
+        } finally {
+            LlamaNative.free(f)
+        }
+        // The first one still works after the fork is freed: the weights stay until the last one goes.
+        assertEquals(alone, gen(h, PROMPT, 24, cache = false).first)
+    }
+
+    @Test
     fun maxTokensEndsWithLength() = withEngine { h ->
         val (_, s) = gen(h, PROMPT, 4)
         assertEquals(4, s.outputTokens)

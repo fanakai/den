@@ -25,4 +25,7 @@ interface IEngine {
 
     // Resident memory of the engine process in kB (VmRSS); the app cannot read another process's /proc.
     long residentKb();
+
+    // A new session on the weights of [session], with its own context; -1 when the backend cannot make one.
+    long fork(long session);
 }

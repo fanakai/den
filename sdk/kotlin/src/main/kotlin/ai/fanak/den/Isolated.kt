@@ -256,6 +256,13 @@ private class IsolatedSession(
         }
     }.buffer(Channel.UNLIMITED)
 
+    // A second context in the engine process, on the same weights; -1 there when it cannot be made.
+    override fun fork(): Session? {
+        if (!engine.alive(b)) return null
+        val forked = runCatching { b.engine.fork(id) }.getOrNull()?.takeIf { it > 0 } ?: return null
+        return IsolatedSession(engine, b, forked)
+    }
+
     override fun unload() {
         if (engine.alive(b)) runCatching { b.engine.unload(id) }
     }
