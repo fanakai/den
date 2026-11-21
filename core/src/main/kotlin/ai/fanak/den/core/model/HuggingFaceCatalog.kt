@@ -38,6 +38,7 @@ class HuggingFaceCatalog(
         // From the GGUF metadata; null in caches written before recipes matched on them.
         val arch: String? = null,
         val params: Long? = null,
+        val maxContext: Int? = null,
     )
 
     @Serializable
@@ -93,13 +94,16 @@ class HuggingFaceCatalog(
             RepoFile(path, size, sha)
         }
         val gguf = info["gguf"] as? JsonObject
-        return Repo(commit, licence, files, gguf?.str("architecture"), (gguf?.get("total") as? JsonPrimitive)?.longOrNull)
+        return Repo(
+            commit, licence, files, gguf?.str("architecture"), (gguf?.get("total") as? JsonPrimitive)?.longOrNull,
+            (gguf?.get("context_length") as? JsonPrimitive)?.longOrNull?.takeIf { it in 1..Int.MAX_VALUE }?.toInt(),
+        )
     }
 
     private fun build(id: String, ref: Ref, repo: Repo): Resolved {
         val store = "hf/${ref.owner}/${ref.repo}" + if (ref.revision == "main") "" else "/${ref.revision}"
         val files = repo.files.map { HubFile(it.path, it.size, it.sha256) }
-        val remote = GgufFiles.variants(id, files, store, repo.arch, repo.params, repo.licence) {
+        val remote = GgufFiles.variants(id, files, store, repo.arch, repo.params, repo.licence, repo.maxContext) {
             "$host/${ref.name}/resolve/${repo.commit}/${it.path}"
         }
         return Resolved(remote.keys.toList(), remote)

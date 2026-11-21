@@ -23,6 +23,8 @@ data class Variant(
     // GGUF architecture and parameter count, when the catalog knows them: what recipes match on (#107).
     val arch: String? = null,
     val params: Long? = null,
+    // Longest context the file supports, in tokens: trained (GGUF) or compiled in (NPU builds). Null when unknown.
+    val maxContext: Int? = null,
 )
 
 @Serializable

@@ -62,6 +62,9 @@ data class DenConfig(
     // Default: <filesDir>/den/models
     val modelDir: File? = null,
     val contextLength: Int = 4096,
+    // The shortest context the app accepts: a file with a lower maximum (e.g. an NPU build) then runs with its
+    // maximum instead of being left out. Null: contextLength in full.
+    val minContextLength: Int? = null,
     val useMmap: Boolean = true,
     // Download the chosen file on first use, checked against its SHA-256.
     val download: Boolean = true,
@@ -177,12 +180,14 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         ),
     )
 
+    private val minContext = config.minContextLength?.coerceAtMost(config.contextLength) ?: config.contextLength
+
     val models: List<String> get() = catalog.models
 
     fun device(): DeviceProfile = probe.profile()
 
     // What the router would try, in order, without loading anything.
-    fun plan(model: String, device: DeviceProfile = device()): List<Candidate> = router.plan(model, device)
+    fun plan(model: String, device: DeviceProfile = device()): List<Candidate> = router.plan(model, device, minContext)
 
     // The file the router would pick on this phone, and its download without loading it. Runs in this process.
     fun fileName(model: String): String? = plan(model).firstOrNull()?.let { catalog.remote(it.variant)?.fileName }
@@ -222,7 +227,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
 
         resolve(model)
         val device = device()
-        val plan = router.plan(model, device).filter { quants == null || it.variant.quant in quants }
+        val plan = router.plan(model, device, minContext).filter { quants == null || it.variant.quant in quants }
         if (plan.isEmpty()) throw NoUsableBackendException(model, emptyList(), "nothing to measure for $model on this phone")
         val start = conditions()
         val results = Bench(
@@ -288,7 +293,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         } else if (status == DenAppStatus.UNTRUSTED) {
             Log.w("Den", "$DEN_PACKAGE is not signed by Fanak Den; running $name in the app")
         }
-        val reopen: suspend () -> Opened = { router.open(name, device(), config.contextLength, config.useMmap) }
+        val reopen: suspend () -> Opened = { router.open(name, device(), config.contextLength, config.useMmap, minContext) }
         val crashed = { o: Opened, e: Throwable -> router.reportFailure(device(), o.candidate, e) }
         return LocalModel(name, reopen(), reopen, crashed) { local -= it }.also { local += it }
     }
