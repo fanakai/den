@@ -70,6 +70,12 @@ class HttpModelStore(
         return Artifact(variant, file.path)
     }
 
+    override fun has(variant: Variant): Boolean {
+        val r = runCatching { locate(variant) }.getOrNull() ?: return false
+        val file = File(dir, r.path)
+        return (file.isFile && file.length() == r.sizeBytes) || mirror(r, file) != null
+    }
+
     // The same content (same SHA-256) already downloaded from another source: a mirror, used as it is.
     private fun mirror(r: RemoteFile, file: File): File? {
         if (file.isFile) return null

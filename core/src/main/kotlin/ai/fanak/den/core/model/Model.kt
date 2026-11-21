@@ -58,4 +58,7 @@ class CompositeCatalog(private val catalogs: List<ModelCatalog>) : ModelCatalog 
 // Downloads and caches variants; in connected mode one copy is shared by all apps.
 interface ModelStore {
     suspend fun fetch(variant: Variant): Artifact
+
+    // On disk already, so fetch() downloads nothing. A quick check (size), not the SHA-256.
+    fun has(variant: Variant): Boolean = false
 }

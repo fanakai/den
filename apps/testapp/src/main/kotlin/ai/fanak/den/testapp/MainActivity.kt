@@ -33,7 +33,10 @@ class MainActivity : Activity() {
         val crash = intent.getStringExtra("crash")?.also { armCrash(it) }
         // "denCerts": trusted Den app signers as SHA-256, comma-separated; "none" trusts no Den app.
         val certs = intent.getStringExtra("denCerts")?.let { v -> if (v == "none") emptyList() else v.split(',') } ?: DEN_CERTIFICATES
-        if (intent.getBooleanExtra("echo", false)) echoDen() else testDen(intent.getBooleanExtra("mmap", true), mode, crash != null, certs)
+        // "noRecipes": as a phone without a recipe, for the first-run benchmark; "clearLocal" forgets what it measured.
+        if (intent.getBooleanExtra("echo", false)) echoDen()
+        else testDen(intent.getBooleanExtra("mmap", true), mode, crash != null, certs, !intent.getBooleanExtra("noRecipes", false))
+            .also { if (intent.getBooleanExtra("clearLocal", false)) it.localRecipes.clear() }
     }
 
     private lateinit var model: String

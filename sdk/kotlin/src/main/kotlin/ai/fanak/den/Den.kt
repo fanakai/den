@@ -19,6 +19,7 @@ import ai.fanak.den.core.model.ModelStore
 import ai.fanak.den.core.model.RemoteFile
 import ai.fanak.den.core.model.Variant
 import ai.fanak.den.core.recipe.InMemoryRecipeStore
+import ai.fanak.den.core.recipe.LocalRecipeStore
 import ai.fanak.den.core.recipe.Recipe
 import ai.fanak.den.core.recipe.RecipeFiles
 import ai.fanak.den.core.router.Candidate
@@ -33,6 +34,7 @@ import ai.fanak.den.core.router.FileFailureStore
 import ai.fanak.den.core.bench.Bench
 import ai.fanak.den.core.bench.BenchResult
 import ai.fanak.den.core.bench.Conditions
+import ai.fanak.den.core.bench.FirstRunBench
 import ai.fanak.den.core.router.NoUsableBackendException
 import android.app.ActivityManager
 import android.content.ComponentCallbacks2
@@ -80,6 +82,8 @@ data class DenConfig(
     val store: ModelStore? = null,
     // Added to the bundled recipes.
     val recipes: List<Recipe> = emptyList(),
+    // false: only `recipes`, e.g. to test a phone without a recipe.
+    val bundledRecipes: Boolean = true,
     // Run the backends in a separate process (`:den_engine`, Android 10 and later), so an engine crash does not take
     // the app down. Each backend is created again there from its class: a Kotlin object, a constructor taking a
     // Context, or one without arguments; others run in the app process.
@@ -89,6 +93,9 @@ data class DenConfig(
     // Embedded mode: runs before a file is downloaded (not when it is on disk). It may wait, or refuse with
     // DownloadRefusedException; the Den app asks the user here, checks its quota and waits for Wi-Fi.
     val beforeDownload: suspend (Variant, RemoteFile) -> Unit = { _, _ -> },
+    // Embedded mode, when no recipe matches the phone: the first load measures the first file on each accelerator
+    // (a few seconds each) and keeps the order on the phone, in <filesDir>/den/local-recipes.
+    val firstRunBenchmark: Boolean = true,
 )
 
 enum class DenMode {
@@ -128,7 +135,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
     private val app = DenAppConnection(context, config.onDownload, config.denCertificates, config.approvalScreen)
     private val probe = AndroidDeviceProbe(context)
     val modelDir: File = (config.modelDir ?: File(context.filesDir, "den/models")).apply { mkdirs() }
-    val recipes: List<Recipe> = context.assets.recipes("den/recipes") + config.recipes
+    val recipes: List<Recipe> = (if (config.bundledRecipes) context.assets.recipes("den/recipes") else emptyList()) + config.recipes
     private val catalog: ModelCatalog = (config.catalogs ?: defaultCatalogs(context)).let { it.singleOrNull() ?: CompositeCatalog(it) }
 
     // The model files of this process (embedded mode); the Den app manages the shared ones.
@@ -145,6 +152,11 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         FileModelStore(modelDir, catalog)
     }
     private val engine = EngineConnection(context)
+    // The engine process when the backends run there, else this one.
+    private fun engineRamMb(): Int? = ((engine.residentKb() ?: residentKb("self")) ?: 0L).takeIf { it > 0 }?.let { (it / 1024).toInt() }
+
+    // Measured on this phone by the first-run benchmark.
+    val localRecipes = LocalRecipeStore(File(context.filesDir, "den/local-recipes"), Build.FINGERPRINT)
     private val router = Router(
         (config.backends ?: listOf(LlamaCppBackend())).map { b ->
             when {
@@ -157,6 +169,12 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         catalog,
         store,
         config.failures ?: FileFailureStore(File(context.filesDir, "den/failures.json"), Build.FINGERPRINT),
+        localRecipes,
+        if (!config.firstRunBenchmark) null else FirstRunBench(
+            store, localRecipes, "${Build.MANUFACTURER} ${Build.MODEL}",
+            sha256 = { catalog.remote(it)?.sha256 }, ramMb = ::engineRamMb, contextLength = config.contextLength,
+            onProgress = { Log.i("Den", it) },
+        ),
     )
 
     val models: List<String> get() = catalog.models
@@ -210,8 +228,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         val results = Bench(
             store, runs, config.contextLength,
             sha256 = { catalog.remote(it)?.sha256 },
-            // The engine process when the backends run there, else this one.
-            ramMb = { ((engine.residentKb() ?: residentKb("self")) ?: 0L).takeIf { it > 0 }?.let { (it / 1024).toInt() } },
+            ramMb = ::engineRamMb,
             onProgress = onProgress,
             check = ::notReady,
         ).run(plan)
