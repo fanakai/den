@@ -33,6 +33,11 @@ data class DeviceProfile(
     val gpu: String? = null,
     val npu: NpuInfo? = null,
     val thermal: ThermalState = ThermalState.NONE,
+    // CPU features that decide the speed of quantized kernels: dotprod, fp16, i8mm, bf16, sve, sve2.
+    val cpuFeatures: Set<String> = emptySet(),
+    // Vulkan version the GPU driver reports (e.g. "1.1"), and whether an OpenCL driver is present.
+    val vulkan: String? = null,
+    val openCl: Boolean = false,
 )
 
 interface DeviceProbe {

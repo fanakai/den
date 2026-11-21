@@ -427,4 +427,16 @@ class RouterTest {
         // Unknown engine choice: left to the engine.
         assertEquals(null, Thermal.threads(0, ThermalState.SEVERE))
     }
+
+    @Test
+    fun anUnknownChipUsesTheRecipeOfItsSeries() {
+        // SM7450 is not in the table; its series is, through a family recipe.
+        val series = Recipe(
+            socFamily = "snapdragon-7-series",
+            rankings = listOf(Ranking(ModelSize("qwen3", 1.7), listOf(RecipeChoice("llamacpp", Accel.CPU, ModelFormat.GGUF, "q4_0")))),
+        )
+        val sm7450 = device.copy(soc = "SM7450", socFamily = ai.fanak.den.core.device.SocFamilies.of("SM7450"))
+        val first = router(listOf(llama()), listOf(series)).plan(model, sm7450).first()
+        assertEquals(Source.RECIPE_FAMILY to q40, first.source to first.variant)
+    }
 }
