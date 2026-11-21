@@ -4,6 +4,7 @@ import ai.fanak.den.core.backend.BackendDescriptor
 import ai.fanak.den.core.backend.ChatMessage
 import ai.fanak.den.core.backend.DenBackend
 import ai.fanak.den.core.backend.GenEvent
+import ai.fanak.den.core.backend.Location
 import ai.fanak.den.core.backend.GenRequest
 import ai.fanak.den.core.backend.Role
 import ai.fanak.den.core.backend.SlotPolicy
@@ -30,6 +31,7 @@ import ai.fanak.den.core.router.Candidate
 import ai.fanak.den.core.router.Failure
 import ai.fanak.den.core.router.Opened
 import ai.fanak.den.core.router.Router
+import ai.fanak.den.core.router.RoutingPolicy
 import ai.fanak.den.core.router.Source
 import ai.fanak.den.core.router.EngineCrashedException
 import ai.fanak.den.core.router.EngineLostException
@@ -113,6 +115,8 @@ data class DenConfig(
     // Stable names for roles (den.default, den.small), each with models in order of preference; the Den app's own
     // apply in connected mode, where the user can move them.
     val aliases: Map<String, List<String>> = DEFAULT_ALIASES,
+    // Whether a request may leave the phone, once remote backends exist: LOCAL_ONLY (the default) never sends one.
+    val routing: RoutingPolicy = RoutingPolicy.LOCAL_ONLY,
 )
 
 enum class DenMode {
@@ -202,6 +206,8 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         ),
         config.allowLicence,
         freeRamMb = { probe.profile().availRamMb },
+        policy = config.routing,
+        online = { hasNetwork(context) },
     )
 
     private val minContext = config.minContextLength?.coerceAtMost(config.contextLength) ?: config.contextLength
@@ -440,6 +446,9 @@ abstract class DenModel : AutoCloseable {
     // True when the model runs in the Den app, shared with other apps.
     abstract val connected: Boolean
 
+    // Where it runs: on this phone, or on a server of the local network or the cloud, so an app can show it.
+    open val location: Location get() = Location.DEVICE
+
     // The context it was loaded with, in tokens; 0 from a Den app older than version 5.
     open val contextLength: Int get() = 0
     open val failures: List<Failure> get() = emptyList()
@@ -484,6 +493,7 @@ internal class LocalModel(
     override val quant get() = last.candidate.variant.quant
     override val source get() = last.candidate.source
     override val connected = false
+    override val location get() = last.candidate.location
     override val contextLength get() = last.contextLength
     override val failures get() = last.failures
 

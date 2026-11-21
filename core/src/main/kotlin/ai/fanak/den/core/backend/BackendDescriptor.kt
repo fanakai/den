@@ -11,6 +11,10 @@ enum class SupportTier { CORE, COMMUNITY, EXPERIMENTAL }
 @Serializable
 enum class BackendMode { CHAT, EMBEDDINGS }
 
+// Where a backend runs the model: on this phone, on the local network (a PC or board), or in the cloud.
+@Serializable
+enum class Location { DEVICE, LAN, CLOUD }
+
 /**
  * How the pool shares a backend's accelerator. STANDARD: models load while RAM allows. EXCLUSIVE_ACCEL: the
  * accelerator holds one model at a time whatever the free RAM (some NPUs), so the idle one unloads first. UNMETERED:
@@ -32,6 +36,7 @@ data class BackendDescriptor(
     val modes: Set<BackendMode>,
     val formats: Set<ModelFormat>,
     val slots: SlotPolicy = SlotPolicy.STANDARD,
+    val location: Location = Location.DEVICE,
 ) {
     // The fields left empty; a descriptor with any is incomplete.
     fun missing(): List<String> = buildList {
