@@ -41,6 +41,7 @@ object Diagnostics {
         appendLine("${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
         appendLine("build ${Build.FINGERPRINT}")
         appendLine("SoC ${p.soc} (${p.socFamily}), ABI ${p.abi}, GPU ${p.gpu ?: "unknown"}, NPU ${p.npu?.vendor ?: "none"}")
+        appendLine("CPU features ${p.cpuFeatures.sorted().joinToString(",").ifEmpty { "unknown" }}, OpenCL ${p.openCl}, Vulkan ${p.vulkan ?: "none"}")
         appendLine("RAM ${p.availRamMb}/${p.ramMb} MB free, thermal ${p.thermal}")
         val version = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull()
         appendLine("Den app $version, ${den.recipes.size} recipes, ${den.localRecipes.find(p).size} local")
