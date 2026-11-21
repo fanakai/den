@@ -34,4 +34,10 @@ tasks.named<Test>("jvmTest") {
     systemProperty("den.models", rootProject.file("models").absolutePath)
     systemProperty("den.routerCases", file("router-cases").absolutePath)
     inputs.dir(file("router-cases"))
+    // Rewrites the table in recipes/README.md from the recipe files (RecipeTableTest).
+    if (project.hasProperty("den.writeTable")) {
+        systemProperty("den.writeTable", "true")
+        outputs.upToDateWhen { false }
+    }
+    inputs.dir(rootProject.file("recipes"))
 }
