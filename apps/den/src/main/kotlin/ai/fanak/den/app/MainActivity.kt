@@ -4,6 +4,7 @@ import ai.fanak.den.Den
 import ai.fanak.den.DenConfig
 import ai.fanak.den.DenMode
 import ai.fanak.den.ModelFiles
+import ai.fanak.den.core.backend.Location
 import ai.fanak.den.core.bench.BenchResult
 import ai.fanak.den.core.model.HubLinks
 import ai.fanak.den.core.bench.Contribute
@@ -485,10 +486,10 @@ class MainActivity : Activity() {
 
     // Where a client's requests may run; a server is used only for a model with no file that runs on the phone.
     private fun reachButton(client: String): Button {
-        val lan = Reach.lan(this, client)
-        return button(if (lan) "Phone and LAN servers (tap: phone only)" else "Phone only (tap: also LAN servers)") {
-            Reach.setLan(this, client, !lan)
-        }
+        val level = Reach.level(this, client)
+        val next = Reach.LEVELS[(Reach.LEVELS.indexOf(level) + 1) % Reach.LEVELS.size]
+        val label = mapOf(Location.DEVICE to "Phone only", Location.LAN to "Phone and LAN servers", Location.CLOUD to "Phone, LAN and cloud")
+        return button("${label[level]} (tap: ${label[next]!!.replaceFirstChar { it.lowercase() }})") { Reach.set(this, client, next) }
     }
 
     // Where the client's requests ran, e.g. "ran on DEVICE 12 times (3400 tokens), LAN 2 times (310 tokens)".
@@ -502,15 +503,16 @@ class MainActivity : Activity() {
     // runs on this phone.
     private fun showServers() {
         servers.removeAllViews()
-        servers.addView(TextView(this).apply { text = "\nLAN servers (OpenAI-compatible)"; textSize = 18f })
+        servers.addView(TextView(this).apply { text = "\nServers (OpenAI-compatible)"; textSize = 18f })
         servers.addView(TextView(this).apply {
-            text = "A model goes to a server here only when no file of it runs on this phone. Apps see the reply as from Den."
+            text = "A model goes to a server here only when no file of it runs on this phone, LAN servers before the cloud, and only for the apps you allowed. Apps see the reply as from Den."
         })
         ServerSettings.all(this).forEach { e ->
             servers.addView(LinearLayout(this).apply {
                 gravity = Gravity.CENTER_VERTICAL
                 addView(TextView(context).apply {
-                    text = "${e.name}: ${e.baseUrl}\n" + e.models.entries.joinToString("\n") { "  ${it.key} -> ${it.value}" }
+                    val where = e.location.name.lowercase() + if (e.apiKey != null) ", with a key" else ""
+                    text = "${e.name} ($where): ${e.baseUrl}\n" + e.models.entries.joinToString("\n") { "  ${it.key} -> ${it.value}" }
                 }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
                 addView(button("Remove") { ServerSettings.remove(context, e.name) })
             })
@@ -543,9 +545,8 @@ class MainActivity : Activity() {
                         text = "${f.baseUrl}\n  ${f.models.joinToString().ifEmpty { "no models listed" }}"
                     }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
                     addView(button("Add") {
-                        val u = java.net.URL(f.baseUrl)
-                        val name = "${u.host}:${u.port}"
-                        ServerSettings.add(context, ai.fanak.den.backend.openai.Endpoint(name, f.baseUrl, ai.fanak.den.core.backend.Location.LAN, ServerSettings.parseModels("", f.models)))
+                        val name = endpointName(f.baseUrl)
+                        ServerSettings.add(context, ai.fanak.den.backend.openai.Endpoint(name, f.baseUrl, Location.LAN, ServerSettings.parseModels("", f.models)))
                         status = "added $name with the server's model names"
                     })
                 })
@@ -555,26 +556,44 @@ class MainActivity : Activity() {
         val names = EditText(this).apply { hint = "den-name = server-model, one per line (empty: the server's names)"; minLines = 2 }
         servers.addView(url)
         servers.addView(names)
-        servers.addView(button("Add server") {
-            val base = url.text.toString().trim().trimEnd('/')
-            val text = names.text.toString()
-            scope.launch {
-                status = withContext(Dispatchers.IO) {
-                    try {
-                        val ids = LanScan.models(base)
-                        val map = ServerSettings.parseModels(text, ids)
-                        val u = java.net.URL(base)
-                        val name = "${u.host}:${u.port}"
-                        ServerSettings.add(this@MainActivity, ai.fanak.den.backend.openai.Endpoint(name, base, ai.fanak.den.core.backend.Location.LAN, map))
-                        "added $name: ${map.size} model(s); the server has ${ids.joinToString().ifEmpty { "none listed" }}"
-                    } catch (e: Exception) {
-                        "cannot add $base: ${e.message}"
-                    }
-                }
-                showServers()
-                showModels()
-            }
+        servers.addView(button("Add LAN server") { addEndpoint(url.text.toString(), names.text.toString(), Location.LAN, null) })
+        servers.addView(TextView(this).apply {
+            text = "A cloud endpoint needs https:// and an API key. The key is encrypted with a key of the Android Keystore; apps never see it."
         })
+        val cloudUrl = EditText(this).apply { hint = "https://api.example.com/v1"; inputType = InputType.TYPE_TEXT_VARIATION_URI }
+        val key = EditText(this).apply { hint = "API key"; inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
+        val cloudNames = EditText(this).apply { hint = "den-name = provider-model, one per line"; minLines = 2 }
+        servers.addView(cloudUrl)
+        servers.addView(key)
+        servers.addView(cloudNames)
+        servers.addView(button("Add cloud endpoint") {
+            addEndpoint(cloudUrl.text.toString(), cloudNames.text.toString(), Location.CLOUD, key.text.toString().trim().ifEmpty { null })
+        })
+    }
+
+    // host:port, or the host alone for a URL without a port.
+    private fun endpointName(base: String) = java.net.URL(base).let { if (it.port == -1) it.host else "${it.host}:${it.port}" }
+
+    // Checks the endpoint with GET /models (and the key) before it is saved.
+    private fun addEndpoint(url: String, mapping: String, location: Location, apiKey: String?) {
+        val base = url.trim().trimEnd('/')
+        scope.launch {
+            status = withContext(Dispatchers.IO) {
+                try {
+                    val e0 = ai.fanak.den.backend.openai.Endpoint(endpointName(base), base, location, emptyMap(), apiKey)
+                    ServerSettings.check(e0)
+                    val ids = LanScan.models(base, apiKey = apiKey)
+                    val map = ServerSettings.parseModels(mapping, ids)
+                    ServerSettings.add(this@MainActivity, e0.copy(models = map))
+                    "added ${e0.name}: ${map.size} model(s); it has ${ids.take(20).joinToString().ifEmpty { "none listed" }}" +
+                        if (ids.size > 20) " and ${ids.size - 20} more" else ""
+                } catch (e: Exception) {
+                    "cannot add $base: ${e.message}"
+                }
+            }
+            showServers()
+            showModels()
+        }
     }
 
     // The hosts of the Wi-Fi or Ethernet network, none on mobile data: a scan there would reach the carrier.

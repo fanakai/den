@@ -23,10 +23,13 @@ it guards against, and what it does not cover yet.
   close it.
 - **The diagnostics file.** It is served to the app the user shares it with, by a per-file grant; the provider is not
   exported. It holds no prompt or reply text.
-- **Prompts off the phone.** An app or HTTP token runs its requests on the phone only until the user allows LAN
-  servers for it on the Den screen. The check is in the router and in the model pool, so a model that runs on a
-  server for one app is not shared with an app limited to the phone. The Den screen counts, per app and token, the
-  requests and tokens that ran on the phone and on the LAN.
+- **Prompts off the phone.** An app or HTTP token runs its requests on the phone only until the user allows more for
+  it on the Den screen: LAN servers, or LAN servers and the cloud. The check is in the router and in the model pool,
+  so a model that runs on a server for one app is not shared with an app limited to the phone. The Den screen counts,
+  per app and token, the requests and tokens that ran on the phone, on the LAN and in the cloud.
+- **API keys.** A cloud endpoint needs `https://` and an API key. The key is stored encrypted with an AES key of the
+  Android Keystore, which does not leave the phone, and only the Den app uses it. Client apps and HTTP clients get the
+  replies, never the key. The Den screen does not show a key once it is saved.
 - **Work profiles.** An app in a work profile cannot bind to the Den app of the personal profile (another Android
   user); it runs the model in the app instead.
 

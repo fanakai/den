@@ -12,6 +12,7 @@ import ai.fanak.den.backend.llamacpp.LlamaCppBackend
 import ai.fanak.den.backend.openai.OpenAiEndpoints
 import ai.fanak.den.core.backend.BackendDescriptor
 import ai.fanak.den.core.backend.ChatMessage
+import ai.fanak.den.core.backend.Location
 import ai.fanak.den.core.backend.GenEvent
 import ai.fanak.den.core.backend.GenRequest
 import ai.fanak.den.core.backend.Role
@@ -61,12 +62,13 @@ class DenService : Service() {
         SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> Log.e("DenService", "uncaught", e) },
     )
     private val den by lazy {
-        // Two apps at once share each decoding step of a model instead of waiting for each other (#154). The LAN
-        // servers of the Den screen run a model only when no file of it runs on the phone, and only for the apps the
-        // user allowed to go there (Reach).
+        // Two apps at once share each decoding step of a model instead of waiting for each other (#154). The servers
+        // of the Den screen run a model only when no file of it runs on the phone, LAN before cloud, and only for the
+        // apps the user allowed to go there (Reach).
+        val servers = { ServerSettings.all(this) }
         val config = DenConfig(
             mode = DenMode.EMBEDDED, parallel = 2, onDownload = ::progress, beforeDownload = ::beforeDownload,
-            backends = listOf(LlamaCppBackend(), OpenAiEndpoints({ ServerSettings.all(this) })),
+            backends = listOf(LlamaCppBackend(), OpenAiEndpoints(servers), OpenAiEndpoints(servers, Location.CLOUD)),
             routing = RoutingPolicy.LOCAL_FIRST,
         )
         Den.connect(this, config).also { AliasSettings.applyTo(this, it.aliases) }
