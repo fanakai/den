@@ -357,6 +357,15 @@ class MainActivity : Activity() {
                 run { benchDen.newerCommit(m)?.let { "$m: a newer commit (${it.take(7)}) is on the hub" } ?: "$m is up to date" }
             })
         }
+        // GGUF files the user already has: used where they are, never copied.
+        benchDen.addedFiles.forEach { a ->
+            models.addView(TextView(this).apply { text = "${a.id}: ${a.name}, ${a.sizeBytes shr 20} MB, added from storage (not copied)" })
+            models.addView(button("Remove ${a.id}") { benchDen.removeFile(a.id); status = "Removed ${a.id}; the file itself stays" })
+        }
+        models.addView(button("Add a model file") {
+            val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
+            startActivityForResult(pick, PICK_FILE)
+        })
         // A pasted Hugging Face link gives the model id apps use; the download starts when an app opens it.
         val link = EditText(this).apply { hint = "Hugging Face link or hf:owner/repo"; inputType = InputType.TYPE_TEXT_VARIATION_URI }
         models.addView(link, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -372,6 +381,21 @@ class MainActivity : Activity() {
     private fun run(action: suspend () -> String) {
         scope.launch {
             status = withContext(Dispatchers.IO) { action() }
+            showModels()
+        }
+    }
+
+    // The picked GGUF: hashed once (it is read in full) off the main thread, then listed.
+    @Deprecated("Activity result API needs AndroidX, which the Den app does not use")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        val uri = data?.data
+        if (requestCode != PICK_FILE || resultCode != RESULT_OK || uri == null) return
+        status = "Adding the file: reading it once to check it…"
+        showModels()
+        scope.launch {
+            status = runCatching { benchDen.addFile(uri) }
+                .fold({ "Added ${it.id}: apps can use it by that name" }, { "Not added: ${it.message}" })
             showModels()
         }
     }
@@ -431,6 +455,10 @@ class MainActivity : Activity() {
 
     // The token made on this screen, until the screen closes.
     private var fresh: Pair<String, String>? = null
+
+    private companion object {
+        const val PICK_FILE = 7
+    }
 
     private fun button(label: String, onClick: () -> Unit) = Button(this).apply {
         text = label

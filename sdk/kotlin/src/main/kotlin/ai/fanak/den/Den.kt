@@ -53,6 +53,7 @@ import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.res.Configuration
+import android.net.Uri
 import android.content.res.AssetManager
 import android.os.BatteryManager
 import android.os.Build
@@ -163,21 +164,26 @@ class Den private constructor(context: Context, private val config: DenConfig) :
     private val probe = AndroidDeviceProbe(context)
     val modelDir: File = (config.modelDir ?: File(context.filesDir, "den/models")).apply { mkdirs() }
     val recipes: List<Recipe> = (if (config.bundledRecipes) context.assets.recipes("den/recipes") else emptyList()) + config.recipes
-    private val catalog: ModelCatalog = (config.catalogs ?: defaultCatalogs(context)).let { it.singleOrNull() ?: CompositeCatalog(it) }
+    // GGUF files the user added from storage, used where they are.
+    private val localFiles = LocalFiles(context)
+    private val catalog: ModelCatalog = CompositeCatalog((config.catalogs ?: defaultCatalogs(context)) + localFiles)
 
     // The model files of this process (embedded mode); the Den app manages the shared ones.
     val files = ModelFiles(modelDir, catalog)
-    private val store = config.store ?: if (config.download) {
-        HttpModelStore(
-            modelDir,
-            { v -> catalog.remote(v) ?: throw java.io.FileNotFoundException("no download for $v in the catalog") },
-            config.onDownload,
-            online = { hasNetwork(context) },
-            beforeDownload = config.beforeDownload,
-        )
-    } else {
-        FileModelStore(modelDir, catalog)
-    }
+    private val store = config.store ?: LocalFirstStore(
+        localFiles,
+        if (config.download) {
+            HttpModelStore(
+                modelDir,
+                { v -> catalog.remote(v) ?: throw java.io.FileNotFoundException("no download for $v in the catalog") },
+                config.onDownload,
+                online = { hasNetwork(context) },
+                beforeDownload = config.beforeDownload,
+            )
+        } else {
+            FileModelStore(modelDir, catalog)
+        },
+    )
     private val engine = EngineConnection(context)
     // The engine process when the backends run there, else this one.
     private fun engineRamMb(): Int? = ((engine.residentKb() ?: residentKb("self")) ?: 0L).takeIf { it > 0 }?.let { (it / 1024).toInt() }
@@ -285,6 +291,17 @@ class Den private constructor(context: Context, private val config: DenConfig) :
 
     // A newer commit of [model]'s hub repository than the one in use, for "check for updates"; null when up to date.
     suspend fun newerCommit(model: String): String? = withContext(Dispatchers.IO) { catalog.newerCommit(model) }
+
+    /**
+     * Adds a GGUF file the user picked with the system file picker (ACTION_OPEN_DOCUMENT): it stays where it is, and
+     * apps name it by the returned file's id (file:<name>). Reads the whole file once for its SHA-256.
+     */
+    suspend fun addFile(uri: Uri): LocalFile = withContext(Dispatchers.IO) { localFiles.add(uri) }
+
+    val addedFiles: List<LocalFile> get() = localFiles.all()
+
+    // Forgets an added file and gives up its permission; the file itself stays.
+    fun removeFile(id: String) = localFiles.remove(id)
 
     // Looks a model up in the catalogs (network for hf: names, then cached); plan() and fileName() use the result.
     suspend fun resolve(model: String) = catalog.resolve(model)
