@@ -9,4 +9,7 @@ object SocFamilies {
     )
 
     fun of(soc: String): String = known[soc.uppercase()] ?: soc.lowercase()
+
+    // The families the probe reports for known chips; a family recipe must name one of them.
+    val families: Set<String> get() = known.values.toSet()
 }

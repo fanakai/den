@@ -23,7 +23,7 @@ rankings:
       date: 2026-11-19
       peak_ram_mb: 1450             # optional
       sha256: ...                   # optional: the measured file
-      protocol: den-smoke, llama.cpp b9590, 300-token prompt, ...   # optional
+      protocol: den bench, ...      # how it was measured
 avoid:                              # optional: a choice that fails for one model although it suits its size
   - model: { arch: qwen3, params_b: 1.7 }
     choice: { backend: llamacpp, accel: gpu, format: gguf, quant: q4_k_m }
@@ -33,7 +33,7 @@ avoid:                              # optional: a choice that fails for one mode
 How a model finds its ranking: the catalog gives each file its GGUF architecture and parameter count (from the hub's metadata, or pinned for built-in models), so `qwen3-1.7b` and `hf:unsloth/Qwen3-1.7B-GGUF` match the same ranking. The router takes the ranking of the nearest measured size, on a log scale, among the rankings of the same architecture when there are any. A model whose size is unknown gets the default order.
 
 Values: `accel` is `cpu`, `gpu` or `npu`; `format` is `gguf`, `litertlm`, `pte` or `qnn`.
-In CI, unknown fields are rejected, so a typo fails the build. On the phone, recipes are read leniently: unknown fields are ignored, and a recipe of a newer `schema` or one that cannot be read is skipped.
+In CI, unknown fields are rejected, so a typo fails the build; `RecipeLintTest` also checks that every ranking has a `measured` block with speeds, the device, a past date and the protocol, that every backend exists, and that the file is named after its SoC or family. On the phone, recipes are read leniently: unknown fields are ignored, and a recipe of a newer `schema` or one that cannot be read is skipped.
 
 ## Current recipes
 
