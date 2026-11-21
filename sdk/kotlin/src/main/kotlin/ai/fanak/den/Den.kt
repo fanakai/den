@@ -182,6 +182,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
             onProgress = { Log.i("Den", it) },
         ),
         config.allowLicence,
+        freeRamMb = { probe.profile().availRamMb },
     )
 
     private val minContext = config.minContextLength?.coerceAtMost(config.contextLength) ?: config.contextLength
@@ -191,7 +192,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
     fun device(): DeviceProfile = probe.profile()
 
     // What the router would try, in order, without loading anything.
-    fun plan(model: String, device: DeviceProfile = device()): List<Candidate> = router.plan(model, device, minContext)
+    fun plan(model: String, device: DeviceProfile = device()): List<Candidate> = router.plan(model, device, minContext, config.useMmap)
 
     // The file the router would pick on this phone, and its download without loading it. Runs in this process.
     fun fileName(model: String): String? = plan(model).firstOrNull()?.let { catalog.remote(it.variant)?.fileName }
@@ -203,6 +204,10 @@ class Den private constructor(context: Context, private val config: DenConfig) :
 
     private fun licence(model: String, quant: String): String? =
         catalog.variants(model).firstOrNull { it.quant == quant }?.let { catalog.remote(it)?.licence }
+
+    // Free RAM, in MB, the file the router would pick needs with this Den's shortest accepted context.
+    fun ramNeedMb(model: String, device: DeviceProfile = device()): Int? =
+        plan(model, device).firstOrNull()?.let { Router.ramNeed(it.variant, minContext, config.useMmap).freeMb }
 
     suspend fun download(model: String) {
         resolve(model)
@@ -393,7 +398,7 @@ internal class LocalModel(
             val o = lock.withLock {
                 check(!closed) { "model $name is closed" }
                 val o = opened ?: reopen().also {
-                    Log.i("Den", "loaded $name: ${it.candidate.backend.id} ${it.candidate.accel} ${it.candidate.variant.quant}")
+                    Log.i("Den", "loaded $name: ${it.candidate.backend.id} ${it.candidate.accel} ${it.candidate.variant.quant}, context ${it.contextLength}")
                     opened = it
                     last = it
                 }

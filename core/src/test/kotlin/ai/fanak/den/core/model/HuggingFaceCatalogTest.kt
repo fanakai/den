@@ -38,6 +38,9 @@ class HuggingFaceCatalogTest {
             "/tree/" in url -> tree
             else -> """{"sha":"abc123","gated":$gated,"cardData":{"license":"apache-2.0"},"gguf":{"architecture":"qwen3","total":596049920,"context_length":40960}}"""
         }
+    }, fetchHead = { url ->
+        requests += url
+        qwen3Gguf()
     })
 
     @AfterTest
@@ -50,7 +53,9 @@ class HuggingFaceCatalogTest {
         val vs = catalog.resolve("hf:unsloth/Qwen3-0.6B-GGUF")
         assertEquals(listOf("q4_0", "q4_k_m", "q2_k", "ud-q4_k_xl", "bf16"), vs.map { it.quant })
         assertTrue(vs.all { it.model == "hf:unsloth/Qwen3-0.6B-GGUF" })
-        assertTrue(vs.all { it.arch == "qwen3" && it.params == 596_049_920L && it.maxContext == 40960 })
+        assertTrue(vs.all { it.arch == "qwen3" && it.params == 596_049_920L && it.maxContext == 40960 && it.kvBytesPerToken == 114_688L })
+        // One header read, from the first model file, not the projector.
+        assertEquals(listOf("https://huggingface.co/unsloth/Qwen3-0.6B-GGUF/resolve/abc123/Qwen3-0.6B-Q4_0.gguf"), requests.filter { "/resolve/" in it })
         assertTrue(requests.first().contains("expand[]=gguf"))
         val r = catalog.remote(vs.first())!!
         assertEquals("a".repeat(64), r.sha256)

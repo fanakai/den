@@ -25,6 +25,8 @@ data class Variant(
     val params: Long? = null,
     // Longest context the file supports, in tokens: trained (GGUF) or compiled in (NPU builds). Null when unknown.
     val maxContext: Int? = null,
+    // KV cache per token of context, in bytes, from the GGUF header; with the file size it gives the RAM a context needs.
+    val kvBytesPerToken: Long? = null,
 )
 
 @Serializable
@@ -68,4 +70,7 @@ interface ModelStore {
 
     // On disk already, so fetch() downloads nothing. A quick check (size), not the SHA-256.
     fun has(variant: Variant): Boolean = false
+
+    // Room left for downloads, in bytes; null when this store does not download.
+    fun freeBytes(): Long? = null
 }

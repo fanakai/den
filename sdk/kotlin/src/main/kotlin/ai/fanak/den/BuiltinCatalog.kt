@@ -26,10 +26,13 @@ object BuiltinCatalog : ModelCatalog {
     // Parameter counts from the GGUF metadata of the unsloth repositories (Hugging Face `expand[]=gguf`).
     private val PARAMS = mapOf("0.6B" to 596_049_920L, "1.7B" to 1_720_574_976L)
 
+    // KV cache per token from the GGUF headers: 28 layers, 8 KV heads, keys and values of 128, F16.
+    private const val QWEN3_KV = 114_688L
+
     private fun qwen3(size: String, quant: String, bytes: Long, ramMb: Int, sha256: String): CatalogEntry {
         val file = "Qwen3-$size-${quant.uppercase()}.gguf"
         return CatalogEntry(
-            Variant("qwen3-${size.lowercase()}", ModelFormat.GGUF, quant, bytes, ramMb, arch = "qwen3", params = PARAMS[size]),
+            Variant("qwen3-${size.lowercase()}", ModelFormat.GGUF, quant, bytes, ramMb, arch = "qwen3", params = PARAMS[size], maxContext = 40960, kvBytesPerToken = QWEN3_KV),
             file,
             "$HF/Qwen3-$size-GGUF/resolve/main/$file",
             sha256,
