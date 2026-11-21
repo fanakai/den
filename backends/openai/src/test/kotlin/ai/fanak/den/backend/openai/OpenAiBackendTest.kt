@@ -41,7 +41,7 @@ class OpenAiBackendTest {
     private val server = OpenAiServer(
         scope,
         models = { listOf("echo-1.7b") },
-        use = { name, block ->
+        use = { _, name, block ->
             check(name == "echo-1.7b") { "unknown model $name" }
             block { req ->
                 last = req

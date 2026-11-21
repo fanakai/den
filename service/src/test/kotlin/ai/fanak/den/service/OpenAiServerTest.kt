@@ -29,6 +29,7 @@ class OpenAiServerTest {
 
     // The last request the echo backend got.
     @Volatile private var last: GenRequest? = null
+    @Volatile private var by: String? = null
 
     // Repeats the last message word by word, after an optional reasoning block; like llama.cpp, no tools.
     private val echo: Chat = { req: GenRequest ->
@@ -44,7 +45,8 @@ class OpenAiServerTest {
     private val server = OpenAiServer(
         scope,
         models = { listOf("echo") },
-        use = { name, block ->
+        use = { who, name, block ->
+            by = who
             delay(loadDelayMs)
             if (name.startsWith("hf:missing")) throw IOException("HTTP 401 for the hub")
             block(echo)
@@ -103,6 +105,8 @@ class OpenAiServerTest {
         assertEquals("hello from the test ", c.choices()[0].message().content().get())
         assertEquals("stop", c.choices()[0].finishReason().asString())
         assertEquals(4L, c.usage().get().completionTokens())
+        // The Den app checks where this client may run the model.
+        assertEquals("test", by)
     }
 
     @Test

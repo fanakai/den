@@ -234,8 +234,13 @@ class Den private constructor(context: Context, private val config: DenConfig) :
     fun device(): DeviceProfile = probe.profile()
 
     // What the router of this process would try, in order, without loading anything. route() gives the Den app's.
-    fun plan(model: String, device: DeviceProfile = device(), minContextLength: Int = minContext): List<Candidate> =
-        router.plan(model, device, minContextLength, config.useMmap)
+    // [reach]: where it may run, e.g. only on the phone for an app the user did not allow further; null: anywhere.
+    fun plan(
+        model: String,
+        device: DeviceProfile = device(),
+        minContextLength: Int = minContext,
+        reach: Set<Location>? = null,
+    ): List<Candidate> = router.plan(model, device, minContextLength, config.useMmap, reach)
 
     /**
      * What model() would try, in order, in the mode it would use: the Den app's route when connected (version 5 and
@@ -270,9 +275,9 @@ class Den private constructor(context: Context, private val config: DenConfig) :
     fun ramNeedMb(model: String, device: DeviceProfile = device()): Int? =
         plan(model, device).firstOrNull()?.let { Router.ramNeed(it.variant, minContext, config.useMmap).freeMb }
 
-    suspend fun download(model: String) {
+    suspend fun download(model: String, reach: Set<Location>? = null) {
         resolve(model)
-        val plan = plan(model)
+        val plan = plan(model, reach = reach)
         val local = plan.firstOrNull { it.location == Location.DEVICE } ?: return
         try {
             store.fetch(local.variant)
@@ -420,11 +425,15 @@ class Den private constructor(context: Context, private val config: DenConfig) :
     suspend fun httpEndpoint(): String? =
         if (app.status() == DenAppStatus.OK) runCatching { app.httpEndpoint() }.getOrNull() else null
 
-    // [contextLength] and [minContextLength] replace the config's for this model, e.g. per client in the Den app.
+    /**
+     * [contextLength] and [minContextLength] replace the config's for this model, e.g. per client in the Den app.
+     * [reach]: where it may run in this process; the Den app applies its own for each app.
+     */
     suspend fun model(
         name: String,
         contextLength: Int = config.contextLength,
         minContextLength: Int = minOf(minContext, contextLength),
+        reach: Set<Location>? = null,
     ): DenModel {
         val status = if (config.mode == DenMode.EMBEDDED) DenAppStatus.MISSING else app.status()
         if (status == DenAppStatus.OK) {
@@ -455,7 +464,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         if (backends.isEmpty()) throw noBackend(name)
         val target = resolveAlias(name)
         if (target != name) Log.i("Den", "$name is $target")
-        val reopen: suspend () -> Opened = { router.open(target, device(), contextLength, config.useMmap, minContextLength, config.parallel) }
+        val reopen: suspend () -> Opened = { router.open(target, device(), contextLength, config.useMmap, minContextLength, config.parallel, reach) }
         val crashed = { o: Opened, e: Throwable -> router.reportFailure(device(), o.candidate, e) }
         return LocalModel(target, reopen(), reopen, crashed, probe::thermal) { local -= it }.also {
             it.licenceOf = ::licence

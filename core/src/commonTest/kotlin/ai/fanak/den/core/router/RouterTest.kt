@@ -517,6 +517,19 @@ class RouterTest {
     }
 
     @Test
+    fun aReachOnThePhoneLeavesTheServersOut() = runTest {
+        val phone = setOf(ai.fanak.den.core.backend.Location.DEVICE)
+        val r = policyRouter(RoutingPolicy.REMOTE_FIRST)
+        val plan = r.plan(model, device, reach = phone)
+        assertTrue(plan.isNotEmpty() && plan.all { it.location == ai.fanak.den.core.backend.Location.DEVICE })
+        // Nothing runs on the phone: the open fails instead of going to the LAN server.
+        val none = policyRouter(RoutingPolicy.LOCAL_FIRST, local = llama(failOn = setOf(Accel.CPU, Accel.GPU)))
+        assertFailsWith<Exception> { none.open(model, device.copy(availRamMb = 6_000), reach = phone) }
+        val lan = phone + ai.fanak.den.core.backend.Location.LAN
+        assertTrue(r.plan(model, device, reach = lan).none { it.location == ai.fanak.den.core.backend.Location.CLOUD })
+    }
+
+    @Test
     fun remoteFirstPutsTheNetworkFirstAndOfflineDropsIt() {
         val plan = policyRouter(RoutingPolicy.REMOTE_FIRST).plan(model, device)
         assertEquals(ai.fanak.den.core.backend.Location.LAN, plan.first().location)

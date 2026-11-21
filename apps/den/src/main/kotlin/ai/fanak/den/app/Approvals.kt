@@ -45,8 +45,10 @@ internal object Approvals {
         waiting.remove(pkg)?.complete(allow)
     }
 
+    // The app's reach goes too: another app installed later under this name starts on the phone only.
     fun forget(c: Context, pkg: String) {
         prefs(c).edit().remove(pkg).apply()
+        Reach.forget(c, pkg)
         quiet.remove(pkg)
     }
 

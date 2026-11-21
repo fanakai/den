@@ -59,8 +59,8 @@ typealias Chat = (GenRequest) -> Flow<GenEvent>
 class OpenAiServer(
     private val scope: CoroutineScope,
     private val models: () -> List<String>,
-    // Loads the model if needed and runs the block with it.
-    private val use: suspend (String, suspend (Chat) -> Unit) -> Unit,
+    // Loads the model if needed and runs the block with it: (client, model, block), the client as [client] names it.
+    private val use: suspend (String, String, suspend (Chat) -> Unit) -> Unit,
     // The client's name for a token, or null when the token is unknown.
     private val client: (String) -> String?,
     private val log: (String) -> Unit,
@@ -139,7 +139,7 @@ class OpenAiServer(
             when {
                 method == "GET" && path == "/v1/models" -> out.json(200, modelList())
                 method == "GET" && path == "/den/v1/system-info" -> out.json(200, systemInfo())
-                method == "POST" && path == "/v1/chat/completions" -> chat(body.decodeToString(), out)
+                method == "POST" && path == "/v1/chat/completions" -> chat(body.decodeToString(), out, name)
                 method == "POST" && path == "/v1/embeddings" -> throw HttpError(400, "embeddings are not supported by the backends here yet")
                 else -> throw HttpError(404, "not found: $method $path")
             }
@@ -165,7 +165,7 @@ class OpenAiServer(
         }
     }
 
-    private suspend fun chat(body: String, out: OutputStream) {
+    private suspend fun chat(body: String, out: OutputStream, client: String) {
         val req = runCatching { Json.parseToJsonElement(body).jsonObject }.getOrNull() ?: throw HttpError(400, "invalid JSON")
         val name = req.str("model") ?: throw HttpError(400, "model is required")
         // hf:owner/repo names are resolved on demand, so they are not in /v1/models.
@@ -208,12 +208,12 @@ class OpenAiServer(
         )
         if (req["stream"]?.jsonPrimitive?.booleanOrNull == true) {
             val usage = ((req["stream_options"] as? JsonObject)?.get("include_usage") as? JsonPrimitive)?.booleanOrNull == true
-            stream(name, gen, out, usage)
+            stream(name, gen, out, client, usage)
             return
         }
         var loaded = false
         try {
-            use(name) { m ->
+            use(client, name) { m ->
                 loaded = true
                 reply(m, name, gen, out)
             }
@@ -229,7 +229,7 @@ class OpenAiServer(
     // The header goes out before the model loads, and a comment every few seconds until the first token: a first
     // load takes 10 to 35 s on a phone, and HTTP clients give up on a silent connection.
     // [usage]: a last chunk with the token counts and no choices, as OpenAI sends for stream_options.include_usage.
-    private suspend fun stream(name: String, gen: GenRequest, out: OutputStream, usage: Boolean = false): Unit = coroutineScope {
+    private suspend fun stream(name: String, gen: GenRequest, out: OutputStream, client: String, usage: Boolean = false): Unit = coroutineScope {
         val id = completionId()
         val created = System.currentTimeMillis() / 1000
         fun chunk(delta: JsonObject, finish: String?) = buildJsonObject {
@@ -260,7 +260,7 @@ class OpenAiServer(
             }
         }
         try {
-            use(name) { m ->
+            use(client, name) { m ->
                 phase = "prefilling"
                 val split = ThinkSplitter()
                 fun send(p: Pair<String, String>) {

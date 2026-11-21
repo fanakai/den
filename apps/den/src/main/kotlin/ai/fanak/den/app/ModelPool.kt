@@ -1,6 +1,7 @@
 package ai.fanak.den.app
 
 import ai.fanak.den.DenModel
+import ai.fanak.den.core.backend.Location
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -9,11 +10,13 @@ import kotlinx.coroutines.withContext
 /**
  * The models loaded in the Den app, shared by all clients. A model stays loaded while it is in use; an idle one is
  * unloaded after a timeout, under memory pressure, or to make room for another model, and loaded again on next use.
+ * Each call gives its reach, where the app may run the model: a model loaded on a server for one app is not shared
+ * with an app that may use the phone only.
  */
 internal class ModelPool(
-    private val load: suspend (String) -> DenModel,
+    private val load: suspend (String, Set<Location>) -> DenModel,
     // Gets the file on disk (download) before the load; runs outside both locks, so downloads do not block loads.
-    private val prepare: suspend (String) -> Unit = {},
+    private val prepare: suspend (String, Set<Location>) -> Unit = { _, _ -> },
     // RAM the router would need to load this model, given this much free RAM; null when nothing fits.
     private val need: (name: String, availMb: Int) -> Int?,
     private val availMb: () -> Int,
@@ -46,15 +49,15 @@ internal class ModelPool(
     private val loading = Mutex()
 
     // An AIDL session keeps its slot; the model may still be unloaded while the session is idle.
-    suspend fun acquire(name: String): DenModel = hold(name) { it.sessions++ }
+    suspend fun acquire(name: String, reach: Set<Location> = ANYWHERE): DenModel = hold(name, reach) { it.sessions++ }
 
     suspend fun release(name: String) = lock.withLock {
         val s = slots[name] ?: return@withLock
         if (--s.sessions <= 0 && s.busy == 0 && !pinned(name)) unload(s, "no sessions")
     }
 
-    suspend fun <T> use(name: String, block: suspend (DenModel) -> T): T {
-        val m = hold(name) { it.busy++ }
+    suspend fun <T> use(name: String, reach: Set<Location> = ANYWHERE, block: suspend (DenModel) -> T): T {
+        val m = hold(name, reach) { it.busy++ }
         val s = lock.withLock { slots.getValue(name) }
         try {
             return block(m)
@@ -97,17 +100,20 @@ internal class ModelPool(
     }
 
     // Loads the model if needed, then marks it held under the lock, so it cannot be unloaded in between.
-    private suspend fun hold(name: String, mark: (Slot) -> Unit): DenModel {
+    private suspend fun hold(name: String, reach: Set<Location>, mark: (Slot) -> Unit): DenModel {
         while (true) {
             lock.withLock {
                 val s = slots.getOrPut(name) { Slot(name) }
                 s.model?.let { m ->
+                    if (m.location !in reach) {
+                        throw IllegalStateException("$name runs on a ${m.location.name} server for another app, and this app may use ${reach.joinToString { it.name }} only")
+                    }
                     mark(s)
                     s.lastUsed = now()
                     return m
                 }
             }
-            prepare(name)
+            prepare(name, reach)
             loading.withLock {
                 val ready = lock.withLock {
                     val s = slots.getOrPut(name) { Slot(name) }
@@ -118,7 +124,7 @@ internal class ModelPool(
                     val before = availMb()
                     val t0 = now()
                     val m = try {
-                        load(name)
+                        load(name, reach)
                     } catch (e: Throwable) {
                         withContext(NonCancellable) {
                             lock.withLock { slots[name]?.takeIf { it.model == null && it.sessions <= 0 && it.busy == 0 }?.let { slots.remove(name) } }
@@ -164,6 +170,10 @@ internal class ModelPool(
             avail += o.ramMb
         }
         if (avail < required && held.isNotEmpty()) refuse(s, "${held.joinToString { it.name }} kept loaded")
+    }
+
+    companion object {
+        val ANYWHERE = Location.entries.toSet()
     }
 
     private fun refuse(s: Slot, why: String): Nothing {

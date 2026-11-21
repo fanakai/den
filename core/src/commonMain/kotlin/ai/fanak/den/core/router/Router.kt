@@ -110,8 +110,16 @@ class Router(
     /**
      * [minContext]: the shortest context the app accepts, in tokens. A file is left out when its maximum context is
      * lower, when it does not fit in RAM with that context, or when it is not on disk and the disk has no room for it.
+     * [reach]: where this call may run the model, e.g. only on the phone for an app the user did not allow further;
+     * null leaves it to the policy.
      */
-    fun plan(model: String, device: DeviceProfile, minContext: Int? = null, mmap: Boolean = true): List<Candidate> {
+    fun plan(
+        model: String,
+        device: DeviceProfile,
+        minContext: Int? = null,
+        mmap: Boolean = true,
+        reach: Set<Location>? = null,
+    ): List<Candidate> {
         val caps = backends.associateWith { runCatching { it.probe(device) }.getOrNull() }
         val variants = catalog.variants(model)
             .filter { it.soc == null || it.soc == device.soc }
@@ -162,16 +170,23 @@ class Router(
             // Hot: smaller files first, each still on its accelerators in order (a stable sort).
             .let { plan -> if (Thermal.hot(device.thermal)) plan.sortedBy { it.variant.sizeBytes } else plan }
         val remote = remote(model, device, minContext, caps)
-        return when (policy) {
+        val ordered = when (policy) {
             RoutingPolicy.LOCAL_ONLY -> onPhone
             RoutingPolicy.LOCAL_FIRST -> onPhone + remote
             RoutingPolicy.REMOTE_FIRST -> remote + onPhone
         }
+        return if (reach == null) ordered else ordered.filter { it.location in reach }
     }
 
     /** The plan of [model] with what it leaves out: each file with the first reason that removes it, then each path that crashed before. */
-    fun explain(model: String, device: DeviceProfile, minContext: Int? = null, mmap: Boolean = true): RouteExplanation {
-        val planned = plan(model, device, minContext, mmap)
+    fun explain(
+        model: String,
+        device: DeviceProfile,
+        minContext: Int? = null,
+        mmap: Boolean = true,
+        reach: Set<Location>? = null,
+    ): RouteExplanation {
+        val planned = plan(model, device, minContext, mmap, reach)
         val caps = backends.mapNotNull { b -> runCatching { b.probe(device) }.getOrNull()?.let { b to it } }
         val ctx = minContext ?: 0
         val rejected = mutableListOf<Rejection>()
@@ -224,10 +239,11 @@ class Router(
         mmap: Boolean = true,
         minContext: Int = contextLength,
         sequences: Int = 1,
+        reach: Set<Location>? = null,
     ): Opened {
         catalog.resolve(model)
         val tried = mutableListOf<Failure>()
-        val why = explain(model, device, minContext, mmap)
+        val why = explain(model, device, minContext, mmap, reach)
         var plan = why.candidates
         if (plan.isEmpty()) throw NoUsableBackendException(model, tried, emptyPlanReason(model, device, minContext, mmap), why.rejected)
         val first = plan.first()
@@ -240,7 +256,7 @@ class Router(
             } catch (e: Throwable) {
                 // The default order still works.
             }
-            plan = plan(model, device, minContext, mmap).ifEmpty { plan }
+            plan = plan(model, device, minContext, mmap, reach).ifEmpty { plan }
         }
         var noDownloads = false
         for (c in plan) {
