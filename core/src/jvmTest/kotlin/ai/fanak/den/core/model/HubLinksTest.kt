@@ -5,6 +5,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class HubLinksTest {
     @Test
@@ -48,5 +49,15 @@ class HubLinksTest {
         head = "c2"
         assertEquals("c2", catalog.newerCommit("hf:o/r"))
         assertNull(catalog.newerCommit("hf:o/other"))
+    }
+
+    @Test
+    fun anUpdateDownloadsFromTheNewCommit() = runTest {
+        val v = catalog.resolve("hf:o/r").first()
+        assertNull(catalog.update("hf:o/r"))
+        head = "c2"
+        assertEquals("c2", catalog.update("hf:o/r"))
+        assertTrue("/resolve/c2/" in catalog.remote(v)!!.url)
+        assertNull(catalog.newerCommit("hf:o/r"))
     }
 }

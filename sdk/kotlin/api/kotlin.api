@@ -68,6 +68,7 @@ public final class ai/fanak/den/Den : java/lang/AutoCloseable {
 	public final fun resolve (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun resolveAlias (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun route (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun update (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
 
 public final class ai/fanak/den/Den$Companion {
@@ -316,6 +317,7 @@ public final class ai/fanak/den/ModelFiles {
 	public fun <init> (Ljava/io/File;Lai/fanak/den/core/model/ModelCatalog;)V
 	public synthetic fun <init> (Ljava/io/File;Lai/fanak/den/core/model/ModelCatalog;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun delete (Ljava/lang/String;)J
+	public final fun deleteExcept (Ljava/lang/String;Ljava/util/Set;)J
 	public final fun deletePartial (Ljava/util/Set;)J
 	public static synthetic fun deletePartial$default (Lai/fanak/den/ModelFiles;Ljava/util/Set;ILjava/lang/Object;)J
 	public final fun getFreeBytes ()J
