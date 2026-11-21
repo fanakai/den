@@ -1,0 +1,66 @@
+{
+  "description": "A file not on disk needs room for its download; one on disk does not",
+  "device": {
+    "platform": "ANDROID",
+    "osApi": 34,
+    "soc": "SM7325",
+    "socFamily": "snapdragon-778g",
+    "abi": "arm64-v8a",
+    "ramMb": 5500,
+    "availRamMb": 1900
+  },
+  "backends": [
+    {
+      "id": "llamacpp",
+      "accels": [
+        "cpu",
+        "gpu"
+      ],
+      "formats": [
+        "gguf"
+      ]
+    }
+  ],
+  "variants": [
+    {
+      "model": "qwen3-0.6b",
+      "format": "gguf",
+      "quant": "q4_0",
+      "sizeBytes": 400000000,
+      "minRamMb": 381,
+      "arch": "qwen3",
+      "params": 596049920,
+      "kvBytesPerToken": 114688
+    },
+    {
+      "model": "qwen3-0.6b",
+      "format": "gguf",
+      "quant": "q4_k_m",
+      "sizeBytes": 420000000,
+      "minRamMb": 400,
+      "arch": "qwen3",
+      "params": 596049920,
+      "kvBytesPerToken": 114688
+    }
+  ],
+  "disk": {
+    "freeMb": 300,
+    "has": [
+      "q4_k_m"
+    ]
+  },
+  "request": {
+    "model": "qwen3-0.6b",
+    "minContext": 4096
+  },
+  "expect": {
+    "plan": [
+      "llamacpp cpu q4_k_m",
+      "llamacpp gpu q4_k_m"
+    ],
+    "source": "DEFAULT",
+    "rejected": [
+      "q4_0 DISK"
+    ]
+  }
+}
