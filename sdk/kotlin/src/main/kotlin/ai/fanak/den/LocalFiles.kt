@@ -10,6 +10,7 @@ import ai.fanak.den.core.model.Variant
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import java.security.MessageDigest
 import kotlinx.serialization.Serializable
@@ -78,6 +79,36 @@ internal class LocalFiles(context: Context) : ModelCatalog {
         )
         save(all().filter { it.id != file.id } + file)
         return file
+    }
+
+    // Folders the user granted (ACTION_OPEN_DOCUMENT_TREE), rescanned on request.
+    fun folders(): List<String> = prefs.getStringSet("folders", emptySet())!!.sorted()
+
+    /**
+     * Adds every GGUF file directly in a granted folder, where it is, and keeps the folder's permission. Files already
+     * added are not read again; a file that is not a readable GGUF is skipped.
+     */
+    fun addFolder(tree: Uri): List<LocalFile> {
+        val cr = context.contentResolver
+        runCatching { cr.takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        prefs.edit().putStringSet("folders", (folders() + tree.toString()).toSet()).apply()
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+        val docs = cr.query(children, arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)?.use { c ->
+            buildList { while (c.moveToNext()) add(c.getString(0) to c.getString(1)) }
+        }.orEmpty()
+        val known = all().map { it.uri }.toSet()
+        return docs.filter { (_, name) -> name.endsWith(".gguf", ignoreCase = true) && !name.contains("mmproj", ignoreCase = true) }
+            .map { (id, _) -> DocumentsContract.buildDocumentUriUsingTree(tree, id) }
+            .filter { it.toString() !in known }
+            .mapNotNull { runCatching { add(it) }.getOrNull() }
+    }
+
+    // Forgets a folder and the files added from it, and gives up its permission; the files themselves stay.
+    fun removeFolder(tree: Uri) {
+        val prefix = tree.toString().substringBefore("/tree/") + "/tree/" + DocumentsContract.getTreeDocumentId(tree).let(Uri::encode)
+        all().filter { it.uri.startsWith(prefix) }.forEach { remove(it.id) }
+        runCatching { context.contentResolver.releasePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        prefs.edit().putStringSet("folders", (folders() - tree.toString()).toSet()).apply()
     }
 
     fun remove(id: String) {
