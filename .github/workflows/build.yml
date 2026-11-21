@@ -33,4 +33,9 @@ jobs:
             echo "sdkmanager failed, attempt $i"
           done
           exit 1
+      # Kotlin/Native toolchain for the linuxX64 target of core/, also large.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ hashFiles('build.gradle.kts') }}
       - run: ./gradlew build --console=plain

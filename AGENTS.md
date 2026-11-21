@@ -6,7 +6,7 @@ Instructions for coding agents and contributors working on Fanak Den. Den runs o
 
 | Path | What it holds |
 |---|---|
-| `core/` | Router, backend interface, model files, recipes. Plain Kotlin (JVM), no Android dependency. |
+| `core/` | Router, backend interface, model files, recipes. Kotlin Multiplatform (JVM and `linuxX64`), no Android dependency; files and network in `jvmMain`. |
 | `service/` | The OpenAI-compatible HTTP server, plain Kotlin (JVM), tested with the OpenAI Java client. |
 | `backends/llamacpp/` | llama.cpp through JNI (`llama.cpp` is a git submodule), CPU and Adreno OpenCL. |
 | `sdk/kotlin/` | Android SDK: device probe, built-in catalog, downloads, connected mode (AIDL client). No backend: an app adds `backends/llamacpp` for embedded mode. |
@@ -21,7 +21,7 @@ Requirements: JDK 17, Android SDK with platform 36, NDK `29.0.14206865` and CMak
 ```sh
 git submodule update --init
 ./gradlew build                  # compile, unit tests and lint for every module, as CI does
-./gradlew :core:test             # router and recipe tests only
+./gradlew :core:jvmTest          # router and recipe tests only (CI also runs them on linuxX64)
 ./gradlew :apps:den:assembleRelease
 ```
 
@@ -38,7 +38,7 @@ git submodule update --init
 
 ## Rules
 
-1) `core/` stays plain Kotlin, so the router can be reused on iOS and Linux boards later.
+1) `core/` stays multiplatform: `commonMain` uses no `java.*`, so the router can be reused on iOS and Linux boards later.
 2) Never commit model files (`*.gguf`, `*.litertlm`, `*.pte`, `models/`); the model manager downloads them and checks their SHA-256.
 3) A recipe holds only measured numbers, with the device, the date and the protocol. Never write an estimated or copied number into a recipe or a doc.
 4) AIDL changes are added at the end of the interface, and `IDenService.version()` is raised, so older clients keep working.
