@@ -1,16 +1,24 @@
 package ai.fanak.den.app
 
 import ai.fanak.den.Den
+import ai.fanak.den.DenConfig
+import ai.fanak.den.DenMode
 import ai.fanak.den.ModelFiles
+import ai.fanak.den.core.bench.BenchResult
+import ai.fanak.den.core.bench.Contribute
+import ai.fanak.den.core.recipe.RecipeFiles
 import android.Manifest
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.graphics.Typeface
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -18,7 +26,9 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import java.io.File
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -32,6 +42,7 @@ class MainActivity : Activity() {
     private lateinit var apps: LinearLayout
     private lateinit var http: LinearLayout
     private lateinit var downloads: LinearLayout
+    private lateinit var bench: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,12 +64,14 @@ class MainActivity : Activity() {
         apps = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         http = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         downloads = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        bench = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(32, 32, 32, 32)
             addView(TextView(context).apply { this.text = text })
             addView(models)
             addView(downloads)
+            addView(bench)
             addView(apps)
             addView(http)
         }
@@ -71,6 +84,7 @@ class MainActivity : Activity() {
         if (HttpSettings.enabled(this)) startForegroundService(Intent(this, DenService::class.java))
         showModels()
         showDownloads()
+        showBench()
         showApps()
         showHttp()
     }
@@ -110,6 +124,85 @@ class MainActivity : Activity() {
                 addView(button("Forget") { Downloads.forget(context, m) })
             })
         }
+    }
+
+    // den bench on the downloaded files only: a benchmark never downloads.
+    private val benchDen by lazy { Den.connect(this, DenConfig(mode = DenMode.EMBEDDED, download = false)) }
+    private var benchJob: Job? = null
+    private var benchRunning = false
+    private var benchLines = listOf<String>()
+    private var benched: Pair<BenchResult, String?>? = null
+
+    private fun showBench() {
+        bench.removeAllViews()
+        bench.addView(TextView(this).apply { text = "\nBenchmark"; textSize = 18f })
+        bench.addView(TextView(this).apply {
+            text = "Measures each downloaded file of a model on this phone, a few minutes per file. " +
+                "Keep this screen open, with power saving off; the result is a recipe you can send to Fanak Den."
+        })
+        val files = ModelFiles(File(filesDir, "den/models")).list().filter { it.complete }
+        if (benchRunning) {
+            bench.addView(button("Stop") { benchJob?.cancel() })
+        } else {
+            if (files.isEmpty()) bench.addView(TextView(this).apply { text = "Download a model first." })
+            files.groupBy { it.model }.forEach { (m, fs) ->
+                bench.addView(button("Benchmark $m (${fs.joinToString { it.quant }})") { startBench(m, fs.map { it.quant }.toSet()) })
+            }
+        }
+        benchLines.forEach { l -> bench.addView(TextView(this).apply { text = l }) }
+        val (r, yaml) = benched ?: return
+        if (yaml == null) return
+        bench.addView(TextView(this).apply { text = yaml; textSize = 12f; typeface = Typeface.MONOSPACE; setTextIsSelectable(true) })
+        bench.addView(LinearLayout(this).apply {
+            addView(button("Copy") {
+                getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Den recipe", yaml))
+            })
+            addView(button("Share") {
+                startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, yaml), null))
+            })
+            // A new SoC becomes a pull request with the file; a known one an issue, so the maintainers merge it.
+            val known = benchDen.recipes.any { it.soc == r.soc }
+            addView(button(if (known) "Send as issue" else "Open pull request") {
+                val url = if (known) Contribute.issueUrl(r, yaml) else Contribute.newRecipeUrl(r.soc, yaml)
+                runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                    .onFailure { Toast.makeText(context, "no browser to open GitHub", Toast.LENGTH_SHORT).show() }
+            })
+        })
+    }
+
+    private fun startBench(model: String, quants: Set<String>) {
+        benched = null
+        benchLines = listOf("Starting $model")
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        benchRunning = true
+        benchJob = scope.launch {
+            try {
+                if (!DenService.unload(model)) error("$model is generating for an app; try again when it is idle")
+                val r = benchDen.bench(model, quants = quants) { line -> benchLines = benchLines + line; showBench() }
+                val yaml = r.recipe()?.let { RecipeFiles.encode(it) }
+                withContext(Dispatchers.IO) {
+                    val dir = File(getExternalFilesDir(null), "bench").apply { mkdirs() }
+                    val name = "${r.soc}-${model.replace(Regex("[^A-Za-z0-9._-]"), "_")}"
+                    File(dir, "$name.json").writeText(r.toJson())
+                    yaml?.let { File(dir, "$name.yaml").writeText(it) }
+                }
+                benched = r to yaml
+                benchLines = r.ranked().map { c ->
+                    "${c.accel.name.lowercase()} ${c.quant}: prefill ${c.prefillTps!!.median}, decode ${c.decodeTps!!.median} tok/s"
+                } + r.candidates.filter { !it.ok }.map { "${it.accel.name.lowercase()} ${it.quant}: ${it.error}" } +
+                    if (yaml == null) listOf("No recipe: nothing ran, or the model size is unknown.") else emptyList()
+            } catch (e: CancellationException) {
+                benchLines = benchLines + "Stopped"
+                throw e
+            } catch (e: Exception) {
+                benchLines = benchLines + "Failed: ${e.message}"
+            } finally {
+                benchRunning = false
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                showBench()
+            }
+        }
+        showBench()
     }
 
     private fun showApps() {
@@ -162,6 +255,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         scope.cancel()
+        if (benchJob != null) benchDen.close()
         super.onDestroy()
     }
 
@@ -217,6 +311,6 @@ class MainActivity : Activity() {
 
     private fun button(label: String, onClick: () -> Unit) = Button(this).apply {
         text = label
-        setOnClickListener { onClick(); showModels(); showDownloads(); showApps(); showHttp() }
+        setOnClickListener { onClick(); showModels(); showDownloads(); showBench(); showApps(); showHttp() }
     }
 }

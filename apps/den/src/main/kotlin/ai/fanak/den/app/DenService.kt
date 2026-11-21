@@ -316,6 +316,9 @@ class DenService : Service() {
         suspend fun delete(context: android.content.Context, model: String): String =
             current?.deleteModel(model) ?: "deleted $model, ${ModelFiles(modelDir(context)).delete(model) shr 20} MB"
 
+        // Unloads a model before den bench loads its own copy; false while it is generating.
+        suspend fun unload(model: String): Boolean = current?.pool?.evict(model) ?: true
+
         suspend fun deletePartial(context: android.content.Context): String {
             val keep = current?.downloads?.keys?.toSet() ?: emptySet()
             return "removed unfinished downloads, ${ModelFiles(modelDir(context)).deletePartial(keep) shr 20} MB"
