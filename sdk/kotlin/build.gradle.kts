@@ -71,7 +71,9 @@ androidComponents {
 
 dependencies {
     api(project(":core"))
-    implementation(project(":backends:llamacpp"))
+    // No backend here: an app adds one (e.g. :backends:llamacpp) for embedded mode; without one it only uses the Den
+    // app and ships no native code.
+    testImplementation(project(":backends:llamacpp"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     testImplementation(kotlin("test"))

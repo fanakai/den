@@ -1,6 +1,5 @@
 package ai.fanak.den
 
-import ai.fanak.den.backend.llamacpp.LlamaCppBackend
 import ai.fanak.den.core.backend.BackendDescriptor
 import ai.fanak.den.core.backend.ChatMessage
 import ai.fanak.den.core.backend.DenBackend
@@ -175,13 +174,19 @@ class Den private constructor(context: Context, private val config: DenConfig) :
 
     // Measured on this phone by the first-run benchmark.
     val localRecipes = LocalRecipeStore(File(context.filesDir, "den/local-recipes"), Build.FINGERPRINT)
-    private val backends: List<DenBackend> = (config.backends ?: listOf(LlamaCppBackend())).map { b ->
+    private val backends: List<DenBackend> = (config.backends ?: defaultBackends()).map { b ->
         when {
             !config.isolate || Build.VERSION.SDK_INT < 29 -> b
             EngineService.creatable(b) -> IsolatedBackend(engine, b)
             else -> b.also { Log.w("Den", "${b.id} runs in the app process: no constructor the engine process can call") }
         }
     }
+
+    // Embedded mode needs a backend in the app; this says which dependency to add instead of "nothing runs".
+    private fun noBackend(model: String) = NoUsableBackendException(
+        model, emptyList(),
+        "no backend in this app for embedded mode: add the llama.cpp backend (:backends:llamacpp) or install the Den app",
+    )
 
     private val router = Router(
         backends,
@@ -373,6 +378,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         } else if (status == DenAppStatus.UNTRUSTED) {
             Log.w("Den", "$DEN_PACKAGE is not signed by Fanak Den; running $name in the app")
         }
+        if (backends.isEmpty()) throw noBackend(name)
         val target = resolveAlias(name)
         if (target != name) Log.i("Den", "$name is $target")
         val reopen: suspend () -> Opened = { router.open(target, device(), contextLength, config.useMmap, minContextLength) }
@@ -406,6 +412,13 @@ val DEFAULT_ALIASES = mapOf(
 // One candidate of a route, the same in both modes.
 data class Route(val backend: String, val accel: Accel, val quant: String, val source: Source) {
     override fun toString() = "$backend $accel $quant ($source)"
+}
+
+// Backends an app may carry; the SDK finds them by class name, so an app that only uses the Den app has no native code.
+internal val DEFAULT_BACKENDS = listOf("ai.fanak.den.backend.llamacpp.LlamaCppBackend")
+
+internal fun defaultBackends(): List<DenBackend> = DEFAULT_BACKENDS.mapNotNull { name ->
+    runCatching { Class.forName(name).getDeclaredConstructor().newInstance() as DenBackend }.getOrNull()
 }
 
 abstract class DenModel : AutoCloseable {
