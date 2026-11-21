@@ -1,15 +1,13 @@
 #include <jni.h>
 
-#include <mutex>
-
 #include "engine.h"
 #include "ggml.h"
 
 namespace {
 
+// The caller frees a handle only when no generate runs on it (LlamaSession's lock).
 struct Handle {
     std::unique_ptr<den::Engine> engine;
-    std::mutex lock;
 };
 
 std::string str(JNIEnv *env, jstring s) {
@@ -68,10 +66,11 @@ Java_ai_fanak_den_backend_llamacpp_LlamaNative_devices(JNIEnv *env, jobject) {
 
 JNIEXPORT jlong JNICALL
 Java_ai_fanak_den_backend_llamacpp_LlamaNative_load(JNIEnv *env, jobject, jstring path, jint n_ctx,
-                                                     jint n_threads, jint n_gpu_layers, jboolean use_mmap) {
+                                                     jint n_threads, jint n_gpu_layers, jboolean use_mmap,
+                                                     jint n_seq) {
     den::init_backends("");
     std::string err;
-    auto engine = den::Engine::load(str(env, path), n_ctx, n_threads, n_gpu_layers, use_mmap, err);
+    auto engine = den::Engine::load(str(env, path), n_ctx, n_threads, n_gpu_layers, use_mmap, err, n_seq);
     if (!engine) {
         throw_engine(env, err);
         return 0;
@@ -81,7 +80,7 @@ Java_ai_fanak_den_backend_llamacpp_LlamaNative_load(JNIEnv *env, jobject, jstrin
     return reinterpret_cast<jlong>(h);
 }
 
-// A second engine on the same weights: its own handle, lock and KV cache. The weights are read-only, so no lock.
+// A second engine on the same weights: its own handle, context and KV cache.
 JNIEXPORT jlong JNICALL
 Java_ai_fanak_den_backend_llamacpp_LlamaNative_fork(JNIEnv *env, jobject, jlong ptr) {
     auto *h = reinterpret_cast<Handle *>(ptr);
@@ -96,7 +95,8 @@ Java_ai_fanak_den_backend_llamacpp_LlamaNative_fork(JNIEnv *env, jobject, jlong 
     return reinterpret_cast<jlong>(n);
 }
 
-// Returns [promptTokens, outputTokens, prefillMs, decodeMs, finish].
+// Returns [promptTokens, outputTokens, prefillMs, decodeMs, finish, cachedTokens, threads]. Several threads may
+// generate on one handle at once.
 JNIEXPORT jlongArray JNICALL
 Java_ai_fanak_den_backend_llamacpp_LlamaNative_generate(JNIEnv *env, jobject, jlong ptr,
                                                          jobjectArray roles, jobjectArray contents,
@@ -104,8 +104,6 @@ Java_ai_fanak_den_backend_llamacpp_LlamaNative_generate(JNIEnv *env, jobject, jl
                                                          jobjectArray stop, jboolean cache, jint threads,
                                                          jobjectArray constraints, jobject callback) {
     auto *h = reinterpret_cast<Handle *>(ptr);
-    std::lock_guard<std::mutex> guard(h->lock);
-
     auto r = strs(env, roles);
     auto c = utf8s(env, contents);
     den::Messages messages;
@@ -150,9 +148,7 @@ Java_ai_fanak_den_backend_llamacpp_LlamaNative_generate(JNIEnv *env, jobject, jl
 
 JNIEXPORT void JNICALL
 Java_ai_fanak_den_backend_llamacpp_LlamaNative_free(JNIEnv *, jobject, jlong ptr) {
-    auto *h = reinterpret_cast<Handle *>(ptr);
-    { std::lock_guard<std::mutex> guard(h->lock); }
-    delete h;
+    delete reinterpret_cast<Handle *>(ptr);
 }
 
 JNIEXPORT jstring JNICALL

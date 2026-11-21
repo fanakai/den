@@ -223,6 +223,7 @@ class Router(
         contextLength: Int = 4096,
         mmap: Boolean = true,
         minContext: Int = contextLength,
+        sequences: Int = 1,
     ): Opened {
         catalog.resolve(model)
         val tried = mutableListOf<Failure>()
@@ -260,8 +261,10 @@ class Router(
                     if (e.isNetwork() || e is ai.fanak.den.core.model.DownloadRefusedException) throw NoUsableBackendException(model, tried + Failure(c, e))
                     throw e
                 }
+                // Each sequence has its own KV cache; one when free RAM has no room for more.
+                val seqs = if (sequences > 1 && onPhone && !fits(c.variant, context * sequences, device, mmap, free)) 1 else sequences
                 val session = try {
-                    c.backend.load(artifact, LoadOptions(c.accel, context, mmap = mmap))
+                    c.backend.load(artifact, LoadOptions(c.accel, context, mmap = mmap, sequences = seqs))
                 } catch (e: EngineLostException) {
                     // The engine did not start or the system stopped it: other files would only be downloaded in vain.
                     if (e !is EngineCrashedException) throw NoUsableBackendException(model, tried + Failure(c, e))

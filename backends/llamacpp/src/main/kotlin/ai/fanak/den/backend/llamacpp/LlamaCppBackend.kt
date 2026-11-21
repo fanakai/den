@@ -21,6 +21,9 @@ import ai.fanak.den.core.model.ModelFormat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.channels.trySendBlocking
+import java.util.concurrent.locks.ReentrantReadWriteLock
+import kotlin.concurrent.read
+import kotlin.concurrent.write
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flow
@@ -70,7 +73,7 @@ class LlamaCppBackend : DenBackend {
         val threads = opts.threads ?: 0
         val handle = withContext(Dispatchers.IO) {
             try {
-                LlamaNative.load(artifact.path, opts.contextLength, threads, gpuLayers, opts.mmap).also { h ->
+                LlamaNative.load(artifact.path, opts.contextLength, threads, gpuLayers, opts.mmap, opts.sequences.coerceAtLeast(1)).also { h ->
                     // Warm-up with a prompt as long as a real one: a 1-token "hi" left the first request at
                     // 3.8 tok/s prefill on the A52s, against ~75 for the next ones.
                     LlamaNative.generate(h, arrayOf("user"), arrayOf(WARMUP.encodeToByteArray()), 2, 0f, 1f, emptyArray(), false, 0, emptyArray()) { true }
@@ -87,8 +90,9 @@ class LlamaCppBackend : DenBackend {
     override fun health(): Health = lastError?.let { Health.Degraded(it) } ?: Health.Ok
 }
 
-private class LlamaSession(private var handle: Long) : Session {
-    private val lock = Any()
+private class LlamaSession(@Volatile private var handle: Long) : Session {
+    // Requests hold the read lock while they generate, together; unload takes the write lock and waits for them.
+    private val lock = ReentrantReadWriteLock()
 
     // Tool calls need the model's own chat template with tools, which this engine does not apply yet.
     override fun generate(req: GenRequest): Flow<GenEvent> =
@@ -99,7 +103,7 @@ private class LlamaSession(private var handle: Long) : Session {
     private fun text(req: GenRequest): Flow<GenEvent> = callbackFlow {
         launch(Dispatchers.IO) {
             try {
-                val s = synchronized(lock) {
+                val s = lock.read {
                     check(handle != 0L) { "session unloaded" }
                     LlamaNative.generate(
                         handle,
@@ -125,12 +129,12 @@ private class LlamaSession(private var handle: Long) : Session {
         awaitClose()
     }
 
-    override fun fork(): Session? = synchronized(lock) {
+    override fun fork(): Session? = lock.read {
         if (handle == 0L) return null
         runCatching { LlamaSession(LlamaNative.fork(handle)) }.getOrNull()
     }
 
-    override fun unload() = synchronized(lock) {
+    override fun unload() = lock.write {
         if (handle != 0L) {
             LlamaNative.free(handle)
             handle = 0L

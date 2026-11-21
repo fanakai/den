@@ -58,7 +58,8 @@ class DenService : Service() {
         SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> Log.e("DenService", "uncaught", e) },
     )
     private val den by lazy {
-        val config = DenConfig(mode = DenMode.EMBEDDED, onDownload = ::progress, beforeDownload = ::beforeDownload)
+        // Two apps at once share each decoding step of a model instead of waiting for each other (#154).
+        val config = DenConfig(mode = DenMode.EMBEDDED, parallel = 2, onDownload = ::progress, beforeDownload = ::beforeDownload)
         Den.connect(this, config).also { AliasSettings.applyTo(this, it.aliases) }
     }
 

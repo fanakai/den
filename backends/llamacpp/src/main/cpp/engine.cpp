@@ -103,19 +103,58 @@ std::vector<Device> init_backends(const std::string &lib_dir) {
     return out;
 }
 
-// A context with its own KV cache of n_ctx tokens; the threads are set again before each generation.
-static llama_context *new_context(llama_model *model, int n_ctx, int n_threads) {
+// One context with n_seq sequences of n_ctx tokens each; the threads are set again before each step.
+static llama_context *new_context(llama_model *model, int n_ctx, int n_threads, int n_seq) {
     Threads t = n_threads > 0 ? Threads{n_threads, n_threads} : pick_threads();
     auto cp = llama_context_default_params();
-    cp.n_ctx = n_ctx;
-    cp.n_batch = std::min(n_ctx, 512);
+    cp.n_ctx = n_ctx * n_seq;
+    cp.n_seq_max = n_seq;
+    cp.n_batch = std::min(n_ctx * n_seq, 512);
     cp.n_threads = t.decode;
     cp.n_threads_batch = t.batch;
     return llama_init_from_model(model, cp);
 }
 
+struct Engine::Request {
+    std::vector<llama_token> tokens;
+    int seq = 0;
+    // Tokens of this request's sequence in the KV cache, and prompt tokens decoded so far.
+    int pos = 0;
+    int next = 0;
+    int max_new = 0;
+    bool cache = true;
+    int keep = 0;
+    Threads threads;
+    llama_sampler *smpl = nullptr;
+    // Sampled, not yet decoded: the next step decodes it.
+    bool has_last = false;
+    llama_token last = 0;
+    int sampled = 0;
+    // Index in the current batch of the logits this request samples from; -1: none.
+    int idx = -1;
+    std::vector<llama_token> out;
+    bool cancel = false;
+    bool eog = false;
+    bool done = false;
+    std::string err;
+    int64_t t0 = 0;
+    int64_t t1 = 0;
+};
+
+bool Engine::start(int n_seq, std::string &err) {
+    ctx_ = new_context(model_.get(), n_ctx_, threads_, n_seq);
+    if (!ctx_) {
+        err = "failed to create context";
+        return false;
+    }
+    cached_.assign(n_seq, {});
+    busy_.assign(n_seq, false);
+    worker_ = std::thread([this] { run(); });
+    return true;
+}
+
 std::unique_ptr<Engine> Engine::load(const std::string &path, int n_ctx, int n_threads,
-                                     int n_gpu_layers, bool use_mmap, std::string &err) {
+                                     int n_gpu_layers, bool use_mmap, std::string &err, int n_seq) {
     if (ggml_backend_dev_count() == 0) {
         err = "no ggml backend loaded; call init_backends first";
         return nullptr;
@@ -133,11 +172,7 @@ std::unique_ptr<Engine> Engine::load(const std::string &path, int n_ctx, int n_t
     e->model_ = std::shared_ptr<llama_model>(model, llama_model_free);
     e->threads_ = n_threads;
     e->n_ctx_ = n_ctx;
-    e->ctx_ = new_context(e->model_.get(), n_ctx, n_threads);
-    if (!e->ctx_) {
-        err = "failed to create context";
-        return nullptr;
-    }
+    if (!e->start(std::max(n_seq, 1), err)) return nullptr;
     return e;
 }
 
@@ -146,8 +181,7 @@ std::unique_ptr<Engine> Engine::fork(std::string &err) const {
     e->model_ = model_;
     e->threads_ = threads_;
     e->n_ctx_ = n_ctx_;
-    e->ctx_ = new_context(model_.get(), n_ctx_, threads_);
-    if (!e->ctx_) {
+    if (!e->start((int) busy_.size(), err)) {
         err = "failed to create a second context";
         return nullptr;
     }
@@ -155,6 +189,14 @@ std::unique_ptr<Engine> Engine::fork(std::string &err) const {
 }
 
 Engine::~Engine() {
+    if (worker_.joinable()) {
+        {
+            std::lock_guard<std::mutex> lk(mu_);
+            stop_ = true;
+        }
+        cv_.notify_all();
+        worker_.join();
+    }
     if (ctx_) llama_free(ctx_);
 }
 
@@ -180,6 +222,150 @@ std::string Engine::format(const Messages &messages, std::string &err) const {
     return buf;
 }
 
+// Each step decodes one batch: the last sampled token of each running request, then prompt tokens of the
+// requests still in prefill, as many as the batch holds. The lock is released while the batch decodes.
+void Engine::run() {
+    const int n_batch = (int) llama_n_batch(ctx_);
+    llama_batch batch = llama_batch_init(n_batch, 0, 1);
+    auto *mem = llama_get_memory(ctx_);
+    const llama_vocab *vocab = llama_model_get_vocab(model_.get());
+    Threads set{0, 0};
+    auto finish = [&](Request *r) {
+        r->done = true;
+        busy_[r->seq] = false;
+        active_.remove(r);
+    };
+    auto add = [&](Request *r, llama_token tok, bool logits) {
+        int i = batch.n_tokens++;
+        batch.token[i] = tok;
+        batch.pos[i] = r->pos++;
+        batch.n_seq_id[i] = 1;
+        batch.seq_id[i][0] = r->seq;
+        batch.logits[i] = logits;
+        cached_[r->seq].push_back(tok);
+        if (logits) r->idx = i;
+    };
+    // The free sequence whose KV cache shares the longest prefix with the prompt, e.g. the history of a chat; at
+    // least one token is decoded again for the logits of the next one.
+    auto admit = [&](Request *r) {
+        const int n = (int) r->tokens.size();
+        int keep = -1;
+        for (int s = 0; s < (int) busy_.size(); ++s) {
+            if (busy_[s]) continue;
+            int k = 0;
+            if (r->cache) {
+                const auto &c = cached_[s];
+                size_t limit = n > 1 ? std::min(c.size(), (size_t) (n - 1)) : 0;
+                while ((size_t) k < limit && c[k] == r->tokens[k]) ++k;
+            }
+            if (k > keep) {
+                keep = k;
+                r->seq = s;
+            }
+        }
+        if (keep == 0 || !llama_memory_seq_rm(mem, r->seq, keep, -1)) {
+            llama_memory_seq_rm(mem, r->seq, -1, -1);
+            keep = 0;
+        }
+        cached_[r->seq].resize(keep);
+        busy_[r->seq] = true;
+        r->keep = r->pos = r->next = keep;
+        r->t0 = now_ms();
+        active_.push_back(r);
+    };
+
+    std::unique_lock<std::mutex> lk(mu_);
+    while (true) {
+        cv_.wait(lk, [&] { return stop_ || !active_.empty() || !waiting_.empty(); });
+        if (stop_) break;
+        bool changed = false;
+        for (auto it = active_.begin(); it != active_.end();) {
+            Request *r = *it++;
+            if (r->cancel) finish(r), changed = true;
+        }
+        for (auto it = waiting_.begin(); it != waiting_.end();) {
+            Request *r = *it;
+            if (r->cancel) {
+                r->done = true;
+                it = waiting_.erase(it);
+                changed = true;
+            } else if (std::find(busy_.begin(), busy_.end(), false) != busy_.end()) {
+                it = waiting_.erase(it);
+                admit(r);
+            } else {
+                break;
+            }
+        }
+        if (changed) cv_.notify_all();
+        if (active_.empty()) continue;
+        Threads t = active_.front()->threads;
+        // Only this thread changes the fields of a running request below, and frees one only under the lock.
+        std::vector<Request *> in(active_.begin(), active_.end());
+        lk.unlock();
+
+        if (t.decode != set.decode || t.batch != set.batch) {
+            llama_set_n_threads(ctx_, t.decode, t.batch);
+            set = t;
+        }
+        batch.n_tokens = 0;
+        for (Request *r : in) {
+            r->idx = -1;
+            if (r->has_last) {
+                add(r, r->last, true);
+                r->has_last = false;
+            }
+        }
+        for (Request *r : in) {
+            int room = n_batch - batch.n_tokens;
+            int left = (int) r->tokens.size() - r->next;
+            if (left <= 0 || room <= 0) continue;
+            int len = std::min(room, left);
+            for (int k = 0; k < len; ++k) add(r, r->tokens[r->next + k], r->next + k + 1 == (int) r->tokens.size());
+            r->next += len;
+        }
+
+        bool failed = llama_decode(ctx_, batch) != 0;
+        int64_t now = now_ms();
+        std::vector<std::pair<Request *, llama_token>> got;
+        if (!failed) {
+            for (Request *r : in) {
+                if (r->idx < 0) continue;
+                if (r->sampled == 0) r->t1 = now;
+                got.emplace_back(r, llama_sampler_sample(r->smpl, ctx_, r->idx));
+            }
+        } else {
+            for (Request *r : in) {
+                cached_[r->seq].clear();
+                llama_memory_seq_rm(mem, r->seq, -1, -1);
+            }
+        }
+
+        lk.lock();
+        if (failed) {
+            for (Request *r : in) {
+                r->err = r->sampled == 0 ? "prefill failed" : "decode failed";
+                finish(r);
+            }
+        }
+        for (auto &[r, tok] : got) {
+            if (llama_vocab_is_eog(vocab, tok)) {
+                r->eog = true;
+                finish(r);
+                continue;
+            }
+            r->out.push_back(tok);
+            if (++r->sampled >= r->max_new) {
+                finish(r);
+                continue;
+            }
+            r->last = tok;
+            r->has_last = true;
+        }
+        cv_.notify_all();
+    }
+    llama_batch_free(batch);
+}
+
 bool Engine::generate(const Messages &messages, const GenParams &params, const OnText &on_text,
                       GenStats &stats, std::string &err) {
     stats = {};
@@ -188,53 +374,21 @@ bool Engine::generate(const Messages &messages, const GenParams &params, const O
 
     const llama_vocab *vocab = llama_model_get_vocab(model_.get());
     int n = -llama_tokenize(vocab, prompt.c_str(), (int) prompt.size(), nullptr, 0, true, true);
-    std::vector<llama_token> tokens(n);
-    llama_tokenize(vocab, prompt.c_str(), (int) prompt.size(), tokens.data(), n, true, true);
+    Request r;
+    r.tokens.resize(n);
+    llama_tokenize(vocab, prompt.c_str(), (int) prompt.size(), r.tokens.data(), n, true, true);
 
-    const int n_ctx = (int) llama_n_ctx(ctx_);
-    if (n >= n_ctx) {
-        err = "prompt (" + std::to_string(n) + " tokens) does not fit in context " + std::to_string(n_ctx);
+    if (n >= n_ctx_) {
+        err = "prompt (" + std::to_string(n) + " tokens) does not fit in context " + std::to_string(n_ctx_);
         return false;
     }
-    const int max_new = std::min(params.max_tokens, n_ctx - n);
+    r.max_new = std::min(params.max_tokens, n_ctx_ - n);
 
-    Threads t = params.threads > 0 ? Threads{params.threads, params.threads}
+    r.threads = params.threads > 0 ? Threads{params.threads, params.threads}
               : threads_ > 0       ? Threads{threads_, threads_}
                                    : pick_threads();
-    llama_set_n_threads(ctx_, t.decode, t.batch);
-    stats.threads = t.decode;
-    stats.threads_batch = t.batch;
-
-    // The prompt prefix already in the KV cache, e.g. the history of a chat; at least one token is decoded again
-    // for the logits of the next one.
-    auto *mem = llama_get_memory(ctx_);
-    int keep = 0;
-    if (params.cache) {
-        size_t limit = n > 1 ? std::min(cached_.size(), (size_t) (n - 1)) : 0;
-        while ((size_t) keep < limit && cached_[keep] == tokens[keep]) ++keep;
-    }
-    if (keep == 0 || !llama_memory_seq_rm(mem, 0, keep, -1)) {
-        llama_memory_clear(mem, true);
-        keep = 0;
-    }
-    cached_.assign(tokens.begin(), tokens.begin() + keep);
-    stats.prompt_tokens = n;
-    stats.cached_tokens = keep;
-
-    int64_t t0 = now_ms();
-    const int n_batch = (int) llama_n_batch(ctx_);
-    for (int i = keep; i < n; i += n_batch) {
-        int len = std::min(n_batch, n - i);
-        if (llama_decode(ctx_, llama_batch_get_one(tokens.data() + i, len)) != 0) {
-            err = "prefill failed";
-            cached_.clear();
-            llama_memory_clear(mem, true);
-            return false;
-        }
-        cached_.insert(cached_.end(), tokens.begin() + i, tokens.begin() + i + len);
-    }
-    int64_t t1 = now_ms();
-    stats.prefill_ms = t1 - t0;
+    stats.threads = r.threads.decode;
+    stats.threads_batch = r.threads.batch;
 
     // A grammar first in the chain, so the samplers after it only see tokens the grammar allows.
     std::string grammar = params.grammar;
@@ -263,55 +417,66 @@ bool Engine::generate(const Messages &messages, const GenParams &params, const O
         llama_sampler_chain_add(smpl, llama_sampler_init_temp(params.temperature));
         llama_sampler_chain_add(smpl, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
     }
+    r.smpl = smpl;
+
+    r.cache = params.cache;
+    std::unique_lock<std::mutex> lk(mu_);
+    waiting_.push_back(&r);
+    cv_.notify_all();
 
     // Text is held back until it can no longer be the start of a stop string.
     size_t hold = 0;
     for (const auto &s : params.stop) hold = std::max(hold, s.size());
     std::string pending;
     bool go = true;
+    bool stopped = false;
     char piece[256];
 
-    bool ended = false;
-    for (int i = 0; i < max_new && go; ++i) {
-        llama_token tok = llama_sampler_sample(smpl, ctx_, -1);
-        if (llama_vocab_is_eog(vocab, tok)) {
-            ended = true;
-            break;
-        }
-        stats.output_tokens++;
+    while (go && !stopped) {
+        cv_.wait(lk, [&] { return !r.out.empty() || r.done; });
+        std::vector<llama_token> toks;
+        toks.swap(r.out);
+        bool done = r.done;
+        lk.unlock();
+        for (llama_token tok : toks) {
+            stats.output_tokens++;
+            int len = llama_token_to_piece(vocab, tok, piece, sizeof(piece), 0, false);
+            if (len > 0) pending.append(piece, len);
 
-        int len = llama_token_to_piece(vocab, tok, piece, sizeof(piece), 0, false);
-        if (len > 0) pending.append(piece, len);
-
-        bool stopped = false;
-        for (const auto &s : params.stop) {
-            auto pos = pending.find(s);
-            if (!s.empty() && pos != std::string::npos) {
-                pending.resize(pos);
-                stopped = true;
+            for (const auto &s : params.stop) {
+                auto pos = pending.find(s);
+                if (!s.empty() && pos != std::string::npos) {
+                    pending.resize(pos);
+                    stopped = true;
+                }
             }
+            size_t ready = utf8_complete(pending);
+            if (!stopped && hold > 0) ready = pending.size() > hold ? utf8_complete(pending.substr(0, pending.size() - hold)) : 0;
+            if (ready > 0) {
+                go = on_text(pending.substr(0, ready));
+                pending.erase(0, ready);
+            }
+            if (stopped || !go) break;
         }
-        size_t ready = utf8_complete(pending);
-        if (!stopped && hold > 0) ready = pending.size() > hold ? utf8_complete(pending.substr(0, pending.size() - hold)) : 0;
-        if (ready > 0) {
-            go = on_text(pending.substr(0, ready));
-            pending.erase(0, ready);
-        }
-        if (stopped) {
-            ended = true;
-            break;
-        }
-
-        if (llama_decode(ctx_, llama_batch_get_one(&tok, 1)) != 0) {
-            err = "decode failed";
-            break;
-        }
-        cached_.push_back(tok);
+        lk.lock();
+        if (done && r.out.empty()) break;
     }
+    if (!r.done) {
+        r.cancel = true;
+        cv_.notify_all();
+        cv_.wait(lk, [&] { return r.done; });
+    }
+    lk.unlock();
     if (go && !pending.empty()) on_text(pending.substr(0, utf8_complete(pending)));
 
-    if (!ended && go && stats.output_tokens >= max_new) stats.finish = max_new < params.max_tokens ? 2 : 1;
-    stats.decode_ms = now_ms() - t1;
+    err = r.err;
+    stats.prompt_tokens = n;
+    stats.cached_tokens = r.keep;
+    bool ended = r.eog || stopped;
+    if (!ended && go && err.empty() && stats.output_tokens >= r.max_new) stats.finish = r.max_new < params.max_tokens ? 2 : 1;
+    int64_t end = now_ms();
+    stats.prefill_ms = r.t0 ? (r.t1 ? r.t1 : end) - r.t0 : 0;
+    stats.decode_ms = r.t1 ? end - r.t1 : 0;
     llama_sampler_free(smpl);
     return err.empty();
 }

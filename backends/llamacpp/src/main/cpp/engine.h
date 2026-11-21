@@ -1,9 +1,13 @@
 #pragma once
 
+#include <condition_variable>
 #include <cstdint>
 #include <functional>
+#include <list>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -57,11 +61,13 @@ std::vector<Device> init_backends(const std::string &lib_dir);
 
 class Engine {
 public:
-    // n_threads <= 0 picks threads automatically before each generation.
+    // n_threads <= 0 picks threads automatically before each generation. n_seq: requests that run at the same
+    // time, each a sequence of n_ctx tokens in one context; they share each decoding step.
     static std::unique_ptr<Engine> load(const std::string &path, int n_ctx, int n_threads,
-                                        int n_gpu_layers, bool use_mmap, std::string &err);
+                                        int n_gpu_layers, bool use_mmap, std::string &err, int n_seq = 1);
     ~Engine();
 
+    // Safe to call from several threads at once: up to n_seq requests run together, further ones wait.
     bool generate(const Messages &messages, const GenParams &params, const OnText &on_text,
                   GenStats &stats, std::string &err);
 
@@ -70,16 +76,30 @@ public:
     std::unique_ptr<Engine> fork(std::string &err) const;
 
 private:
+    struct Request;
+
     Engine() = default;
     std::string format(const Messages &messages, std::string &err) const;
+    bool start(int n_seq, std::string &err);
+    void run();
 
     // Shared by the forks: freed with the last one.
     std::shared_ptr<llama_model> model_;
     int n_ctx_ = 0;
     llama_context *ctx_ = nullptr;
     int threads_ = 0;
-    // The tokens in the KV cache, in order.
-    std::vector<int32_t> cached_;
+
+    // The scheduler: one worker thread decodes a batch per step for all running requests, and is the only one to
+    // touch the context. mu_ guards the lists and what the requests and the worker exchange.
+    std::mutex mu_;
+    std::condition_variable cv_;
+    std::list<Request *> waiting_;
+    std::list<Request *> active_;
+    // Per sequence, the worker's: the tokens in its KV cache, in order, and whether a request holds it.
+    std::vector<std::vector<int32_t>> cached_;
+    std::vector<bool> busy_;
+    std::thread worker_;
+    bool stop_ = false;
 };
 
 } // namespace den
