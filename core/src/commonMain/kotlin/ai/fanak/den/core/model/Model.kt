@@ -1,6 +1,7 @@
 package ai.fanak.den.core.model
 
 import kotlin.jvm.JvmInline
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
