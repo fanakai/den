@@ -1,0 +1,44 @@
+Fanak Den
+Copyright 2026 The Fanak Den authors
+
+Licensed under the Apache License, Version 2.0 (licenses/Apache-2.0.txt).
+
+The SDK and the Den app include the following software.
+
+llama.cpp and ggml (native libraries libllama, libggml*)
+  Copyright (c) 2023-2026 The ggml authors
+  MIT License (licenses/llama.cpp-MIT.txt)
+
+libc++ of the LLVM project (libc++_shared.so, from the Android NDK)
+  Apache License 2.0 with LLVM exceptions (licenses/libcxx-LLVM-exception.txt)
+
+OpenCL headers of the Khronos Group, compiled into libggml-opencl
+  Copyright (c) 2008-2020 The Khronos Group Inc.
+  Apache License 2.0 (licenses/Apache-2.0.txt)
+
+Kotlin standard library, kotlinx.coroutines and kotlinx.serialization
+  Copyright JetBrains s.r.o. and contributors
+  Apache License 2.0 (licenses/Apache-2.0.txt)
+
+JetBrains annotations
+  Copyright JetBrains s.r.o.
+  Apache License 2.0 (licenses/Apache-2.0.txt)
+
+kaml (YAML for kotlinx.serialization)
+  Copyright Charles Korn
+  Apache License 2.0 (licenses/Apache-2.0.txt)
+
+snakeyaml-engine-kmp
+  Copyright Piotr Krzeminski and the SnakeYAML authors
+  Apache License 2.0 (licenses/Apache-2.0.txt)
+
+Okio
+  Copyright Square, Inc.
+  Apache License 2.0 (licenses/Apache-2.0.txt)
+
+urlencoder
+  Copyright Erik C. Thauvin and Geert Bevin
+  Apache License 2.0 (licenses/Apache-2.0.txt)
+
+Models are not part of Den. Each model file is downloaded from its source under its own licence, which the Den app
+shows for each model.

@@ -77,6 +77,7 @@ class MainActivity : Activity() {
             addView(apps)
             addView(http)
             addView(diag)
+            addView(notices())
         }
         setContentView(ScrollView(this).apply { addView(root) })
     }
@@ -208,6 +209,28 @@ class MainActivity : Activity() {
             }
         }
         showBench()
+    }
+
+    // The notices of the code in Den (assets/den/NOTICE and den/licenses, from the SDK), shown on request.
+    private fun notices() = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        addView(TextView(context).apply { text = "\nLicences"; textSize = 18f })
+        addView(TextView(context).apply { text = "Fanak Den is open source under the Apache License 2.0, and includes other open source software." })
+        val text = TextView(context).apply { textSize = 10f; typeface = Typeface.MONOSPACE; setTextIsSelectable(true) }
+        addView(Button(context).apply {
+            this.text = "Show licences"
+            setOnClickListener {
+                text.text = buildString {
+                    append(assets.open("den/NOTICE").bufferedReader().use { it.readText() })
+                    assets.list("den/licenses").orEmpty().sorted().forEach { name ->
+                        append("\n\n==== $name ====\n\n")
+                        append(assets.open("den/licenses/$name").bufferedReader().use { it.readText() })
+                    }
+                }
+                visibility = android.view.View.GONE
+            }
+        })
+        addView(text)
     }
 
     // The diagnostics file, shown before it is shared; null until the user asks for it.

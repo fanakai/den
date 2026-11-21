@@ -23,13 +23,20 @@ kotlin {
     jvmToolchain(17)
 }
 
-// Recipes ship inside the SDK under assets/den/recipes, away from the app's own assets.
+// Recipes ship inside the SDK under assets/den/recipes, away from the app's own assets; the notices of the code in
+// the SDK under assets/den/NOTICE and den/licenses, so every app that uses it carries them.
 abstract class CopyRecipes : DefaultTask() {
     @get:InputDirectory
     abstract val recipes: DirectoryProperty
 
     @get:InputDirectory
     abstract val models: DirectoryProperty
+
+    @get:InputFile
+    abstract val notice: RegularFileProperty
+
+    @get:InputDirectory
+    abstract val licenses: DirectoryProperty
 
     @get:OutputDirectory
     abstract val outputDir: DirectoryProperty
@@ -42,6 +49,8 @@ abstract class CopyRecipes : DefaultTask() {
         fs.sync {
             from(recipes) { include("**/*.yaml"); into("den/recipes") }
             from(models) { include("*.yaml"); into("den/models") }
+            from(notice) { into("den") }
+            from(licenses) { into("den/licenses") }
             into(outputDir)
         }
     }
@@ -50,6 +59,8 @@ abstract class CopyRecipes : DefaultTask() {
 val copyRecipes = tasks.register<CopyRecipes>("copyRecipes") {
     recipes.set(rootProject.layout.projectDirectory.dir("recipes"))
     models.set(rootProject.layout.projectDirectory.dir("models"))
+    notice.set(rootProject.layout.projectDirectory.file("NOTICE"))
+    licenses.set(rootProject.layout.projectDirectory.dir("licenses"))
 }
 
 androidComponents {
