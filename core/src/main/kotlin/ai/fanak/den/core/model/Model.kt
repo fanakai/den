@@ -49,6 +49,9 @@ interface ModelCatalog {
 
     // The model's licence id when known before any lookup, e.g. from a curated entry.
     fun licence(model: String): String? = null
+
+    // A newer commit of the model's repository than the one in use; null when up to date or not from a hub.
+    suspend fun newerCommit(model: String): String? = null
 }
 
 /** Several catalogs as one: models and variants in catalog order, a variant's file from the first catalog that has it. */
@@ -62,6 +65,8 @@ class CompositeCatalog(private val catalogs: List<ModelCatalog>) : ModelCatalog 
     override fun remote(variant: Variant) = catalogs.firstNotNullOfOrNull { it.remote(variant) }
 
     override fun licence(model: String) = catalogs.firstNotNullOfOrNull { it.licence(model) }
+
+    override suspend fun newerCommit(model: String): String? = catalogs.firstNotNullOfOrNull { it.newerCommit(model) }
 }
 
 // Downloads and caches variants; in connected mode one copy is shared by all apps.

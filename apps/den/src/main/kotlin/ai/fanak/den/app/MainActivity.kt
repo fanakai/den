@@ -5,6 +5,7 @@ import ai.fanak.den.DenConfig
 import ai.fanak.den.DenMode
 import ai.fanak.den.ModelFiles
 import ai.fanak.den.core.bench.BenchResult
+import ai.fanak.den.core.model.HubLinks
 import ai.fanak.den.core.bench.Contribute
 import ai.fanak.den.core.recipe.RecipeFiles
 import android.Manifest
@@ -319,6 +320,20 @@ class MainActivity : Activity() {
             models.addView(button("Delete $m") { run { DenService.delete(this, m) } })
         }
         if (list.any { !it.complete }) models.addView(button("Remove unfinished downloads") { run { DenService.deletePartial(this) } })
+        list.map { it.model }.distinct().filter { it.startsWith("hf:") }.forEach { m ->
+            models.addView(button("Check $m for updates") {
+                run { benchDen.newerCommit(m)?.let { "$m: a newer commit (${it.take(7)}) is on the hub" } ?: "$m is up to date" }
+            })
+        }
+        // A pasted Hugging Face link gives the model id apps use; the download starts when an app opens it.
+        val link = EditText(this).apply { hint = "Hugging Face link or hf:owner/repo"; inputType = InputType.TYPE_TEXT_VARIATION_URI }
+        models.addView(link, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        models.addView(button("Get model id") {
+            status = HubLinks.modelId(link.text.toString())?.let { id ->
+                getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Den model", id))
+                "Apps can use $id (copied)"
+            } ?: "Not a Hugging Face link"
+        })
     }
 
     // Runs a file action off the main thread, then shows its result.

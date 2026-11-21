@@ -50,6 +50,8 @@ class IndexCatalog(private val entries: List<IndexEntry>, private val sources: M
 
     override fun licence(model: String) = entry(model)?.licence
 
+    override suspend fun newerCommit(model: String) = entry(model)?.let { sources.newerCommit(it.source) }
+
     // The curated licence, reviewed with the entry, over the one the source gives.
     override fun remote(variant: Variant) = origin[variant]?.let { sources.remote(it) }?.let { r ->
         entry(variant.model)?.let { r.copy(licence = it.licence) } ?: r

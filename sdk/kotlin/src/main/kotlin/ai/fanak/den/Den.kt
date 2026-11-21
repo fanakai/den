@@ -249,6 +249,9 @@ class Den private constructor(context: Context, private val config: DenConfig) :
     fun exclusiveAccelerator(model: String): String? =
         plan(model).firstOrNull()?.takeIf { it.backend.about?.slots == SlotPolicy.EXCLUSIVE_ACCEL }?.let { "${it.backend.id} ${it.accel}" }
 
+    // A newer commit of [model]'s hub repository than the one in use, for "check for updates"; null when up to date.
+    suspend fun newerCommit(model: String): String? = withContext(Dispatchers.IO) { catalog.newerCommit(model) }
+
     // Looks a model up in the catalogs (network for hf: names, then cached); plan() and fileName() use the result.
     suspend fun resolve(model: String) = catalog.resolve(model)
 
