@@ -178,7 +178,9 @@ bool Engine::generate(const Messages &messages, const GenParams &params, const O
     }
     const int max_new = std::min(params.max_tokens, n_ctx - n);
 
-    Threads t = threads_ > 0 ? Threads{threads_, threads_} : pick_threads();
+    Threads t = params.threads > 0 ? Threads{params.threads, params.threads}
+              : threads_ > 0       ? Threads{threads_, threads_}
+                                   : pick_threads();
     llama_set_n_threads(ctx_, t.decode, t.batch);
     stats.threads = t.decode;
     stats.threads_batch = t.batch;

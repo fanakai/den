@@ -239,7 +239,7 @@ private class IsolatedSession(
             try {
                 b.engine.generate(
                     id, req.messages.map { it.role.name }.toTypedArray(), req.messages.map { it.content }.toTypedArray(),
-                    req.maxTokens, req.temperature, req.topP, req.stop.toTypedArray(), req.cache, callback,
+                    req.maxTokens, req.temperature, req.topP, req.stop.toTypedArray(), req.cache, req.threads ?: 0, callback,
                 )
             } catch (e: RemoteException) {
                 close(engine.error(b, e))

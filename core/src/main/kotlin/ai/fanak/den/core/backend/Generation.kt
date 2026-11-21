@@ -16,6 +16,8 @@ data class GenRequest(
     // Reuse what the session computed for the same prompt prefix (a chat's history); false prefills it all, e.g. to
     // measure prefill.
     val cache: Boolean = true,
+    // Threads for this request; null lets the engine pick them for the cores it may use.
+    val threads: Int? = null,
 )
 
 // Why the reply ended: end of text or a stop string, `maxTokens`, or a full context.
@@ -29,15 +31,18 @@ data class GenStats(
     val finish: Finish = Finish.STOP,
     // Prompt tokens taken from the session's cache instead of prefilled.
     val cachedTokens: Int = 0,
+    // Decode threads the engine used; 0 when it did not say.
+    val threads: Int = 0,
 ) {
     val prefillTps get() = rate(promptTokens - cachedTokens, prefillMs)
     val decodeTps get() = rate(outputTokens, decodeMs)
 
     private fun rate(tokens: Int, ms: Long) = if (ms > 0) tokens * 1000.0 / ms else 0.0
 
-    // [promptTokens, outputTokens, prefillMs, decodeMs, finish, cachedTokens], as engines and AIDL pass them.
+    // [promptTokens, outputTokens, prefillMs, decodeMs, finish, cachedTokens, threads], as engines and AIDL pass them.
     fun toLongs() = longArrayOf(
         promptTokens.toLong(), outputTokens.toLong(), prefillMs, decodeMs, finish.ordinal.toLong(), cachedTokens.toLong(),
+        threads.toLong(),
     )
 
     companion object {
@@ -46,6 +51,7 @@ data class GenStats(
             a[0].toInt(), a[1].toInt(), a[2], a[3],
             Finish.entries.getOrElse(a.getOrElse(4) { 0L }.toInt()) { Finish.STOP },
             a.getOrElse(5) { 0L }.toInt(),
+            a.getOrElse(6) { 0L }.toInt(),
         )
     }
 }
