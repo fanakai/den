@@ -75,7 +75,7 @@ class DenService : Service() {
                 if (file != null) downloads.remove(file)
             }
         },
-        need = { name, avail -> den.plan(name, den.device().copy(availRamMb = avail)).firstOrNull()?.variant?.minRamMb },
+        need = { name, avail -> den.ramNeedMb(name, den.device().copy(availRamMb = avail)) },
         availMb = { den.device().availRamMb },
         now = SystemClock::elapsedRealtime,
         log = ::log,

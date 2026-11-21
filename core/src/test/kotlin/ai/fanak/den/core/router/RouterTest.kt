@@ -203,9 +203,10 @@ class RouterTest {
     fun fallsBackWhenLoadFails() = runTest {
         val opened = router(listOf(llama(failOn = setOf(Accel.CPU)), litert())).open(model, device)
 
-        assertEquals(2, opened.failures.size)
+        // The file already fetched, on the next accelerator, before another file.
+        assertEquals(1, opened.failures.size)
         assertEquals("llamacpp", opened.candidate.backend.id)
-        assertEquals(Accel.GPU, opened.candidate.accel)
+        assertEquals(q4km to Accel.GPU, opened.candidate.variant to opened.candidate.accel)
         assertTrue(opened.needsBenchmark)
     }
 
@@ -216,7 +217,7 @@ class RouterTest {
 
         assertEquals(Accel.GPU, r.open(model, device).candidate.accel)
         assertEquals(Accel.GPU, r.open(model, device).candidate.accel)
-        assertEquals(2, llama.loaded.count { it.second == Accel.CPU })
+        assertEquals(1, llama.loaded.count { it.second == Accel.CPU })
     }
 
     @Test
@@ -242,7 +243,7 @@ class RouterTest {
 
         r.open(model, device)
         r.open(model, device)
-        assertEquals(4, llama.loaded.count { it.second == Accel.CPU })
+        assertEquals(2, llama.loaded.count { it.second == Accel.CPU })
     }
 
     @Test
@@ -253,7 +254,7 @@ class RouterTest {
 
         r.reportFailure(device, first.candidate, EngineCrashedException("died while generating"))
         val next = r.open(model, device).candidate
-        assertEquals(q40 to Accel.CPU, next.variant to next.accel)
+        assertEquals(q4km to Accel.GPU, next.variant to next.accel)
     }
 
     @Test
@@ -339,5 +340,67 @@ class RouterTest {
         assertTrue(!l.nonCommercial("apache-2.0") && !l.nonCommercial("mit") && !l.nonCommercial(null))
         assertTrue(l.usePolicy("llama3.1") && l.usePolicy("gemma") && !l.usePolicy("apache-2.0"))
         assertTrue(l.unknown(null) && l.unknown("other") && !l.unknown("mit"))
+    }
+
+    // Qwen3-0.6B Q4_0 with the KV cache size of its GGUF header: 364 MB of weights, 448 MB of KV at 4096 tokens.
+    private val sized = Variant(model, ModelFormat.GGUF, "q4_0", 382_156_480, 700, arch = "qwen3", params = size, kvBytesPerToken = 114_688)
+
+    private fun sizedRouter(free: () -> Int = { device.availRamMb }, s: ModelStore = store) = Router(
+        listOf(llama()), InMemoryRecipeStore(emptyList()),
+        object : ModelCatalog { override fun variants(model: String) = listOf(sized) }, s, freeRamMb = free,
+    )
+
+    @Test
+    fun ramNeedCountsTheKvCacheAndMmapedWeightsOnlyInTotal() {
+        // 448 MB of KV + 520 MB of buffers in free RAM; the 364 MB of mmapped weights only against the phone's RAM.
+        assertEquals(Router.RamNeed(968, 1332), Router.ramNeed(sized, 4096))
+        assertEquals(Router.RamNeed(1332, 1332), Router.ramNeed(sized, 4096, mmap = false))
+        assertEquals(Router.RamNeed(744, 1108), Router.ramNeed(sized, 2048))
+        // Without the KV cache size, the catalog's estimate.
+        assertEquals(Router.RamNeed(1400, 1400), Router.ramNeed(q40, 4096))
+    }
+
+    @Test
+    fun littleFreeRamGivesAShorterContextDownToTheAppsMinimum() = runTest {
+        val r = sizedRouter(free = { 800 })
+        assertTrue(r.plan(model, device.copy(availRamMb = 800), minContext = 4096).isEmpty())
+        val opened = r.open(model, device, contextLength = 4096, minContext = 1024)
+        assertEquals(2048, opened.contextLength)
+
+        // Not even the minimum fits: no load, and the reason names the memory.
+        val e = assertFailsWith<NoUsableBackendException> { sizedRouter(free = { 600 }).open(model, device, minContext = 1024) }
+        assertTrue(e.failures.isNotEmpty() && e.failures.all { it.error is NotEnoughMemoryException }, "${e.failures}")
+    }
+
+    @Test
+    fun freeRamIsReadAgainBeforeEachCandidate() = runTest {
+        var free = 6_000
+        val r = sizedRouter(free = { free })
+        assertEquals(4096, r.open(model, device).contextLength)
+        // Another app took memory since the plan was made.
+        free = 900
+        val e = assertFailsWith<NoUsableBackendException> { r.open(model, device) }
+        assertTrue(e.failures.all { it.error is NotEnoughMemoryException })
+    }
+
+    @Test
+    fun aFileTheDiskCannotHoldIsLeftOut() = runTest {
+        val full = object : ModelStore {
+            override suspend fun fetch(variant: Variant) = Artifact(variant, "/m")
+            override fun freeBytes() = 100L shl 20
+        }
+        val e = assertFailsWith<NoUsableBackendException> { sizedRouter(s = full).open(model, device) }
+        assertEquals("no file of $model fits on disk: 100 MB free, the smallest needs 364 MB", e.message)
+        // On disk already: no room needed.
+        val present = object : ModelStore by full {
+            override fun has(variant: Variant) = true
+        }
+        assertEquals(sized, sizedRouter(s = present).open(model, device).candidate.variant)
+    }
+
+    @Test
+    fun aModelLargerThanThePhoneIsSaidSo() = runTest {
+        val e = assertFailsWith<NoUsableBackendException> { sizedRouter().open(model, device.copy(ramMb = 1_000)) }
+        assertEquals("no file of $model fits in this phone's 1000 MB of RAM: the smallest needs 1332 MB", e.message)
     }
 }

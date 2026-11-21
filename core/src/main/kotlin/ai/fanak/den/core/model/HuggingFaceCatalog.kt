@@ -29,6 +29,8 @@ class HuggingFaceCatalog(
     private val cacheDir: File?,
     private val fetch: suspend (String) -> String = ::httpGet,
     private val host: String = "https://huggingface.co",
+    // The first bytes of a file, for its GGUF header.
+    private val fetchHead: suspend (String) -> ByteArray = ::httpHead,
 ) : ModelCatalog {
     @Serializable
     private data class Repo(
@@ -39,6 +41,8 @@ class HuggingFaceCatalog(
         val arch: String? = null,
         val params: Long? = null,
         val maxContext: Int? = null,
+        // From the header of one GGUF file; the same for every quant of a repository.
+        val kvBytesPerToken: Long? = null,
     )
 
     @Serializable
@@ -94,16 +98,20 @@ class HuggingFaceCatalog(
             RepoFile(path, size, sha)
         }
         val gguf = info["gguf"] as? JsonObject
+        // The KV cache size decides how much RAM a context needs; the hub API does not give it, the file header does.
+        val kv = files.firstOrNull { it.path.endsWith(".gguf", ignoreCase = true) && "mmproj" !in it.path.lowercase() }?.let { f ->
+            runCatching { GgufHeader.read(fetchHead("$host/${ref.name}/resolve/$commit/${f.path}").inputStream()).kvBytesPerToken }.getOrNull()
+        }
         return Repo(
             commit, licence, files, gguf?.str("architecture"), (gguf?.get("total") as? JsonPrimitive)?.longOrNull,
-            (gguf?.get("context_length") as? JsonPrimitive)?.longOrNull?.takeIf { it in 1..Int.MAX_VALUE }?.toInt(),
+            (gguf?.get("context_length") as? JsonPrimitive)?.longOrNull?.takeIf { it in 1..Int.MAX_VALUE }?.toInt(), kv,
         )
     }
 
     private fun build(id: String, ref: Ref, repo: Repo): Resolved {
         val store = "hf/${ref.owner}/${ref.repo}" + if (ref.revision == "main") "" else "/${ref.revision}"
         val files = repo.files.map { HubFile(it.path, it.size, it.sha256) }
-        val remote = GgufFiles.variants(id, files, store, repo.arch, repo.params, repo.licence, repo.maxContext) {
+        val remote = GgufFiles.variants(id, files, store, repo.arch, repo.params, repo.licence, repo.maxContext, repo.kvBytesPerToken) {
             "$host/${ref.name}/resolve/${repo.commit}/${it.path}"
         }
         return Resolved(remote.keys.toList(), remote)
@@ -130,6 +138,33 @@ class HuggingFaceCatalog(
             try {
                 if (conn.responseCode != 200) throw IOException("HTTP ${conn.responseCode} for $url")
                 conn.inputStream.bufferedReader().use { it.readText() }
+            } finally {
+                conn.disconnect()
+            }
+        }
+
+        // The architecture keys come before the tokenizer, in the first kilobytes; 256 KB leaves room for long names.
+        const val HEAD_BYTES = 256 * 1024
+
+        suspend fun httpHead(url: String): ByteArray = withContext(Dispatchers.IO) {
+            val conn = URL(url).openConnection() as HttpURLConnection
+            conn.connectTimeout = 10_000
+            conn.readTimeout = 20_000
+            conn.setRequestProperty("User-Agent", DEN_USER_AGENT)
+            conn.setRequestProperty("Range", "bytes=0-${HEAD_BYTES - 1}")
+            try {
+                if (conn.responseCode !in listOf(200, 206)) throw IOException("HTTP ${conn.responseCode} for $url")
+                // A server that ignores the range sends the whole file: read the start only.
+                conn.inputStream.use { input ->
+                    val out = java.io.ByteArrayOutputStream()
+                    val buf = ByteArray(16 * 1024)
+                    while (out.size() < HEAD_BYTES) {
+                        val n = input.read(buf, 0, minOf(buf.size, HEAD_BYTES - out.size()))
+                        if (n < 0) break
+                        out.write(buf, 0, n)
+                    }
+                    out.toByteArray()
+                }
             } finally {
                 conn.disconnect()
             }

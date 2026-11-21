@@ -70,6 +70,8 @@ class HttpModelStore(
         return Artifact(variant, file.path)
     }
 
+    override fun freeBytes(): Long = (dir.apply { mkdirs() }.usableSpace - minFreeBytes).coerceAtLeast(0)
+
     override fun has(variant: Variant): Boolean {
         val r = runCatching { locate(variant) }.getOrNull() ?: return false
         val file = File(dir, r.path)
