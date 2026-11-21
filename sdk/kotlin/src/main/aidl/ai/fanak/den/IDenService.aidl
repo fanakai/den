@@ -33,4 +33,6 @@ interface IDenService {
 
     // Version 5: the Den app's route for the model on this phone, one "backend accel quant source" per candidate.
     String[] plan(String model, String options);
+
+    // Version 6: openWith and plan resolve aliases (den.*) with the Den app's own, which the user can move.
 }

@@ -117,12 +117,15 @@ class MainActivity : Activity() {
     private fun compare() {
         val context = intent.getIntExtra("context", 4096)
         val min = intent.getIntExtra("minContext", 0).takeIf { it > 0 }
+        // --es alias den.default=qwen3-0.6b: this app's own alias, for embedded mode.
+        val aliases = ai.fanak.den.DEFAULT_ALIASES + intent.getStringExtra("alias")?.split('=', limit = 2)
+            ?.let { (a, m) -> mapOf(a to listOf(m)) }.orEmpty()
         job = scope.launch {
             for (mode in listOf(DenMode.EMBEDDED, DenMode.CONNECTED)) {
-                val d = testDen(mode = mode, contextLength = context, minContextLength = min)
+                val d = testDen(mode = mode, contextLength = context, minContextLength = min, aliases = aliases)
                 try {
                     log("compare $mode route: ${d.route(model).joinToString()}")
-                    d.model(model).use { m -> log("compare $mode open: ${m.backend} ${m.accel} ${m.quant} (${m.source}), context ${m.contextLength}") }
+                    d.model(model).use { m -> log("compare $mode open: ${m.alias?.let { "$it is " } ?: ""}${m.name}, ${m.backend} ${m.accel} ${m.quant} (${m.source}), context ${m.contextLength}") }
                     val e = runCatching { d.model("no-such-model") }.exceptionOrNull()
                     log("compare $mode unknown: ${e?.javaClass?.simpleName}: ${e?.message}")
                 } catch (e: Exception) {

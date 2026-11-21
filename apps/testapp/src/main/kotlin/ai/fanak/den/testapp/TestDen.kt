@@ -20,6 +20,7 @@ fun Context.testDen(
     bundledRecipes: Boolean = true,
     contextLength: Int = 4096,
     minContextLength: Int? = null,
+    aliases: Map<String, List<String>> = ai.fanak.den.DEFAULT_ALIASES,
 ) = Den.connect(
     this,
     DenConfig(
@@ -30,6 +31,7 @@ fun Context.testDen(
         bundledRecipes = bundledRecipes,
         contextLength = contextLength,
         minContextLength = minContextLength,
+        aliases = aliases,
         backends = if (crash) listOf(CrashBackend(this), LlamaCppBackend()) else null,
         onDownload = { Log.i("DenTest", "download ${it.fileName} ${it.bytes shr 20}/${it.total shr 20} MB") },
     ),

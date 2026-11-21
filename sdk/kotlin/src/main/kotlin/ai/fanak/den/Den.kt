@@ -18,6 +18,7 @@ import ai.fanak.den.core.model.HttpModelStore
 import ai.fanak.den.core.model.HuggingFaceCatalog
 import ai.fanak.den.core.model.IndexCatalog
 import ai.fanak.den.core.model.ModelIndex
+import ai.fanak.den.core.model.ModelAliases
 import ai.fanak.den.core.model.ModelCatalog
 import ai.fanak.den.core.model.ModelStore
 import ai.fanak.den.core.model.RemoteFile
@@ -110,6 +111,9 @@ data class DenConfig(
     // AUTO: when the Den app is installed but fails to open the model, run it in this app instead. False reports the
     // error, so a second large download never starts in this app without it knowing.
     val fallback: Boolean = true,
+    // Stable names for roles (den.default, den.small), each with models in order of preference; the Den app's own
+    // apply in connected mode, where the user can move them.
+    val aliases: Map<String, List<String>> = DEFAULT_ALIASES,
 )
 
 enum class DenMode {
@@ -213,9 +217,15 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         if (connected) {
             runCatching { app.plan(model, config.contextLength, minContext) }.getOrNull()?.let { return it }
         }
-        resolve(model)
-        return plan(model).map { Route(it.backend.id, it.accel, it.variant.quant, it.source) }
+        val target = resolveAlias(model)
+        resolve(target)
+        return plan(target).map { Route(it.backend.id, it.accel, it.variant.quant, it.source) }
     }
+
+    val aliases = ModelAliases(config.aliases)
+
+    // The model behind [name] in this process: itself, or for an alias the user's choice or the first default that runs.
+    suspend fun resolveAlias(name: String): String = aliases.resolve(name) { m -> resolve(m); plan(m).isNotEmpty() }
 
     // The file the router would pick on this phone, and its download without loading it. Runs in this process.
     fun fileName(model: String): String? = plan(model).firstOrNull()?.let { catalog.remote(it.variant)?.fileName }
@@ -360,9 +370,15 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         } else if (status == DenAppStatus.UNTRUSTED) {
             Log.w("Den", "$DEN_PACKAGE is not signed by Fanak Den; running $name in the app")
         }
-        val reopen: suspend () -> Opened = { router.open(name, device(), contextLength, config.useMmap, minContextLength) }
+        val target = resolveAlias(name)
+        if (target != name) Log.i("Den", "$name is $target")
+        val reopen: suspend () -> Opened = { router.open(target, device(), contextLength, config.useMmap, minContextLength) }
         val crashed = { o: Opened, e: Throwable -> router.reportFailure(device(), o.candidate, e) }
-        return LocalModel(name, reopen(), reopen, crashed, probe::thermal) { local -= it }.also { it.licenceOf = ::licence; local += it }
+        return LocalModel(target, reopen(), reopen, crashed, probe::thermal) { local -= it }.also {
+            it.licenceOf = ::licence
+            it.alias = name.takeIf { n -> n != target }
+            local += it
+        }
     }
 
     // Closes the models this Den opened in the app process, and the connection to the Den app.
@@ -378,6 +394,12 @@ class Den private constructor(context: Context, private val config: DenConfig) :
     }
 }
 
+// Built-in aliases: the first model of each list that runs on the phone.
+val DEFAULT_ALIASES = mapOf(
+    "den.default" to listOf("qwen3-1.7b", "qwen3-0.6b"),
+    "den.small" to listOf("qwen3-0.6b"),
+)
+
 // One candidate of a route, the same in both modes.
 data class Route(val backend: String, val accel: Accel, val quant: String, val source: Source) {
     override fun toString() = "$backend $accel $quant ($source)"
@@ -391,6 +413,10 @@ abstract class DenModel : AutoCloseable {
     abstract val source: Source
 
     internal var licenceOf: (String, String) -> String? = { _, _ -> null }
+
+    // The alias the app asked for (e.g. den.default) when [name] is the model behind it; null otherwise.
+    var alias: String? = null
+        internal set
 
     // Licence id of the file in use (e.g. apache-2.0), from the catalog; null when the source gives none.
     val licence: String? get() = licenceOf(name, quant)

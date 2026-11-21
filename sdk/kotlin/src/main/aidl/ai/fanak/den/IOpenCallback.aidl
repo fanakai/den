@@ -18,4 +18,7 @@ oneway interface IOpenCallback {
 
     // Version 5, after openWith: an error with its kind, "no_backend" when no candidate could run, else "error".
     void onFailed(String kind, String message);
+
+    // Version 6, after openWith: the model behind the name, when the name is an alias (den.default).
+    void onModel(String model);
 }
