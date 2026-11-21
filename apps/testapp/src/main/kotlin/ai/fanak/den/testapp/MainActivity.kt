@@ -68,11 +68,39 @@ class MainActivity : Activity() {
         setContentView(root)
 
         showPlan()
+        if (intent.getBooleanExtra("bench", false)) bench()
         if (intent.getBooleanExtra("autorun", false)) run()
         if (intent.getBooleanExtra("soak", false)) {
             startForegroundService(android.content.Intent(this, SoakService::class.java).putExtras(intent))
         }
         if (intent.getBooleanExtra("remote", false)) remoteCheck(model, prompt.text.toString())
+    }
+
+    // den bench: --ez bench true [--ei runs 5] [--es quants q4_0,q4_k_m | all]. Writes <soc>-<model>.yaml (the recipe)
+    // and .json (every candidate) to /sdcard/Android/data/ai.fanak.den.testapp/files/bench.
+    private fun bench() {
+        val runs = intent.getIntExtra("runs", 5)
+        val quants = intent.getStringExtra("quants")?.let { if (it == "all") null else it.split(',').toSet() } ?: setOf("q4_0", "q4_k_m")
+        // A benchmark takes minutes: the screen must not time out, or the phone slows down and the GPU stalls.
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        job = scope.launch {
+            try {
+                val r = den.bench(model, runs, quants) { log(it) }
+                val dir = java.io.File(getExternalFilesDir(null), "bench").apply { mkdirs() }
+                val name = "${r.soc}-${model.replace(Regex("[^A-Za-z0-9._-]"), "_")}"
+                java.io.File(dir, "$name.json").writeText(r.toJson())
+                val yaml = r.recipe()?.let { ai.fanak.den.core.recipe.RecipeFiles.encode(it) }
+                if (yaml != null) java.io.File(dir, "$name.yaml").writeText(yaml)
+                r.ranked().forEach { c -> log("bench ranked: ${c.accel} ${c.quant}, prefill ${c.prefillTps}, decode ${c.decodeTps}, ttft ${c.ttftMs} ms, peak ${c.peakRamMb} MB") }
+                r.candidates.filter { !it.ok }.forEach { c -> log("bench failed: ${c.accel} ${c.quant}: ${c.error}") }
+                log("bench done: ${dir.path}/$name.${if (yaml != null) "yaml" else "json (no recipe: model size unknown or nothing ran)"}")
+                yaml?.lines()?.forEach { log("recipe: $it") }
+            } catch (e: Exception) {
+                log("bench error: ${e.message}")
+            } finally {
+                window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
     }
 
     private fun select(m: String) {

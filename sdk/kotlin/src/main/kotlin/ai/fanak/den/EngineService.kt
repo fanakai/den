@@ -62,6 +62,8 @@ class EngineService : Service() {
 
         override fun version(backend: String) = guard { backend(backend).version }
 
+        override fun residentKb(): Long = residentKb("self") ?: -1
+
         override fun load(backend: String, artifact: String, options: String): Long = guard {
             val a = JSON.decodeFromString(Artifact.serializer(), artifact)
             val o = JSON.decodeFromString(LoadOptions.serializer(), options)
@@ -137,3 +139,10 @@ class EngineService : Service() {
         }
     }
 }
+
+// VmRSS of /proc/<proc>/status in kB ("self" for this process).
+internal fun residentKb(proc: String): Long? = runCatching {
+    java.io.File("/proc/$proc/status").useLines { lines ->
+        lines.firstOrNull { it.startsWith("VmRSS:") }?.split(Regex("\\s+"))?.getOrNull(1)?.toLong()
+    }
+}.getOrNull()
