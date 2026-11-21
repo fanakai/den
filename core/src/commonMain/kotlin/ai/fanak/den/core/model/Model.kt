@@ -1,14 +1,27 @@
 package ai.fanak.den.core.model
 
-import kotlinx.serialization.SerialName
+import kotlin.jvm.JvmInline
 import kotlinx.serialization.Serializable
 
+/**
+ * A model file format, by its id as recipes write it (`gguf`): an open value, so a new engine (MNN, ONNX Runtime
+ * GenAI, RKLLM) brings its own without a change here or to the recipe schema.
+ */
 @Serializable
-enum class ModelFormat {
-    @SerialName("gguf") GGUF,
-    @SerialName("litertlm") LITERTLM,
-    @SerialName("pte") PTE,
-    @SerialName("qnn") QNN,
+@JvmInline
+value class ModelFormat(val id: String) {
+    init {
+        require(id.isNotBlank() && id == id.lowercase()) { "format id must be lower case: $id" }
+    }
+
+    override fun toString() = id
+
+    companion object {
+        val GGUF = ModelFormat("gguf")
+        val LITERTLM = ModelFormat("litertlm")
+        val PTE = ModelFormat("pte")
+        val QNN = ModelFormat("qnn")
+    }
 }
 
 // One downloadable file of a model. soc is set only for SoC-specific builds (e.g. NPU).

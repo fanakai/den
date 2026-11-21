@@ -272,7 +272,7 @@ class MainActivity : Activity() {
                     addView(TextView(context).apply {
                         text = "${d.name} ${d.version} (${d.id}), ${d.tier.name.lowercase()}, ${d.licence}\n" +
                             "${d.author}, ${d.url}\n${d.modes.joinToString { it.name.lowercase() }}, " +
-                            "${d.formats.joinToString { it.name.lowercase() }}, slots ${d.slots.name.lowercase()}"
+                            "${d.formats.joinToString { it.id }}, slots ${d.slots.name.lowercase()}"
                     })
                 }
             }

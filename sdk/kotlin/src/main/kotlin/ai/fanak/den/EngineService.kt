@@ -56,7 +56,7 @@ class EngineService : Service() {
 
         override fun probe(backend: String, device: String): Array<String> = guard {
             val caps = backend(backend).probe(JSON.decodeFromString(DeviceProfile.serializer(), device))
-            (caps.accels.map { "accel:${it.name}" } + caps.formats.map { "format:${it.name}" } +
+            (caps.accels.map { "accel:${it.name}" } + caps.formats.map { "format:${it.id}" } +
                 caps.architectures.orEmpty().map { "arch:$it" }).toTypedArray()
         }
 
