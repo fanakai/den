@@ -1,0 +1,287 @@
+public final class ai/fanak/den/CachedFile {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JJZLjava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JJZLjava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()J
+	public final fun component5 ()J
+	public final fun component6 ()Z
+	public final fun component7 ()Ljava/lang/String;
+	public final fun component8 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JJZLjava/lang/String;Ljava/lang/String;)Lai/fanak/den/CachedFile;
+	public static synthetic fun copy$default (Lai/fanak/den/CachedFile;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JJZLjava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lai/fanak/den/CachedFile;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytes ()J
+	public final fun getComplete ()Z
+	public final fun getFileName ()Ljava/lang/String;
+	public final fun getLicence ()Ljava/lang/String;
+	public final fun getModel ()Ljava/lang/String;
+	public final fun getPath ()Ljava/lang/String;
+	public final fun getQuant ()Ljava/lang/String;
+	public final fun getTotalBytes ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ai/fanak/den/Chat {
+	public final fun clear ()Z
+	public final fun getMessages ()Ljava/util/List;
+	public final fun reply (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun send (Ljava/lang/String;)Lkotlinx/coroutines/flow/Flow;
+}
+
+public final class ai/fanak/den/Den : java/lang/AutoCloseable {
+	public static final field Companion Lai/fanak/den/Den$Companion;
+	public synthetic fun <init> (Landroid/content/Context;Lai/fanak/den/DenConfig;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun backendDescriptors (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun bench (Ljava/lang/String;ILjava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun bench$default (Lai/fanak/den/Den;Ljava/lang/String;ILjava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public fun close ()V
+	public final fun device ()Lai/fanak/den/core/device/DeviceProfile;
+	public final fun download (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun exclusiveAccelerator (Ljava/lang/String;)Ljava/lang/String;
+	public final fun explain (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun fileName (Ljava/lang/String;)Ljava/lang/String;
+	public final fun getAliases ()Lai/fanak/den/core/model/ModelAliases;
+	public final fun getConnected ()Z
+	public final fun getFiles ()Lai/fanak/den/ModelFiles;
+	public final fun getLocalRecipes ()Lai/fanak/den/core/recipe/LocalRecipeStore;
+	public final fun getModelDir ()Ljava/io/File;
+	public final fun getModels ()Ljava/util/List;
+	public final fun getRecipes ()Ljava/util/List;
+	public final fun httpEndpoint (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun licence (Ljava/lang/String;)Ljava/lang/String;
+	public final fun model (Ljava/lang/String;IILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun model$default (Lai/fanak/den/Den;Ljava/lang/String;IILkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun newerCommit (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun plan (Ljava/lang/String;Lai/fanak/den/core/device/DeviceProfile;I)Ljava/util/List;
+	public static synthetic fun plan$default (Lai/fanak/den/Den;Ljava/lang/String;Lai/fanak/den/core/device/DeviceProfile;IILjava/lang/Object;)Ljava/util/List;
+	public final fun ramNeedMb (Ljava/lang/String;Lai/fanak/den/core/device/DeviceProfile;)Ljava/lang/Integer;
+	public static synthetic fun ramNeedMb$default (Lai/fanak/den/Den;Ljava/lang/String;Lai/fanak/den/core/device/DeviceProfile;ILjava/lang/Object;)Ljava/lang/Integer;
+	public final fun resolve (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun resolveAlias (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun route (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class ai/fanak/den/Den$Companion {
+	public final fun connect (Landroid/content/Context;Lai/fanak/den/DenConfig;)Lai/fanak/den/Den;
+	public static synthetic fun connect$default (Lai/fanak/den/Den$Companion;Landroid/content/Context;Lai/fanak/den/DenConfig;ILjava/lang/Object;)Lai/fanak/den/Den;
+}
+
+public final class ai/fanak/den/DenAppKt {
+	public static final fun getDEN_CERTIFICATES ()Ljava/util/List;
+}
+
+public final class ai/fanak/den/DenConfig {
+	public fun <init> ()V
+	public fun <init> (Ljava/io/File;ILjava/lang/Integer;ZZLkotlin/jvm/functions/Function1;Lai/fanak/den/DenMode;Ljava/util/List;ZLjava/util/List;Ljava/util/List;Lai/fanak/den/core/model/ModelStore;Ljava/util/List;ZZLai/fanak/den/core/router/FailureStore;Lkotlin/jvm/functions/Function3;ZLkotlin/jvm/functions/Function1;ZLjava/util/Map;Lai/fanak/den/core/router/RoutingPolicy;)V
+	public synthetic fun <init> (Ljava/io/File;ILjava/lang/Integer;ZZLkotlin/jvm/functions/Function1;Lai/fanak/den/DenMode;Ljava/util/List;ZLjava/util/List;Ljava/util/List;Lai/fanak/den/core/model/ModelStore;Ljava/util/List;ZZLai/fanak/den/core/router/FailureStore;Lkotlin/jvm/functions/Function3;ZLkotlin/jvm/functions/Function1;ZLjava/util/Map;Lai/fanak/den/core/router/RoutingPolicy;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/io/File;
+	public final fun component10 ()Ljava/util/List;
+	public final fun component11 ()Ljava/util/List;
+	public final fun component12 ()Lai/fanak/den/core/model/ModelStore;
+	public final fun component13 ()Ljava/util/List;
+	public final fun component14 ()Z
+	public final fun component15 ()Z
+	public final fun component16 ()Lai/fanak/den/core/router/FailureStore;
+	public final fun component17 ()Lkotlin/jvm/functions/Function3;
+	public final fun component18 ()Z
+	public final fun component19 ()Lkotlin/jvm/functions/Function1;
+	public final fun component2 ()I
+	public final fun component20 ()Z
+	public final fun component21 ()Ljava/util/Map;
+	public final fun component22 ()Lai/fanak/den/core/router/RoutingPolicy;
+	public final fun component3 ()Ljava/lang/Integer;
+	public final fun component4 ()Z
+	public final fun component5 ()Z
+	public final fun component6 ()Lkotlin/jvm/functions/Function1;
+	public final fun component7 ()Lai/fanak/den/DenMode;
+	public final fun component8 ()Ljava/util/List;
+	public final fun component9 ()Z
+	public final fun copy (Ljava/io/File;ILjava/lang/Integer;ZZLkotlin/jvm/functions/Function1;Lai/fanak/den/DenMode;Ljava/util/List;ZLjava/util/List;Ljava/util/List;Lai/fanak/den/core/model/ModelStore;Ljava/util/List;ZZLai/fanak/den/core/router/FailureStore;Lkotlin/jvm/functions/Function3;ZLkotlin/jvm/functions/Function1;ZLjava/util/Map;Lai/fanak/den/core/router/RoutingPolicy;)Lai/fanak/den/DenConfig;
+	public static synthetic fun copy$default (Lai/fanak/den/DenConfig;Ljava/io/File;ILjava/lang/Integer;ZZLkotlin/jvm/functions/Function1;Lai/fanak/den/DenMode;Ljava/util/List;ZLjava/util/List;Ljava/util/List;Lai/fanak/den/core/model/ModelStore;Ljava/util/List;ZZLai/fanak/den/core/router/FailureStore;Lkotlin/jvm/functions/Function3;ZLkotlin/jvm/functions/Function1;ZLjava/util/Map;Lai/fanak/den/core/router/RoutingPolicy;ILjava/lang/Object;)Lai/fanak/den/DenConfig;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAliases ()Ljava/util/Map;
+	public final fun getAllowLicence ()Lkotlin/jvm/functions/Function1;
+	public final fun getApprovalScreen ()Z
+	public final fun getBackends ()Ljava/util/List;
+	public final fun getBeforeDownload ()Lkotlin/jvm/functions/Function3;
+	public final fun getBundledRecipes ()Z
+	public final fun getCatalogs ()Ljava/util/List;
+	public final fun getContextLength ()I
+	public final fun getDenCertificates ()Ljava/util/List;
+	public final fun getDownload ()Z
+	public final fun getFailures ()Lai/fanak/den/core/router/FailureStore;
+	public final fun getFallback ()Z
+	public final fun getFirstRunBenchmark ()Z
+	public final fun getIsolate ()Z
+	public final fun getMinContextLength ()Ljava/lang/Integer;
+	public final fun getMode ()Lai/fanak/den/DenMode;
+	public final fun getModelDir ()Ljava/io/File;
+	public final fun getOnDownload ()Lkotlin/jvm/functions/Function1;
+	public final fun getRecipes ()Ljava/util/List;
+	public final fun getRouting ()Lai/fanak/den/core/router/RoutingPolicy;
+	public final fun getStore ()Lai/fanak/den/core/model/ModelStore;
+	public final fun getUseMmap ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ai/fanak/den/DenKt {
+	public static final fun getDEFAULT_ALIASES ()Ljava/util/Map;
+}
+
+public final class ai/fanak/den/DenMode : java/lang/Enum {
+	public static final field AUTO Lai/fanak/den/DenMode;
+	public static final field CONNECTED Lai/fanak/den/DenMode;
+	public static final field EMBEDDED Lai/fanak/den/DenMode;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lai/fanak/den/DenMode;
+	public static fun values ()[Lai/fanak/den/DenMode;
+}
+
+public abstract class ai/fanak/den/DenModel : java/lang/AutoCloseable {
+	public fun <init> ()V
+	public abstract fun chat (Lai/fanak/den/core/backend/GenRequest;)Lkotlinx/coroutines/flow/Flow;
+	public final fun chat (Ljava/lang/String;IF)Lkotlinx/coroutines/flow/Flow;
+	public static synthetic fun chat$default (Lai/fanak/den/DenModel;Ljava/lang/String;IFILjava/lang/Object;)Lkotlinx/coroutines/flow/Flow;
+	public abstract fun getAccel ()Lai/fanak/den/core/device/Accel;
+	public final fun getAlias ()Ljava/lang/String;
+	public abstract fun getBackend ()Ljava/lang/String;
+	public abstract fun getConnected ()Z
+	public fun getContextLength ()I
+	public fun getFailures ()Ljava/util/List;
+	public final fun getFallback ()Z
+	public final fun getLicence ()Ljava/lang/String;
+	public fun getLocation ()Lai/fanak/den/core/backend/Location;
+	public abstract fun getName ()Ljava/lang/String;
+	public abstract fun getQuant ()Ljava/lang/String;
+	public fun getRejected ()Ljava/util/List;
+	public abstract fun getSource ()Lai/fanak/den/core/router/Source;
+	public final fun newChat (Ljava/lang/String;IF)Lai/fanak/den/Chat;
+	public static synthetic fun newChat$default (Lai/fanak/den/DenModel;Ljava/lang/String;IFILjava/lang/Object;)Lai/fanak/den/Chat;
+	public final fun reply (Ljava/lang/String;IFLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun reply$default (Lai/fanak/den/DenModel;Ljava/lang/String;IFLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public abstract interface class ai/fanak/den/IDenService : android/os/IInterface {
+	public static final field DESCRIPTOR Ljava/lang/String;
+	public abstract fun cancel (J)V
+	public abstract fun cancelOpen (Lai/fanak/den/IOpenCallback;)V
+	public abstract fun close (J)V
+	public abstract fun generate (J[Ljava/lang/String;[Ljava/lang/String;IFF[Ljava/lang/String;Lai/fanak/den/IGenCallback;)V
+	public abstract fun httpPort ()I
+	public abstract fun models ()[Ljava/lang/String;
+	public abstract fun open (Ljava/lang/String;Lai/fanak/den/IOpenCallback;)V
+	public abstract fun openWith (Ljava/lang/String;Ljava/lang/String;Lai/fanak/den/IOpenCallback;)V
+	public abstract fun plan (Ljava/lang/String;Ljava/lang/String;)[Ljava/lang/String;
+	public abstract fun version ()I
+}
+
+public class ai/fanak/den/IDenService$Default : ai/fanak/den/IDenService {
+	public fun <init> ()V
+	public fun asBinder ()Landroid/os/IBinder;
+	public fun cancel (J)V
+	public fun cancelOpen (Lai/fanak/den/IOpenCallback;)V
+	public fun close (J)V
+	public fun generate (J[Ljava/lang/String;[Ljava/lang/String;IFF[Ljava/lang/String;Lai/fanak/den/IGenCallback;)V
+	public fun httpPort ()I
+	public fun models ()[Ljava/lang/String;
+	public fun open (Ljava/lang/String;Lai/fanak/den/IOpenCallback;)V
+	public fun openWith (Ljava/lang/String;Ljava/lang/String;Lai/fanak/den/IOpenCallback;)V
+	public fun plan (Ljava/lang/String;Ljava/lang/String;)[Ljava/lang/String;
+	public fun version ()I
+}
+
+public abstract class ai/fanak/den/IDenService$Stub : android/os/Binder, ai/fanak/den/IDenService {
+	public fun <init> ()V
+	public fun asBinder ()Landroid/os/IBinder;
+	public static fun asInterface (Landroid/os/IBinder;)Lai/fanak/den/IDenService;
+	public fun onTransact (ILandroid/os/Parcel;Landroid/os/Parcel;I)Z
+}
+
+public abstract interface class ai/fanak/den/IGenCallback : android/os/IInterface {
+	public static final field DESCRIPTOR Ljava/lang/String;
+	public abstract fun onDone ([J)V
+	public abstract fun onError (Ljava/lang/String;)V
+	public abstract fun onText (Ljava/lang/String;)V
+}
+
+public class ai/fanak/den/IGenCallback$Default : ai/fanak/den/IGenCallback {
+	public fun <init> ()V
+	public fun asBinder ()Landroid/os/IBinder;
+	public fun onDone ([J)V
+	public fun onError (Ljava/lang/String;)V
+	public fun onText (Ljava/lang/String;)V
+}
+
+public abstract class ai/fanak/den/IGenCallback$Stub : android/os/Binder, ai/fanak/den/IGenCallback {
+	public fun <init> ()V
+	public fun asBinder ()Landroid/os/IBinder;
+	public static fun asInterface (Landroid/os/IBinder;)Lai/fanak/den/IGenCallback;
+	public fun onTransact (ILandroid/os/Parcel;Landroid/os/Parcel;I)Z
+}
+
+public abstract interface class ai/fanak/den/IOpenCallback : android/os/IInterface {
+	public static final field DESCRIPTOR Ljava/lang/String;
+	public abstract fun onApproval (Landroid/app/PendingIntent;)V
+	public abstract fun onContext (I)V
+	public abstract fun onError (Ljava/lang/String;)V
+	public abstract fun onFailed (Ljava/lang/String;Ljava/lang/String;)V
+	public abstract fun onModel (Ljava/lang/String;)V
+	public abstract fun onOpened (JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public abstract fun onProgress (Ljava/lang/String;JJ)V
+}
+
+public class ai/fanak/den/IOpenCallback$Default : ai/fanak/den/IOpenCallback {
+	public fun <init> ()V
+	public fun asBinder ()Landroid/os/IBinder;
+	public fun onApproval (Landroid/app/PendingIntent;)V
+	public fun onContext (I)V
+	public fun onError (Ljava/lang/String;)V
+	public fun onFailed (Ljava/lang/String;Ljava/lang/String;)V
+	public fun onModel (Ljava/lang/String;)V
+	public fun onOpened (JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public fun onProgress (Ljava/lang/String;JJ)V
+}
+
+public abstract class ai/fanak/den/IOpenCallback$Stub : android/os/Binder, ai/fanak/den/IOpenCallback {
+	public fun <init> ()V
+	public fun asBinder ()Landroid/os/IBinder;
+	public static fun asInterface (Landroid/os/IBinder;)Lai/fanak/den/IOpenCallback;
+	public fun onTransact (ILandroid/os/Parcel;Landroid/os/Parcel;I)Z
+}
+
+public class ai/fanak/den/IOpenCallback$_Parcel {
+	public fun <init> ()V
+}
+
+public final class ai/fanak/den/ModelFiles {
+	public fun <init> (Ljava/io/File;Lai/fanak/den/core/model/ModelCatalog;)V
+	public synthetic fun <init> (Ljava/io/File;Lai/fanak/den/core/model/ModelCatalog;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun delete (Ljava/lang/String;)J
+	public final fun deletePartial (Ljava/util/Set;)J
+	public static synthetic fun deletePartial$default (Lai/fanak/den/ModelFiles;Ljava/util/Set;ILjava/lang/Object;)J
+	public final fun getFreeBytes ()J
+	public final fun getUsedBytes ()J
+	public final fun list ()Ljava/util/List;
+}
+
+public final class ai/fanak/den/Route {
+	public fun <init> (Ljava/lang/String;Lai/fanak/den/core/device/Accel;Ljava/lang/String;Lai/fanak/den/core/router/Source;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lai/fanak/den/core/device/Accel;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Lai/fanak/den/core/router/Source;
+	public final fun copy (Ljava/lang/String;Lai/fanak/den/core/device/Accel;Ljava/lang/String;Lai/fanak/den/core/router/Source;)Lai/fanak/den/Route;
+	public static synthetic fun copy$default (Lai/fanak/den/Route;Ljava/lang/String;Lai/fanak/den/core/device/Accel;Ljava/lang/String;Lai/fanak/den/core/router/Source;ILjava/lang/Object;)Lai/fanak/den/Route;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAccel ()Lai/fanak/den/core/device/Accel;
+	public final fun getBackend ()Ljava/lang/String;
+	public final fun getQuant ()Ljava/lang/String;
+	public final fun getSource ()Lai/fanak/den/core/router/Source;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+

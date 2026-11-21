@@ -1,0 +1,15 @@
+public final class ai/fanak/den/backend/llamacpp/EngineException : java/lang/RuntimeException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class ai/fanak/den/backend/llamacpp/LlamaCppBackend : ai/fanak/den/core/backend/DenBackend {
+	public fun <init> ()V
+	public fun getAbout ()Lai/fanak/den/core/backend/BackendDescriptor;
+	public fun getDescriptor ()Lai/fanak/den/core/backend/BackendDescriptor;
+	public fun getId ()Ljava/lang/String;
+	public fun getVersion ()Ljava/lang/String;
+	public fun health ()Lai/fanak/den/core/backend/Health;
+	public fun load (Lai/fanak/den/core/model/Artifact;Lai/fanak/den/core/backend/LoadOptions;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun probe (Lai/fanak/den/core/device/DeviceProfile;)Lai/fanak/den/core/backend/Capabilities;
+}
+

@@ -237,8 +237,13 @@ class DenService : Service() {
 
     private val http = OpenAiServer(
         scope,
-        models = { den.models },
-        use = { name, block -> pool.use(name) { m -> block { req -> recorded(name, m, m.chat(req)) } } },
+        // Aliases too, so OpenAI clients can list and pick them.
+        models = { den.models + den.aliases.names.sorted() },
+        // An alias opens the model behind it, so both share one loaded copy.
+        use = { name, block ->
+            val target = den.resolveAlias(name)
+            pool.use(target) { m -> block { req -> recorded(target, m, m.chat(req)) } }
+        },
         client = { HttpSettings.name(this, it) },
         log = ::log,
         systemInfo = ::systemInfo,

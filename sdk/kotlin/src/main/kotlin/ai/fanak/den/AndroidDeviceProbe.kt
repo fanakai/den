@@ -14,7 +14,7 @@ import android.os.Build
 import android.os.PowerManager
 import java.io.File
 
-class AndroidDeviceProbe(context: Context) : DeviceProbe {
+internal class AndroidDeviceProbe(context: Context) : DeviceProbe {
     private val context = context.applicationContext
 
     // What does not change while the app runs, read once. Each part is left empty when the system does not let an app

@@ -26,6 +26,7 @@ git submodule update --init
 ```
 
 - After a change to an AIDL file or another interface, run `./gradlew build --rerun-tasks` before opening a PR: an incremental build can miss a class that implements the interface.
+- The public API of `core/`, `sdk/kotlin/` and `backends/llamacpp/` is in their `api/*.api` files, and `./gradlew build` fails when it changes. After an intended change, run `./gradlew apiDump` and commit the updated files with it.
 - CI (`.github/workflows/build.yml`) runs `./gradlew build` on every pull request and must pass before merging.
 - On Linux and macOS, `./gradlew :backends:llamacpp:test` also builds the engine for the machine (cmake and a C++ compiler needed) and runs it through JNI on a 1.2 MB model: generation, stop strings, cancel, context limits. On Windows these tests are skipped; CI runs them.
 
@@ -41,7 +42,7 @@ git submodule update --init
 1) `core/` stays multiplatform: `commonMain` uses no `java.*`, so the router can be reused on iOS and Linux boards later.
 2) Never commit model files (`*.gguf`, `*.litertlm`, `*.pte`, `models/`); the model manager downloads them and checks their SHA-256.
 3) A recipe holds only measured numbers, with the device, the date and the protocol. Never write an estimated or copied number into a recipe or a doc.
-4) AIDL changes are added at the end of the interface, and `IDenService.version()` is raised, so older clients keep working.
+4) AIDL changes are added at the end of the interface, and `IDenService.version()` is raised, so older clients keep working ([docs/aidl.md](docs/aidl.md)). The HTTP API keeps `/v1` to what OpenAI has, and puts Den's own calls under `/den/v1` ([docs/http-api.md](docs/http-api.md)).
 5) A failing client must never take down the Den service: catch errors per client, and keep a reference to every binder that a death link is set on.
 6) Comments only where the code does not say it already, and short.
 
