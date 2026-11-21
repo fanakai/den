@@ -300,6 +300,17 @@ class Den private constructor(context: Context, private val config: DenConfig) :
 
     val addedFiles: List<LocalFile> get() = localFiles.all()
 
+    /**
+     * Adds the GGUF files of a folder the user granted with the system picker (ACTION_OPEN_DOCUMENT_TREE), where they
+     * are; calling it again for the same folder adds the files that appeared since. Returns the files it added.
+     */
+    suspend fun addFolder(tree: Uri): List<LocalFile> = withContext(Dispatchers.IO) { localFiles.addFolder(tree) }
+
+    val addedFolders: List<Uri> get() = localFiles.folders().map(Uri::parse)
+
+    // Forgets a folder and its files, and gives up its permission; the files stay.
+    fun removeFolder(tree: Uri) = localFiles.removeFolder(tree)
+
     // Forgets an added file and gives up its permission; the file itself stays.
     fun removeFile(id: String) = localFiles.remove(id)
 

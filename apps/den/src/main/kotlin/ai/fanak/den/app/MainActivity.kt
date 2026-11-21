@@ -366,6 +366,14 @@ class MainActivity : Activity() {
             val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
             startActivityForResult(pick, PICK_FILE)
         })
+        models.addView(button("Add a folder of model files") { startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), PICK_FOLDER) })
+        benchDen.addedFolders.forEach { f ->
+            val name = f.lastPathSegment?.substringAfterLast(':') ?: "folder"
+            models.addView(LinearLayout(this).apply {
+                addView(button("Look again in $name") { addFolder(f) })
+                addView(button("Forget $name") { benchDen.removeFolder(f); status = "Forgot $name; its files stay" })
+            })
+        }
         // A pasted Hugging Face link gives the model id apps use; the download starts when an app opens it.
         val link = EditText(this).apply { hint = "Hugging Face link or hf:owner/repo"; inputType = InputType.TYPE_TEXT_VARIATION_URI }
         models.addView(link, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -390,12 +398,25 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         val uri = data?.data
-        if (requestCode != PICK_FILE || resultCode != RESULT_OK || uri == null) return
+        if (resultCode != RESULT_OK || uri == null) return
+        if (requestCode == PICK_FOLDER) return addFolder(uri)
+        if (requestCode != PICK_FILE) return
         status = "Adding the file: reading it once to check it…"
         showModels()
         scope.launch {
             status = runCatching { benchDen.addFile(uri) }
                 .fold({ "Added ${it.id}: apps can use it by that name" }, { "Not added: ${it.message}" })
+            showModels()
+        }
+    }
+
+    // Every GGUF of the folder, each read once to check it; files already added are skipped.
+    private fun addFolder(tree: android.net.Uri) {
+        status = "Adding the files of the folder: reading each once…"
+        showModels()
+        scope.launch {
+            status = runCatching { benchDen.addFolder(tree) }
+                .fold({ found -> if (found.isEmpty()) "No new GGUF file in the folder" else "Added ${found.joinToString { it.id }}" }, { "Not added: ${it.message}" })
             showModels()
         }
     }
@@ -458,6 +479,7 @@ class MainActivity : Activity() {
 
     private companion object {
         const val PICK_FILE = 7
+        const val PICK_FOLDER = 8
     }
 
     private fun button(label: String, onClick: () -> Unit) = Button(this).apply {
