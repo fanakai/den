@@ -56,7 +56,7 @@ class MainActivity : Activity() {
             appendLine("models in ${den.modelDir.path}")
             den.models.forEach { m ->
                 appendLine()
-                appendLine(m)
+                appendLine("$m, licence ${den.licence(m) ?: "not given"}")
                 den.plan(m).forEachIndexed { i, c -> appendLine("  $i. ${c.backend.id} ${c.accel} ${c.variant.quant} (${c.source})") }
             }
         }
@@ -237,7 +237,7 @@ class MainActivity : Activity() {
         if (list.isEmpty()) models.addView(TextView(this).apply { text = "No model downloaded yet." })
         list.forEach { f ->
             val size = if (f.complete) "${f.bytes shr 20} MB" else "${f.bytes shr 20}/${f.totalBytes shr 20} MB, unfinished"
-            models.addView(TextView(this).apply { text = "${f.model} ${f.quant}: ${f.fileName}, $size" })
+            models.addView(TextView(this).apply { text = "${f.model} ${f.quant}: ${f.fileName}, $size, licence ${f.licence ?: "not given"}" })
         }
         list.map { it.model }.distinct().forEach { m ->
             models.addView(button("Delete $m") { run { DenService.delete(this, m) } })

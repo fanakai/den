@@ -21,6 +21,9 @@ class ModelIndexTest {
         val v = index.resolve("small").single()
         assertEquals("small" to "q4_0", v.model to v.quant)
         assertEquals("hf/o/r/f.gguf", index.remote(v)?.path)
+        // The reviewed licence, also before any lookup.
+        assertEquals("apache-2.0", index.remote(v)?.licence)
+        assertEquals("apache-2.0", index.licence("small"))
         assertEquals(listOf(v), index.variants("small"))
         assertEquals(listOf(v), index.resolve("tiny"))
     }

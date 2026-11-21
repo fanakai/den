@@ -15,6 +15,8 @@ data class CachedFile(
     val complete: Boolean,
     // Relative to the model folder, e.g. hf/unsloth/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q4_0.gguf.
     val path: String = fileName,
+    // Licence id, e.g. apache-2.0; null when the source gave none.
+    val licence: String? = null,
 )
 
 /**
@@ -51,8 +53,11 @@ class ModelFiles(private val dir: File, private val legacy: ModelCatalog = Built
     fun deletePartial(keep: Set<String> = emptySet()): Long =
         manifest.entries().filter { !it.complete && it.fileName !in keep }.sumOf { remove(it) }
 
-    private fun ManifestEntry.cached(bytes: Long, complete: Boolean) =
-        CachedFile(fileName, model, quant, bytes, sizeBytes, complete, path)
+    // Manifests from before licences were kept: the legacy catalog may still know the file.
+    private fun ManifestEntry.cached(bytes: Long, complete: Boolean) = CachedFile(
+        fileName, model, quant, bytes, sizeBytes, complete, path,
+        licence ?: legacy.models.flatMap { legacy.variants(it) }.firstNotNullOfOrNull { v -> legacy.remote(v)?.takeIf { it.path == path }?.licence },
+    )
 
     private fun remove(e: ManifestEntry): Long {
         val freed = listOf("", ".sha256", ".part").sumOf { ext ->
@@ -81,7 +86,7 @@ class ModelFiles(private val dir: File, private val legacy: ModelCatalog = Built
                 File(dir, r.fileName + ext).takeIf { it.isFile }?.renameTo(File(dir, r.path + ext))
             }
             val complete = File(dir, r.path).let { it.isFile && it.length() == r.sizeBytes }
-            manifest.put(ManifestEntry(v.model, v.format, v.quant, r.path, r.sha256, r.sizeBytes, r.url, complete))
+            manifest.put(ManifestEntry(v.model, v.format, v.quant, r.path, r.sha256, r.sizeBytes, r.url, complete, r.licence))
         }
     }
 }

@@ -44,6 +44,9 @@ interface ModelCatalog {
 
     // Where to download a variant from; null when this catalog does not serve it.
     fun remote(variant: Variant): RemoteFile? = null
+
+    // The model's licence id when known before any lookup, e.g. from a curated entry.
+    fun licence(model: String): String? = null
 }
 
 /** Several catalogs as one: models and variants in catalog order, a variant's file from the first catalog that has it. */
@@ -55,6 +58,8 @@ class CompositeCatalog(private val catalogs: List<ModelCatalog>) : ModelCatalog 
     override suspend fun resolve(id: String) = catalogs.flatMap { it.resolve(id) }.distinct()
 
     override fun remote(variant: Variant) = catalogs.firstNotNullOfOrNull { it.remote(variant) }
+
+    override fun licence(model: String) = catalogs.firstNotNullOfOrNull { it.licence(model) }
 }
 
 // Downloads and caches variants; in connected mode one copy is shared by all apps.

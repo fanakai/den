@@ -56,6 +56,8 @@ class Router(
     private val failures: FailureStore = InMemoryFailureStore(),
     private val local: RecipeStore? = null,
     private val firstRun: FirstRun? = null,
+    // Whether the app may use a file under this licence id (null: none given); the catalog gives the id.
+    private val allowLicence: (String?) -> Boolean = { true },
 ) {
     // Variants measured by the first run in this process, so a run that saved nothing is not repeated on each open.
     private val measured = java.util.Collections.synchronizedSet(mutableSetOf<Variant>())
@@ -70,6 +72,7 @@ class Router(
             .filter { it.soc == null || it.soc == device.soc }
             .filter { it.minRamMb <= device.availRamMb }
             .filter { fitsContext(it, minContext) }
+            .filter { licenceOk(it) }
 
         fun usable(backend: DenBackend, accel: Accel, v: Variant) =
             caps[backend]?.let { it.supports(accel, v.format) && it.loads(v.arch) } == true
@@ -167,7 +170,8 @@ class Router(
 
     private fun emptyPlanReason(model: String, device: DeviceProfile, minContext: Int?): String {
         val all = catalog.variants(model).filter { it.soc == null || it.soc == device.soc }
-        val longEnough = all.filter { fitsContext(it, minContext) }
+        val allowed = all.filter { licenceOk(it) }
+        val longEnough = allowed.filter { fitsContext(it, minContext) }
         val fits = longEnough.filter { it.minRamMb <= device.availRamMb }
         val caps = backends.mapNotNull { runCatching { it.probe(device) }.getOrNull() }
         val unknownArch = all.filter { v ->
@@ -175,8 +179,10 @@ class Router(
         }
         return when {
             all.isEmpty() -> "unknown model $model: no catalog has a file for it"
+            allowed.isEmpty() ->
+                "this app does not allow the licence of $model (${all.map { catalog.remote(it)?.licence ?: "none given" }.distinct().joinToString()})"
             longEnough.isEmpty() ->
-                "no file of $model supports a context of $minContext tokens (the longest has ${all.mapNotNull { it.maxContext }.max()})"
+                "no file of $model supports a context of $minContext tokens (the longest has ${allowed.mapNotNull { it.maxContext }.max()})"
             unknownArch.size == all.size ->
                 "$model needs a newer engine (architecture ${unknownArch.mapNotNull { it.arch }.distinct().joinToString()})"
             fits.isEmpty() -> "no file of $model fits in free RAM: ${device.availRamMb} MB free, the smallest needs ${all.minOf { it.minRamMb }} MB"
@@ -186,6 +192,8 @@ class Router(
     }
 
     private fun fitsContext(v: Variant, minContext: Int?) = minContext == null || v.maxContext == null || v.maxContext >= minContext
+
+    private fun licenceOk(v: Variant) = allowLicence(catalog.remote(v)?.licence)
 
     // For crashes after load, e.g. during generation; the next open() skips this candidate.
     fun reportFailure(device: DeviceProfile, candidate: Candidate, error: Throwable) =

@@ -84,7 +84,7 @@ class HttpModelStore(
     }
 
     private fun entry(v: Variant, r: RemoteFile, complete: Boolean) =
-        ManifestEntry(v.model, v.format, v.quant, r.path, r.sha256, r.sizeBytes, r.url, complete)
+        ManifestEntry(v.model, v.format, v.quant, r.path, r.sha256, r.sizeBytes, r.url, complete, r.licence)
 
     // Files stored before paths existed sit directly in the folder under their file name.
     private fun adoptLegacy(r: RemoteFile, file: File) {

@@ -314,4 +314,30 @@ class RouterTest {
         val e = assertFailsWith<NoUsableBackendException> { onlyNpu.open(model, device, contextLength = 4096) }
         assertEquals("no file of $model supports a context of 4096 tokens (the longest has 1280)", e.message)
     }
+
+    @Test
+    fun anAppCanRefuseALicence() = runTest {
+        val licences = mapOf(q4km to "cc-by-nc-4.0", q40 to "apache-2.0")
+        val cat = object : ModelCatalog {
+            override fun variants(model: String) = listOf(q4km, q40)
+            override fun remote(variant: Variant) = ai.fanak.den.core.model.RemoteFile("f", "u", "s", 1, "p", licences[variant])
+        }
+        val nc = { id: String? -> !ai.fanak.den.core.model.Licences.nonCommercial(id) }
+        val r = Router(listOf(llama()), InMemoryRecipeStore(emptyList()), cat, store, allowLicence = nc)
+        assertTrue(r.plan(model, device).none { it.variant == q4km })
+        assertEquals(q40, r.open(model, device).candidate.variant)
+
+        val none = Router(listOf(llama()), InMemoryRecipeStore(emptyList()), cat, store, allowLicence = { false })
+        val e = assertFailsWith<NoUsableBackendException> { none.open(model, device) }
+        assertEquals("this app does not allow the licence of $model (cc-by-nc-4.0, apache-2.0)", e.message)
+    }
+
+    @Test
+    fun licenceClasses() {
+        val l = ai.fanak.den.core.model.Licences
+        assertTrue(l.nonCommercial("cc-by-nc-4.0") && l.nonCommercial("cc-by-nc-sa-4.0") && l.nonCommercial("CC-BY-NC-ND-4.0"))
+        assertTrue(!l.nonCommercial("apache-2.0") && !l.nonCommercial("mit") && !l.nonCommercial(null))
+        assertTrue(l.usePolicy("llama3.1") && l.usePolicy("gemma") && !l.usePolicy("apache-2.0"))
+        assertTrue(l.unknown(null) && l.unknown("other") && !l.unknown("mit"))
+    }
 }
