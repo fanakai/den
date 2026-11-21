@@ -134,6 +134,11 @@ class Bench(
     // Why the numbers would no longer hold (screen off, power saving), checked before each candidate.
     private val check: () -> String? = { null },
     private val clock: () -> Long = System::currentTimeMillis,
+    private val outputTokens: Int = OUTPUT_TOKENS,
+    // The full protocol; without it, no warm-up and no long prompt (the first-run benchmark).
+    private val full: Boolean = true,
+    // The error behind a failed candidate, e.g. an engine crash for the router's failure store.
+    private val onFailure: (Candidate, Throwable) -> Unit = { _, _ -> },
 ) {
     init {
         require(runs >= 1)
@@ -186,29 +191,30 @@ class Bench(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
+            onFailure(c, e)
             Measured(base.copy(error = e.message ?: e.toString()))
         }
     }
 
     private suspend fun run(session: Session, base: CandidateResult, ref: String?): Measured {
-        generate(session, SHORT, 16)
+        if (full) generate(session, SHORT, 16)
         val text = reply(generate(session, CHECK, CHECK_TOKENS).text)
         val short = mutableListOf<Pair<Long, GenStats>>()
         val long = mutableListOf<GenStats>()
         repeat(runs) {
-            val s = generate(session, SHORT, OUTPUT_TOKENS)
+            val s = generate(session, SHORT, outputTokens)
             short += s.ttftMs to s.stats
-            long += generate(session, LONG, 1).stats
+            if (full) long += generate(session, LONG, 1).stats
         }
         val match = ref?.let { matchShare(text, it) }
         val stats = short.map { it.second }
         val result = base.copy(
             ttftMs = Spread.of(short.map { it.first.toDouble() }),
             prefillTps = Spread.of(stats.map { it.prefillTps }),
-            prefillLongTps = Spread.of(long.map { it.prefillTps }),
+            prefillLongTps = if (long.isEmpty()) null else Spread.of(long.map { it.prefillTps }),
             decodeTps = Spread.of(stats.map { it.decodeTps }),
             promptTokens = stats.first().promptTokens,
-            longPromptTokens = long.first().promptTokens,
+            longPromptTokens = long.firstOrNull()?.promptTokens ?: 0,
             outputTokens = stats.first().outputTokens,
             sample = text,
             match = match?.round2(),

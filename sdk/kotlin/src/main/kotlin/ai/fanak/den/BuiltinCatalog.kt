@@ -64,4 +64,9 @@ class FileModelStore(val dir: File, private val catalog: ModelCatalog = BuiltinC
         if (!f.isFile) throw FileNotFoundException("missing ${f.path}")
         return Artifact(variant, f.path)
     }
+
+    override fun has(variant: Variant): Boolean {
+        val r = catalog.remote(variant) ?: return false
+        return File(dir, r.path).isFile || File(dir, r.fileName).isFile
+    }
 }

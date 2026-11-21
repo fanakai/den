@@ -17,6 +17,7 @@ fun Context.testDen(
     mode: DenMode = DenMode.AUTO,
     crash: Boolean = false,
     denCertificates: List<String> = DEN_CERTIFICATES,
+    bundledRecipes: Boolean = true,
 ) = Den.connect(
     this,
     DenConfig(
@@ -24,6 +25,7 @@ fun Context.testDen(
         useMmap = useMmap,
         mode = mode,
         denCertificates = denCertificates,
+        bundledRecipes = bundledRecipes,
         backends = if (crash) listOf(CrashBackend(this), LlamaCppBackend()) else null,
         onDownload = { Log.i("DenTest", "download ${it.fileName} ${it.bytes shr 20}/${it.total shr 20} MB") },
     ),

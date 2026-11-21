@@ -12,7 +12,16 @@ import ai.fanak.den.core.recipe.RecipeStore
 import java.io.IOException
 import kotlin.coroutines.cancellation.CancellationException
 
-enum class Source { RECIPE_SOC, RECIPE_FAMILY, DEFAULT }
+// RECIPE_LOCAL: measured on this phone by the first-run benchmark.
+enum class Source { RECIPE_SOC, RECIPE_FAMILY, RECIPE_LOCAL, DEFAULT }
+
+/**
+ * Runs when no recipe matches the model: measures candidates of [plan] and saves their order as a local recipe, so
+ * this and later opens follow it. Errors go to [report]; the router then keeps its default order.
+ */
+fun interface FirstRun {
+    suspend fun measure(device: DeviceProfile, plan: List<Candidate>, report: (Candidate, Throwable) -> Unit)
+}
 
 data class Candidate(
     val backend: DenBackend,
@@ -45,7 +54,12 @@ class Router(
     private val catalog: ModelCatalog,
     private val store: ModelStore,
     private val failures: FailureStore = InMemoryFailureStore(),
+    private val local: RecipeStore? = null,
+    private val firstRun: FirstRun? = null,
 ) {
+    // Variants measured by the first run in this process, so a run that saved nothing is not repeated on each open.
+    private val measured = java.util.Collections.synchronizedSet(mutableSetOf<Variant>())
+
     // Without a recipe the CPU comes first: a GPU or NPU that is present is not always faster (A52s) and can crash.
     private val defaultOrder = listOf(Accel.CPU, Accel.GPU, Accel.NPU)
 
@@ -72,6 +86,15 @@ class Router(
             }
         }
 
+        val fromLocal = local?.find(device).orEmpty().flatMap { recipe ->
+            recipe.choicesFor(size?.arch, size?.params, sameSize = true).flatMap { choice ->
+                val backend = backends.find { it.id == choice.backend } ?: return@flatMap emptyList()
+                variants
+                    .filter { it.format == choice.format && it.quant == choice.quant && usable(backend, choice.accel, it) }
+                    .map { Candidate(backend, choice.accel, it, Source.RECIPE_LOCAL) }
+            }
+        }
+
         val defaults = defaultOrder.flatMap { accel ->
             backends.flatMap { backend ->
                 variants.filter { usable(backend, accel, it) && !lowBit(it.quant) }
@@ -80,7 +103,7 @@ class Router(
             }
         }
 
-        return (fromRecipes + defaults)
+        return (fromRecipes + fromLocal + defaults)
             .distinctBy { Triple(it.backend.id, it.accel, it.variant) }
             .filterNot { failures.isBlocked(key(device, it)) }
     }
@@ -88,8 +111,19 @@ class Router(
     suspend fun open(model: String, device: DeviceProfile, contextLength: Int = 4096, mmap: Boolean = true): Opened {
         catalog.resolve(model)
         val tried = mutableListOf<Failure>()
-        val plan = plan(model, device)
+        var plan = plan(model, device)
         if (plan.isEmpty()) throw NoUsableBackendException(model, tried, emptyPlanReason(model, device))
+        val first = plan.first()
+        if (firstRun != null && first.source == Source.DEFAULT && measured.add(first.variant)) {
+            try {
+                firstRun.measure(device, plan) { c, e -> failures.record(key(device, c), e) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                // The default order still works.
+            }
+            plan = plan(model, device).ifEmpty { plan }
+        }
         for (c in plan) {
             try {
                 val artifact = try {
