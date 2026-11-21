@@ -39,6 +39,12 @@ if(DEN_OPENCL)
     target_compile_options(ggml-opencl PRIVATE -include ${CMAKE_CURRENT_SOURCE_DIR}/opencl_weak.h)
 endif()
 
+# "fd:N" model paths, for files the user picked from storage (see fd_open.h). ggml.c only: it is where llama.cpp's
+# file opening ends in fopen.
+set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/../../../llama.cpp/ggml/src/ggml.c
+    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../../llama.cpp/ggml/src
+    PROPERTIES COMPILE_OPTIONS "-include;${CMAKE_CURRENT_SOURCE_DIR}/fd_open.h")
+
 # JSON schema to grammar, from llama.cpp's common library, with a shim for the three helpers it needs from common.cpp.
 set(DEN_LLAMA ${CMAKE_CURRENT_SOURCE_DIR}/../../../llama.cpp)
 set(DEN_SOURCES engine.cpp threads.cpp common_shim.cpp ${DEN_LLAMA}/common/json-schema-to-grammar.cpp)

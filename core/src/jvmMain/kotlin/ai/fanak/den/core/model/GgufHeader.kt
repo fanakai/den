@@ -14,7 +14,16 @@ data class GgufInfo(
     val embeddingLength: Int? = null,
     val keyLength: Int? = null,
     val valueLength: Int? = null,
+    // general.size_label, e.g. "0.6B": the size in the file's own words, for a file no catalog describes.
+    val sizeLabel: String? = null,
 ) {
+    // Parameters from the size label ("0.6B", "751M"); null without one.
+    val params: Long?
+        get() {
+            val m = Regex("""^([\d.]+)\s*([MB])$""", RegexOption.IGNORE_CASE).matchEntire(sizeLabel?.trim() ?: return null) ?: return null
+            val n = m.groupValues[1].toDoubleOrNull() ?: return null
+            return (n * if (m.groupValues[2].equals("B", true)) 1e9 else 1e6).toLong()
+        }
     // KV cache per token of context, in bytes, as llama.cpp keeps it by default (F16 keys and values).
     val kvBytesPerToken: Long?
         get() {
@@ -62,6 +71,7 @@ object GgufHeader {
         return GgufInfo(
             a, int("context_length"), int("block_count"), int("attention.head_count"), int("attention.head_count_kv"),
             int("embedding_length"), int("attention.key_length"), int("attention.value_length"),
+            kv["general.size_label"] as? String,
         )
     }
 

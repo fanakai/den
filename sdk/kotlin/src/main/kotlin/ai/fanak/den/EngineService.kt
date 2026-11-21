@@ -11,6 +11,7 @@ import ai.fanak.den.core.backend.Role
 import ai.fanak.den.core.backend.Session
 import ai.fanak.den.core.device.DeviceProfile
 import ai.fanak.den.core.model.Artifact
+import ai.fanak.den.core.model.FileRole
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -69,8 +70,26 @@ internal class EngineService : Service() {
         override fun load(backend: String, artifact: String, options: String): Long = guard {
             val a = JSON.decodeFromString(Artifact.serializer(), artifact)
             val o = JSON.decodeFromString(LoadOptions.serializer(), options)
-            val s = runBlocking { backend(backend).load(a, o) }
-            nextId.getAndIncrement().also { sessions[it] = s }
+            // A file the user added from storage is a content URI: the engine opens it here (same app, so the same
+            // permission) and gives the backend the open descriptor as "fd:N", kept open with the session. Its
+            // /proc/self/fd path would not do: opening it again needs a storage permission.
+            val doc = a.path.takeIf { it.startsWith("content://") }?.let {
+                contentResolver.openFileDescriptor(android.net.Uri.parse(it), "r") ?: error("cannot open $it")
+            }
+            val local = if (doc != null) a.copy(files = a.files + (FileRole.MODEL to "fd:${doc.fd}")) else a
+            val s = try {
+                runBlocking { backend(backend).load(local, o) }
+            } catch (e: Throwable) {
+                doc?.close()
+                throw e
+            }
+            val kept = if (doc == null) s else object : Session by s {
+                override fun unload() {
+                    s.unload()
+                    doc.close()
+                }
+            }
+            nextId.getAndIncrement().also { sessions[it] = kept }
         }
 
         override fun generate(
