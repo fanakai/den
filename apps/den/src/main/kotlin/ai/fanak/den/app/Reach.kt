@@ -25,13 +25,19 @@ internal object Reach {
 
     fun set(c: Context, client: String, level: Location) = prefs(c).edit().putString(client, level.name).apply()
 
-    // Stored per client and location as "requests tokens", the tokens being prompt and output together.
+    // Stored per client and location as "requests tokens", the tokens being prompt and output together; with the
+    // reason of the last request that ran off the phone.
     @Synchronized
-    fun record(c: Context, client: String, location: Location, tokens: Int) {
+    fun record(c: Context, client: String, location: Location, tokens: Int, offPhone: String? = null) {
         val key = "$client|${location.name}"
         val (n, t) = parse(counts(c).getString(key, null))
-        counts(c).edit().putString(key, "${n + 1} ${t + tokens}").apply()
+        counts(c).edit().putString(key, "${n + 1} ${t + tokens}").apply {
+            if (location != Location.DEVICE && offPhone != null) putString("$client|why", "${location.name}: $offPhone")
+        }.apply()
     }
+
+    // "LAN: no file fits the phone: ...", for the last request of [client] that left the phone.
+    fun lastOffPhone(c: Context, client: String): String? = counts(c).getString("$client|why", null)
 
     // Location -> (requests, tokens) of one client.
     fun ran(c: Context, client: String): Map<Location, Pair<Long, Long>> =
@@ -39,7 +45,7 @@ internal object Reach {
 
     fun forget(c: Context, client: String) {
         prefs(c).edit().remove(client).apply()
-        counts(c).edit().apply { Location.entries.forEach { remove("$client|${it.name}") } }.apply()
+        counts(c).edit().apply { Location.entries.forEach { remove("$client|${it.name}") }; remove("$client|why") }.apply()
     }
 
     private fun parse(v: String?): Pair<Long, Long> =

@@ -496,7 +496,8 @@ class MainActivity : Activity() {
     private fun ran(client: String): String {
         val r = Reach.ran(this, client)
         if (r.isEmpty()) return ""
-        return "\nran on " + r.entries.joinToString { (l, v) -> "${l.name} ${v.first} times (${v.second} tokens)" }
+        return "\nran on " + r.entries.joinToString { (l, v) -> "${l.name} ${v.first} times (${v.second} tokens)" } +
+            (Reach.lastOffPhone(this, client)?.let { "\nlast off the phone, $it" } ?: "")
     }
 
     // OpenAI-compatible servers on the LAN (llama-server, Lemonade, Ollama): used for a model only when no file of it

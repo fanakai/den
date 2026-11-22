@@ -532,6 +532,10 @@ abstract class DenModel : AutoCloseable {
     // Files and paths the router left out before trying, with the reason; empty in connected mode for now.
     open val rejected: List<Rejection> get() = emptyList()
 
+    // Why it runs off the phone, e.g. "no file fits the phone: q4_0 needs 9800 MB free, 3100 MB free"; null on the
+    // phone and in connected mode.
+    open val offPhone: String? get() = null
+
     // True when an earlier candidate failed and this one runs instead.
     val fallback: Boolean get() = failures.isNotEmpty()
 
@@ -581,6 +585,7 @@ internal class LocalModel(
     override val connected = false
     override val location get() = last.candidate.location
     override val rejected get() = last.rejected
+    override val offPhone get() = last.offPhone
     override val contextLength get() = last.contextLength
     override val failures get() = last.failures
 

@@ -166,6 +166,7 @@ public abstract class ai/fanak/den/DenModel : java/lang/AutoCloseable {
 	public final fun getLicence ()Ljava/lang/String;
 	public fun getLocation ()Lai/fanak/den/core/backend/Location;
 	public abstract fun getName ()Ljava/lang/String;
+	public fun getOffPhone ()Ljava/lang/String;
 	public abstract fun getQuant ()Ljava/lang/String;
 	public fun getRejected ()Ljava/util/List;
 	public abstract fun getSource ()Lai/fanak/den/core/router/Source;
