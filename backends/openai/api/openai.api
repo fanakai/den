@@ -48,9 +48,14 @@ public final class ai/fanak/den/backend/openai/FoundServer {
 }
 
 public final class ai/fanak/den/backend/openai/LanScan {
+	public static final field BEACON_PORT I
 	public static final field INSTANCE Lai/fanak/den/backend/openai/LanScan;
+	public final fun find (Ljava/util/List;Ljava/util/List;IILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun find$default (Lai/fanak/den/backend/openai/LanScan;Ljava/util/List;Ljava/util/List;IILkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun getPORTS ()Ljava/util/List;
 	public final fun hosts (Ljava/net/Inet4Address;I)Ljava/util/List;
+	public final fun listen (IILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun listen$default (Lai/fanak/den/backend/openai/LanScan;IILkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun models (Ljava/lang/String;IILjava/lang/String;)Ljava/util/List;
 	public static synthetic fun models$default (Lai/fanak/den/backend/openai/LanScan;Ljava/lang/String;IILjava/lang/String;ILjava/lang/Object;)Ljava/util/List;
 	public final fun scan (Ljava/util/List;Ljava/util/List;IILkotlin/coroutines/Continuation;)Ljava/lang/Object;
