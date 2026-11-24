@@ -43,4 +43,6 @@ class OpenAiEndpoints(
     }
 
     override fun health(): Health = Health.Ok
+
+    override fun serves(model: String) = current().any { it.serves(model) }
 }

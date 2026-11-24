@@ -11,5 +11,6 @@ public final class ai/fanak/den/backend/llamacpp/LlamaCppBackend : ai/fanak/den/
 	public fun health ()Lai/fanak/den/core/backend/Health;
 	public fun load (Lai/fanak/den/core/model/Artifact;Lai/fanak/den/core/backend/LoadOptions;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun probe (Lai/fanak/den/core/device/DeviceProfile;)Lai/fanak/den/core/backend/Capabilities;
+	public fun serves (Ljava/lang/String;)Z
 }
 

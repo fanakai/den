@@ -104,6 +104,9 @@ class NoUsableBackendException(
     val rejected: List<Rejection> = emptyList(),
 ) : Exception(reason ?: "No backend could load $model (${failures.size} attempts)")
 
+// The quant of a model a server runs by its own name: Den does not know the file.
+private const val SERVER = "server"
+
 class Router(
     private val backends: List<DenBackend>,
     private val recipes: RecipeStore,
@@ -248,6 +251,7 @@ class Router(
                 "on the phone, ${backend.id} ${accel.name.lowercase()} ${variant.quant} failed: ${failed.error.message ?: failed.error::class.simpleName}"
             }
             reach != null && Location.DEVICE !in reach -> "this call may not run on the phone"
+            catalog.variants(model).isEmpty() -> "no catalog has a file of it, a server has it by this name"
             why.candidates.none { it.location == Location.DEVICE } ->
                 smallest(model, why.rejected)?.let { "no file fits the phone: ${it.quant} ${it.detail}" } ?: "no file of this model runs on the phone"
             policy == RoutingPolicy.REMOTE_FIRST -> "the routing policy puts servers first"
@@ -269,11 +273,14 @@ class Router(
         val lan = localNetwork()
         val off = backends.filter { (it.about?.location ?: Location.DEVICE).let { l -> l == Location.CLOUD || (l == Location.LAN && lan) } }
         if (off.isEmpty()) return emptyList()
-        val variants = catalog.variants(model).filter { (it.soc == null || it.soc == device.soc) && fitsContext(it, minContext) && licenceOk(it) }
+        val known = catalog.variants(model)
+        val variants = known.filter { (it.soc == null || it.soc == device.soc) && fitsContext(it, minContext) && licenceOk(it) }
             .sortedWith(compareBy<Variant> { quantRank(it.quant) }.thenByDescending { it.sizeBytes })
         return off.sortedBy { it.about!!.location }.flatMap { b ->
             val c = caps[b] ?: return@flatMap emptyList()
-            variants.flatMap { v -> c.accels.filter { c.supports(it, v.format) && c.loads(v.arch) }.map { Candidate(b, it, v, Source.DEFAULT) } }
+            // A name no catalog knows: only a server that has a model of that name runs it.
+            val mine = if (known.isEmpty() && b.serves(model)) listOf(Variant(model, c.formats.first(), SERVER, 0, 0)) else variants
+            mine.flatMap { v -> c.accels.filter { c.supports(it, v.format) && c.loads(v.arch) }.map { Candidate(b, it, v, Source.DEFAULT) } }
         }.filterNot { failures.isBlocked(key(device, it)) }
     }
 

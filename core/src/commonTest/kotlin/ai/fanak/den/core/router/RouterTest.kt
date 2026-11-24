@@ -455,7 +455,11 @@ class RouterTest {
     }
 
     // A server on the network: no RAM or disk on the phone, no download.
-    private class Remote(override val id: String, val where: ai.fanak.den.core.backend.Location) : DenBackend {
+    private class Remote(
+        override val id: String,
+        val where: ai.fanak.den.core.backend.Location,
+        val names: Set<String> = emptySet(),
+    ) : DenBackend {
         val loaded = mutableListOf<String>()
         override val about = ai.fanak.den.core.backend.BackendDescriptor(
             id, id, "1", "test", "MIT", "https://example.org", ai.fanak.den.core.backend.SupportTier.EXPERIMENTAL,
@@ -470,6 +474,7 @@ class RouterTest {
             }
         }
         override fun health() = Health.Ok
+        override fun serves(model: String) = model in names
     }
 
     private fun policyRouter(
@@ -602,6 +607,28 @@ class RouterTest {
             model, device, reach = setOf(ai.fanak.den.core.backend.Location.DEVICE, ai.fanak.den.core.backend.Location.LAN),
         )
         assertTrue(cheap.isNotEmpty() && cheap.all { it.location == ai.fanak.den.core.backend.Location.DEVICE })
+    }
+
+    @Test
+    fun aNameOnlyAServerKnowsRunsOnThatServer() = runTest {
+        val none = object : ModelCatalog {
+            override fun variants(model: String) = emptyList<Variant>()
+        }
+        val lan = Remote("lan", ai.fanak.den.core.backend.Location.LAN, setOf("Qwen3-1.7B-GGUF"))
+        val other = Remote("lan2", ai.fanak.den.core.backend.Location.LAN)
+        val r = Router(listOf(llama(), other, lan), InMemoryRecipeStore(emptyList()), none, store, policy = RoutingPolicy.LOCAL_FIRST)
+        val opened = r.open("Qwen3-1.7B-GGUF", device)
+        assertEquals("lan", opened.candidate.backend.id)
+        assertEquals(listOf("server"), lan.loaded)
+        assertEquals("no catalog has a file of it, a server has it by this name", opened.offPhone)
+        // Still unknown when no server has it, or when servers are not allowed.
+        assertFailsWith<NoUsableBackendException> { r.open("Other-Model", device) }
+        assertTrue(r.plan("Qwen3-1.7B-GGUF", device, reach = setOf(ai.fanak.den.core.backend.Location.DEVICE)).isEmpty())
+        // A name a catalog knows keeps the catalog's files, on the phone first.
+        assertEquals(ai.fanak.den.core.backend.Location.DEVICE, Router(
+            listOf(llama(), Remote("lan", ai.fanak.den.core.backend.Location.LAN, setOf(model))), InMemoryRecipeStore(emptyList()), catalog, store,
+            policy = RoutingPolicy.LOCAL_FIRST,
+        ).plan(model, device).first().location)
     }
 
     @Test
