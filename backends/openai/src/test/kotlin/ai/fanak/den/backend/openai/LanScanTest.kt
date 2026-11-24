@@ -93,6 +93,19 @@ class LanScanTest {
     }
 
     @Test
+    fun theListeningLastsAsLongAsTheScan() = runBlocking {
+        val beaconPort = DatagramSocket(0).use { it.localPort }
+        val scanning = java.util.concurrent.atomic.AtomicBoolean(true)
+        val heard = async { LanScan.listen(300, beaconPort) { scanning.get() } }
+        // After the window, while the scan still runs.
+        delay(700)
+        beacon(beaconPort, """{"service":"lemonade","url":"http://127.0.0.1:8000/api/v1/"}""")
+        delay(200)
+        scanning.set(false)
+        assertEquals(listOf("http://127.0.0.1:8000/api/v1"), heard.await())
+    }
+
+    @Test
     fun theBeaconIsHeardWhileTheScanHoldsEveryIoThread() = runBlocking {
         val beaconPort = DatagramSocket(0).use { it.localPort }
         val busy = List(64) { launch(Dispatchers.IO) { Thread.sleep(2_000) } }

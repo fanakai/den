@@ -11,6 +11,7 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.SocketTimeoutException
 import java.net.URL
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -45,15 +46,23 @@ object LanScan {
     // Its own thread: a scan holds all the threads of Dispatchers.IO while it runs, and the beacons would wait.
     private val BEACON_THREAD = Dispatchers.IO.limitedParallelism(1)
 
-    /** [scan] of [hosts] and [listen] together: a Lemonade server on a port the scan does not try is found by its beacon. */
+    /**
+     * [scan] of [hosts] and [listen] together: a Lemonade server on a port the scan does not try is found by its beacon.
+     * The listening lasts [windowMs], or as long as the scan when that is longer.
+     */
     suspend fun find(
         hosts: List<String>,
         ports: List<Int> = PORTS,
         windowMs: Int = 3_000,
         beaconPort: Int = BEACON_PORT,
     ): List<FoundServer> = coroutineScope {
-        val heard = async { listen(windowMs, beaconPort) }
-        val scanned = scan(hosts, ports)
+        val scanning = AtomicBoolean(true)
+        val heard = async { listen(windowMs, beaconPort) { scanning.get() } }
+        val scanned = try {
+            scan(hosts, ports)
+        } finally {
+            scanning.set(false)
+        }
         val seen = scanned.map { URL(it.baseUrl).authority }.toSet()
         // Lemonade also sends each beacon to 127.0.0.1; that one is left out when the server was heard on the network.
         val urls = heard.await().let { all ->
@@ -77,10 +86,14 @@ object LanScan {
     }
 
     /**
-     * The base URLs that Lemonade beacons announce within [windowMs], each once. A beacon counts only when its URL names
-     * the address it came from, so one machine cannot point the phone at another.
+     * The base URLs that Lemonade beacons announce within [windowMs], and after it while [more] is true, each once. A
+     * beacon counts only when its URL names the address it came from, so one machine cannot point the phone at another.
      */
-    suspend fun listen(windowMs: Int = 3_000, port: Int = BEACON_PORT): List<String> = withContext(BEACON_THREAD) {
+    suspend fun listen(
+        windowMs: Int = 3_000,
+        port: Int = BEACON_PORT,
+        more: () -> Boolean = { false },
+    ): List<String> = withContext(BEACON_THREAD) {
         val heard = linkedSetOf<String>()
         val end = System.currentTimeMillis() + windowMs
         try {
@@ -90,13 +103,15 @@ object LanScan {
                 val buf = ByteArray(2048)
                 while (true) {
                     val left = end - System.currentTimeMillis()
-                    if (left <= 0) break
-                    s.soTimeout = left.toInt()
+                    val going = more()
+                    if (left <= 0 && !going) break
+                    // While [more] holds, wake up now and then to ask it again.
+                    s.soTimeout = if (going) 200 else left.toInt()
                     val p = DatagramPacket(buf, buf.size)
                     try {
                         s.receive(p)
                     } catch (_: SocketTimeoutException) {
-                        break
+                        continue
                     }
                     beaconUrl(p.data.decodeToString(0, p.length), p.address)?.let { heard += it }
                 }
