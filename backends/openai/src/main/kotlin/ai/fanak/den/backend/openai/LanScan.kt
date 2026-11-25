@@ -1,6 +1,7 @@
 package ai.fanak.den.backend.openai
 
 import java.io.IOException
+import java.net.ConnectException
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.HttpURLConnection
@@ -22,8 +23,11 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 
-/** An OpenAI-compatible server that answered on the LAN, with the model ids of its `GET /models`. */
-data class FoundServer(val baseUrl: String, val models: List<String>)
+/**
+ * An OpenAI-compatible server that answered on the LAN, with the model ids of its `GET /models`; or, with [error], one
+ * that announced itself by a beacon but did not answer, and why.
+ */
+data class FoundServer(val baseUrl: String, val models: List<String>, val error: String? = null)
 
 /** Finds OpenAI-compatible servers on the local network, when the user asks: a short scan of known ports. */
 object LanScan {
@@ -55,8 +59,20 @@ object LanScan {
         val urls = heard.await().let { all ->
             all.filterNot { u -> URL(u).host == "127.0.0.1" && all.any { o -> o != u && URL(o).port == URL(u).port } }
         }
-        scanned + urls.filter { URL(it).authority !in seen }.mapNotNull { base ->
-            withContext(Dispatchers.IO) { runCatching { FoundServer(base, models(base, 1_000, 3_000)) }.getOrNull() }
+        scanned + urls.filter { URL(it).authority !in seen }.map { base ->
+            withContext(Dispatchers.IO) {
+                val u = URL(base)
+                try {
+                    Socket().use { it.connect(InetSocketAddress(u.host, u.port), 1_000) }
+                } catch (e: IOException) {
+                    return@withContext FoundServer(base, emptyList(), refusal(e, u.port))
+                }
+                try {
+                    FoundServer(base, models(base, 1_000, 3_000))
+                } catch (e: IOException) {
+                    FoundServer(base, emptyList(), "sends the Lemonade beacon but GET /models failed: ${e.message ?: e::class.simpleName}")
+                }
+            }
         }
     }
 
@@ -89,6 +105,14 @@ object LanScan {
             // The port is taken: no beacons, the scan still runs.
         }
         heard.toList()
+    }
+
+    // Lemonade listens on localhost by default and still sends its beacon, with its network address. A firewall that
+    // drops the connection (Windows) gives a timeout instead of a refusal.
+    private fun refusal(e: IOException, port: Int) = if (e is ConnectException) {
+        "sends the Lemonade beacon but refuses connections from the network: set its host to 0.0.0.0"
+    } else {
+        "sends the Lemonade beacon but does not answer on port $port: set its host to 0.0.0.0 and let the port through its firewall"
     }
 
     internal fun beaconUrl(text: String, from: InetAddress): String? {

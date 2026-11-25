@@ -78,6 +78,21 @@ class LanScanTest {
     }
 
     @Test
+    fun aBeaconOfAServerThatRefusesConnectionsSaysSo() = runBlocking {
+        val beaconPort = DatagramSocket(0).use { it.localPort }
+        // Lemonade's default: it listens on localhost only and still sends its beacon.
+        val closed = java.net.ServerSocket(0).use { it.localPort }
+        val url = "http://127.0.0.1:$closed/api/v1"
+        val found = async { LanScan.find(emptyList(), windowMs = 1_000, beaconPort = beaconPort) }
+        delay(300)
+        beacon(beaconPort, """{"service":"lemonade","url":"$url/"}""")
+        assertEquals(
+            listOf(FoundServer(url, emptyList(), "sends the Lemonade beacon but refuses connections from the network: set its host to 0.0.0.0")),
+            found.await(),
+        )
+    }
+
+    @Test
     fun theBeaconIsHeardWhileTheScanHoldsEveryIoThread() = runBlocking {
         val beaconPort = DatagramSocket(0).use { it.localPort }
         val busy = List(64) { launch(Dispatchers.IO) { Thread.sleep(2_000) } }

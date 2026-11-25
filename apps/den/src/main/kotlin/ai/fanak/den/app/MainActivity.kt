@@ -536,7 +536,7 @@ class MainActivity : Activity() {
                     lock?.release()
                 }
                 scanning = false
-                status = "found ${found!!.size} server(s) on ${hosts.size} hosts, ports ${LanScan.PORTS.joinToString()}, and by Lemonade beacons"
+                status = "found ${found!!.count { it.error == null }} server(s) on ${hosts.size} hosts, ports ${LanScan.PORTS.joinToString()}, and by Lemonade beacons"
                 showServers()
                 showModels()
             }
@@ -547,6 +547,10 @@ class MainActivity : Activity() {
             })
             val added = ServerSettings.all(this).map { it.baseUrl }.toSet()
             list.filter { it.baseUrl !in added }.forEach { f ->
+                if (f.error != null) {
+                    servers.addView(TextView(this).apply { text = "${f.baseUrl}\n  ${f.error}" })
+                    return@forEach
+                }
                 servers.addView(LinearLayout(this).apply {
                     gravity = Gravity.CENTER_VERTICAL
                     addView(TextView(context).apply {
