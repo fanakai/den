@@ -119,6 +119,8 @@ class Router(
     private val policy: RoutingPolicy = RoutingPolicy.LOCAL_ONLY,
     // Whether the phone has a network now; remote candidates need one.
     private val online: () -> Boolean = { true },
+    // Whether the phone is on Wi-Fi, Ethernet or a VPN now: on mobile data alone a LAN server is out of reach.
+    private val localNetwork: () -> Boolean = { true },
 ) {
     // Variants measured by the first run in this process, so a run that saved nothing is not repeated on each open.
     @Volatile private var measured: Set<Variant> = emptySet()
@@ -264,7 +266,8 @@ class Router(
     // Candidates off the phone, LAN before cloud: the phone's RAM and disk do not limit them, the network does.
     private fun remote(model: String, device: DeviceProfile, minContext: Int?, caps: Map<DenBackend, Capabilities?>): List<Candidate> {
         if (policy == RoutingPolicy.LOCAL_ONLY || !online()) return emptyList()
-        val off = backends.filter { (it.about?.location ?: Location.DEVICE) != Location.DEVICE }
+        val lan = localNetwork()
+        val off = backends.filter { (it.about?.location ?: Location.DEVICE).let { l -> l == Location.CLOUD || (l == Location.LAN && lan) } }
         if (off.isEmpty()) return emptyList()
         val variants = catalog.variants(model).filter { (it.soc == null || it.soc == device.soc) && fitsContext(it, minContext) && licenceOk(it) }
             .sortedWith(compareBy<Variant> { quantRank(it.quant) }.thenByDescending { it.sizeBytes })

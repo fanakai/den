@@ -226,6 +226,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         freeRamMb = { probe.profile().availRamMb },
         policy = config.routing,
         online = { hasNetwork(context) },
+        localNetwork = { onLocalNetwork(context) },
     )
 
     private val minContext = config.minContextLength?.coerceAtMost(config.contextLength) ?: config.contextLength
@@ -686,6 +687,17 @@ internal fun AssetManager.recipes(path: String): List<Recipe> =
     }
 
 // activeNetwork is null when the default network is blocked for this app (Doze, battery saver, data saver).
+// Wi-Fi, Ethernet or a VPN (a LAN server reached over a VPN on mobile data counts); true when it cannot tell.
+private fun onLocalNetwork(context: Context): Boolean {
+    val cm = context.getSystemService(android.net.ConnectivityManager::class.java) ?: return true
+    val caps = cm.getNetworkCapabilities(cm.activeNetwork ?: return false) ?: return false
+    return listOf(
+        android.net.NetworkCapabilities.TRANSPORT_WIFI,
+        android.net.NetworkCapabilities.TRANSPORT_ETHERNET,
+        android.net.NetworkCapabilities.TRANSPORT_VPN,
+    ).any { caps.hasTransport(it) }
+}
+
 private fun hasNetwork(context: Context): Boolean {
     val cm = context.getSystemService(android.net.ConnectivityManager::class.java) ?: return true
     val caps = cm.getNetworkCapabilities(cm.activeNetwork ?: return false) ?: return false

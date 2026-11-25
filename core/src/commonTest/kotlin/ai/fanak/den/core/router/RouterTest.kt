@@ -472,9 +472,15 @@ class RouterTest {
         override fun health() = Health.Ok
     }
 
-    private fun policyRouter(policy: RoutingPolicy, online: Boolean = true, local: DenBackend = llama(), s: ModelStore = store) = Router(
+    private fun policyRouter(
+        policy: RoutingPolicy,
+        online: Boolean = true,
+        local: DenBackend = llama(),
+        s: ModelStore = store,
+        localNetwork: Boolean = true,
+    ) = Router(
         listOf(Remote("cloud", ai.fanak.den.core.backend.Location.CLOUD), local, Remote("lan", ai.fanak.den.core.backend.Location.LAN)),
-        InMemoryRecipeStore(emptyList()), catalog, s, policy = policy, online = { online },
+        InMemoryRecipeStore(emptyList()), catalog, s, policy = policy, online = { online }, localNetwork = { localNetwork },
     )
 
     @Test
@@ -580,6 +586,22 @@ class RouterTest {
         assertEquals(ai.fanak.den.core.backend.Location.LAN, plan.first().location)
         val offline = policyRouter(RoutingPolicy.REMOTE_FIRST, online = false).plan(model, device)
         assertTrue(offline.isNotEmpty() && offline.all { it.location == ai.fanak.den.core.backend.Location.DEVICE })
+    }
+
+    @Test
+    fun mobileDataLeavesTheLanOutAndKeepsTheCloud() = runTest {
+        val locations = { p: RoutingPolicy, hot: Boolean ->
+            policyRouter(p, localNetwork = false)
+                .plan(model, if (hot) device.copy(thermal = ThermalState.SEVERE) else device).map { it.location }.distinct()
+        }
+        assertEquals(listOf(ai.fanak.den.core.backend.Location.DEVICE, ai.fanak.den.core.backend.Location.CLOUD), locations(RoutingPolicy.LOCAL_FIRST, false))
+        assertEquals(listOf(ai.fanak.den.core.backend.Location.DEVICE, ai.fanak.den.core.backend.Location.CLOUD), locations(RoutingPolicy.LOCAL_FIRST, true))
+        assertEquals(listOf(ai.fanak.den.core.backend.Location.CLOUD, ai.fanak.den.core.backend.Location.DEVICE), locations(RoutingPolicy.REMOTE_FIRST, false))
+        // Phone and LAN only: the phone.
+        val cheap = policyRouter(RoutingPolicy.REMOTE_FIRST, localNetwork = false).plan(
+            model, device, reach = setOf(ai.fanak.den.core.backend.Location.DEVICE, ai.fanak.den.core.backend.Location.LAN),
+        )
+        assertTrue(cheap.isNotEmpty() && cheap.all { it.location == ai.fanak.den.core.backend.Location.DEVICE })
     }
 
     @Test
