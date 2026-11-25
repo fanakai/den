@@ -632,6 +632,32 @@ class RouterTest {
     }
 
     @Test
+    fun onMobileDataAModelOnlyALanServerHasSaysWhy() = runTest {
+        val none = object : ModelCatalog {
+            override fun variants(model: String) = emptyList<Variant>()
+        }
+        val lan = Remote("lan", ai.fanak.den.core.backend.Location.LAN, setOf("Qwen3-1.7B-GGUF"))
+        fun router(localNetwork: Boolean) = Router(
+            listOf(llama(), lan), InMemoryRecipeStore(emptyList()), none, store,
+            policy = RoutingPolicy.LOCAL_FIRST, localNetwork = { localNetwork },
+        )
+        val e = assertFailsWith<NoUsableBackendException> { router(false).open("Qwen3-1.7B-GGUF", device) }
+        assertEquals(
+            "Qwen3-1.7B-GGUF is on a LAN server, out of reach on mobile data: LAN servers need Wi-Fi, Ethernet or a VPN",
+            e.reason,
+        )
+        assertTrue(lan.loaded.isEmpty())
+        // A model no server has, or a call that may not leave the phone, keeps the reason it had.
+        val other = assertFailsWith<NoUsableBackendException> { router(false).open("Other-Model", device) }
+        assertEquals("unknown model Other-Model: no catalog has a file for it", other.reason)
+        val phone = assertFailsWith<NoUsableBackendException> {
+            router(false).open("Qwen3-1.7B-GGUF", device, reach = setOf(ai.fanak.den.core.backend.Location.DEVICE))
+        }
+        assertEquals("unknown model Qwen3-1.7B-GGUF: no catalog has a file for it", phone.reason)
+        assertEquals("lan", router(true).open("Qwen3-1.7B-GGUF", device).candidate.backend.id)
+    }
+
+    @Test
     fun theRouteSaysWhatItLeftOutAndWhy() = runTest {
         val q2 = Variant(model, ModelFormat.GGUF, "q2_k", 700, 900, arch = "qwen3", params = size)
         val nc = q40.copy(quant = "q5_k_m")
