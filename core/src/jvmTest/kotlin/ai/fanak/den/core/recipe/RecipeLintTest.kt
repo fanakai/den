@@ -45,6 +45,8 @@ class RecipeLintTest {
         assertTrue(problems(ok.copy(rankings = listOf(ranking.copy(measured = ranking.measured!!.copy(decodeTps = 0.0))))).any { "speeds" in it })
         assertTrue(problems(ok.copy(socFamily = "unisoc")).any { "soc_family" in it })
         assertTrue(problems(ok, name = "t760-copy").any { "file name" in it })
+        assertTrue(problems(ok.copy(soc = "t760"), name = "t760").any { "upper case" in it })
+        assertTrue(problems(ok.copy(soc = "T760/CD"), name = "T760/CD").any { "suffix" in it })
         assertTrue(problems(ok.copy(soc = null), name = "unisoc-t760").isEmpty())
         assertTrue(problems(ok.copy(soc = null, socFamily = "unisoc-t999"), name = "unisoc-t999").any { "probe" in it })
         assertTrue(problems(ok.copy(rankings = listOf(ranking.copy(choices = listOf(ranking.choices[0].copy(backend = "mnn")))))).any { "backend" in it })
@@ -57,6 +59,7 @@ class RecipeLintTest {
             if (r.socFamily !in SocFamilies.families) add("$file: soc_family ${r.socFamily} is not one the probe reports")
         } else {
             if (name != soc) add("$file: file name must be the SoC, $soc.yaml")
+            if (soc != soc.uppercase() || '/' in soc) add("$file: soc $soc must be upper case without a '/' suffix, as the probe reports it")
             if (r.socFamily != SocFamilies.of(soc)) add("$file: soc_family ${r.socFamily}, but the probe reports ${SocFamilies.of(soc)} for $soc")
         }
         r.rankings.forEach { k ->

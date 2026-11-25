@@ -1,0 +1,28 @@
+schema: 1
+soc_family: samsung-exynos
+soc: S5E9955
+rankings:
+  - model: { arch: qwen3, params_b: 0.6 }
+    choices:
+      - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_0 }
+      - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_k_m }
+    measured:
+      prefill_tps: 262.0
+      decode_tps: 18.3
+      device: Galaxy Z Flip7 (SM-F766B)
+      date: 2026-11-21
+      peak_ram_mb: 1377
+      sha256: 33bcc57074ec7b6eada5a90651ee546ec0c2b271002c22baf9f1b2dd1e8f75cb
+      protocol: den bench, 0.14.0-d2462f8f7, automatic threads, 289-token prompt, 128 tokens greedy, median of 3 runs, release build, foreground, screen on, battery 79% charging, thermal NONE, Samsung Remote Test Lab
+  - model: { arch: qwen3, params_b: 1.7 }
+    choices:
+      - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_0 }
+      - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_k_m }
+    measured:
+      prefill_tps: 107.0
+      decode_tps: 13.7
+      device: Galaxy Z Flip7 (SM-F766B)
+      date: 2026-11-21
+      peak_ram_mb: 2633
+      sha256: c876f159707a4e4f70e045106c69db15bfc935a4981706fd4f65c6e7ea1e81c5
+      protocol: den bench, 0.14.0-d2462f8f7, automatic threads, 289-token prompt, 128 tokens greedy, median of 3 runs, release build, foreground, screen on, battery 78% charging, thermal NONE, Samsung Remote Test Lab
