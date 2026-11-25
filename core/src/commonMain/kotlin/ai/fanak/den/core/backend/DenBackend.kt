@@ -24,6 +24,9 @@ interface DenBackend {
     suspend fun load(artifact: Artifact, opts: LoadOptions): Session
 
     fun health(): Health
+
+    // Whether it runs [model] under that name with no file of it in a catalog, as a server does with its own model ids.
+    fun serves(model: String): Boolean = false
 }
 
 interface Session {

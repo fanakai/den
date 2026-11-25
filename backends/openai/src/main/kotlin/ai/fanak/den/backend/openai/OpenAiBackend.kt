@@ -94,6 +94,8 @@ class OpenAiBackend(
 
     override fun health(): Health = Health.Ok
 
+    override fun serves(model: String) = model in endpoint.models
+
     private fun open(path: String): HttpURLConnection =
         (URL(endpoint.baseUrl.trimEnd('/') + "/" + path).openConnection() as HttpURLConnection).apply {
             connectTimeout = connectTimeoutMs
