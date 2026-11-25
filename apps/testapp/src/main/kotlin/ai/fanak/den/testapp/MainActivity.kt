@@ -150,7 +150,7 @@ class MainActivity : Activity() {
     private fun showPlan() {
         val p = den.device()
         val text = buildString {
-            appendLine("${p.soc} (${p.socFamily}), API ${p.osApi}, RAM ${p.availRamMb}/${p.ramMb} MB free, thermal ${p.thermal}")
+            appendLine("${p.soc} (${p.socFamily}), API ${p.osApi}, RAM ${p.availRamMb}/${p.ramMb} MB free, thermal ${p.thermal}${if (p.batteryLow) ", battery low" else ""}")
             appendLine("cpu ${p.cpuFeatures.sorted().joinToString(",")}, gpu ${p.gpu}, opencl ${p.openCl}, vulkan ${p.vulkan}, npu ${p.npu?.vendor}")
             appendLine("model $model, ${den.recipes.size} recipes, models in ${den.modelDir.path}")
             den.plan(model).forEachIndexed { i, c ->

@@ -196,8 +196,8 @@ class Router(
         val remote = remote(model, device, minContext, caps)
         val ordered = when (policy) {
             RoutingPolicy.LOCAL_ONLY -> onPhone
-            // Hot: a LAN server spares the phone; the cloud still comes last.
-            RoutingPolicy.LOCAL_FIRST -> if (Thermal.hot(device.thermal)) {
+            // Hot or low on battery: a LAN server spares the phone; the cloud still comes last.
+            RoutingPolicy.LOCAL_FIRST -> if (Thermal.hot(device.thermal) || device.batteryLow) {
                 remote.filter { it.location == Location.LAN } + onPhone + remote.filter { it.location != Location.LAN }
             } else {
                 onPhone + remote
@@ -256,6 +256,7 @@ class Router(
                 smallest(model, why.rejected)?.let { "no file fits the phone: ${it.quant} ${it.detail}" } ?: "no file of this model runs on the phone"
             policy == RoutingPolicy.REMOTE_FIRST -> "the routing policy puts servers first"
             Thermal.hot(device.thermal) -> "the phone is hot (${device.thermal.name.lowercase()}), a LAN server spares it"
+            device.batteryLow -> "the phone's battery is low, a LAN server spares it"
             else -> "the phone was not tried"
         }
     }
