@@ -70,6 +70,7 @@ class OpenAiBackendTest {
 
     @AfterTest
     fun stop() {
+        stops.forEach { it() }
         server.stop()
         scope.cancel()
     }
@@ -85,6 +86,44 @@ class OpenAiBackendTest {
         assertEquals(Finish.STOP, stats.finish)
         assertEquals(listOf("the fox digs a den"), last!!.messages.map { it.content })
     }
+
+    @Test
+    fun aThinkingModelsThoughtsComeInThinkTags() = runBlocking {
+        // Chunks as Lemonade 2026.47.1 streams them for Qwen3-1.7B-GGUF.
+        val chunks = listOf(
+            """{"choices":[{"index":0,"delta":{"role":"assistant","content":null}}]}""",
+            """{"choices":[{"index":0,"delta":{"reasoning_content":"Okay"}}]}""",
+            """{"choices":[{"index":0,"delta":{"reasoning_content":", hi."}}]}""",
+            """{"choices":[{"index":0,"delta":{"content":"Hello"}}]}""",
+            """{"choices":[{"index":0,"delta":{"content":"!"},"finish_reason":"stop"}]}""",
+        )
+        val events = sse(chunks).load(Artifact(variant, ""), LoadOptions(Accel.CPU)).generate(ask("Say hi.")).toList()
+        assertEquals("<think>\nOkay, hi.\n</think>\n\nHello!", events.filterIsInstance<GenEvent.Text>().joinToString("") { it.text })
+        assertEquals(4, (events.last() as GenEvent.Done).stats.outputTokens)
+        // Cut off while thinking: the tag is still closed.
+        val cut = sse(chunks.take(3)).load(Artifact(variant, ""), LoadOptions(Accel.CPU)).generate(ask("Say hi.")).toList()
+        assertEquals("<think>\nOkay, hi.\n</think>", cut.filterIsInstance<GenEvent.Text>().joinToString("") { it.text })
+    }
+
+    // A server that answers each chat with [chunks] as an event stream, and lists the mapped model.
+    private fun sse(chunks: List<String>): OpenAiBackend {
+        val http = com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
+        http.createContext("/v1/models") { x ->
+            val b = """{"data":[{"id":"echo-1.7b"}]}""".encodeToByteArray()
+            x.sendResponseHeaders(200, b.size.toLong()); x.responseBody.use { it.write(b) }
+        }
+        http.createContext("/v1/chat/completions") { x ->
+            x.requestBody.readBytes()
+            val b = (chunks.joinToString("") { "data: $it\n\n" } + "data: [DONE]\n\n").encodeToByteArray()
+            x.responseHeaders.add("Content-Type", "text/event-stream")
+            x.sendResponseHeaders(200, b.size.toLong()); x.responseBody.use { it.write(b) }
+        }
+        http.start()
+        stops += { http.stop(0) }
+        return OpenAiBackend(endpoint.copy(baseUrl = "http://127.0.0.1:${http.address.port}/v1"))
+    }
+
+    private val stops = mutableListOf<() -> Unit>()
 
     @Test
     fun maxTokensEndsWithLength() = runBlocking {
