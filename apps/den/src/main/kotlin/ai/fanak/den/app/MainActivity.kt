@@ -34,7 +34,8 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.jsonObject
+import ai.fanak.den.backend.openai.FoundServer
+import ai.fanak.den.backend.openai.LanScan
 
 // What Den sees on this phone, and which apps may use it. Model management UI comes later.
 class MainActivity : Activity() {
@@ -497,6 +498,42 @@ class MainActivity : Activity() {
                 addView(button("Remove") { ServerSettings.remove(context, e.name) })
             })
         }
+        servers.addView(button(if (scanning) "Looking for servers..." else "Find servers on this network") {
+            if (scanning) return@button
+            val hosts = lanHosts()
+            if (hosts.isEmpty()) {
+                status = "no Wi-Fi or Ethernet network to look on"
+                return@button
+            }
+            scanning = true
+            scope.launch {
+                found = LanScan.scan(hosts)
+                scanning = false
+                status = "found ${found!!.size} server(s) on ${hosts.size} hosts, ports ${LanScan.PORTS.joinToString()}"
+                showServers()
+                showModels()
+            }
+        })
+        found?.let { list ->
+            if (list.isEmpty()) servers.addView(TextView(this).apply {
+                text = "None found. A server must listen on the network (llama-server --host 0.0.0.0), on one of the ports ${LanScan.PORTS.joinToString()}."
+            })
+            val added = ServerSettings.all(this).map { it.baseUrl }.toSet()
+            list.filter { it.baseUrl !in added }.forEach { f ->
+                servers.addView(LinearLayout(this).apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(TextView(context).apply {
+                        text = "${f.baseUrl}\n  ${f.models.joinToString().ifEmpty { "no models listed" }}"
+                    }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                    addView(button("Add") {
+                        val u = java.net.URL(f.baseUrl)
+                        val name = "${u.host}:${u.port}"
+                        ServerSettings.add(context, ai.fanak.den.backend.openai.Endpoint(name, f.baseUrl, ai.fanak.den.core.backend.Location.LAN, ServerSettings.parseModels("", f.models)))
+                        status = "added $name with the server's model names"
+                    })
+                })
+            }
+        }
         val url = EditText(this).apply { hint = "http://192.168.1.20:8080/v1"; inputType = InputType.TYPE_TEXT_VARIATION_URI }
         val names = EditText(this).apply { hint = "den-name = server-model, one per line (empty: the server's names)"; minLines = 2 }
         servers.addView(url)
@@ -507,7 +544,7 @@ class MainActivity : Activity() {
             scope.launch {
                 status = withContext(Dispatchers.IO) {
                     try {
-                        val ids = serverModels(base)
+                        val ids = LanScan.models(base)
                         val map = ServerSettings.parseModels(text, ids)
                         val u = java.net.URL(base)
                         val name = "${u.host}:${u.port}"
@@ -523,21 +560,19 @@ class MainActivity : Activity() {
         })
     }
 
-    // The ids of GET /models, which also checks that the server answers.
-    private fun serverModels(base: String): List<String> {
-        val conn = java.net.URL("$base/models").openConnection() as java.net.HttpURLConnection
-        conn.connectTimeout = 3_000
-        conn.readTimeout = 10_000
-        conn.setRequestProperty("User-Agent", "fanak-den/0.1")
-        try {
-            if (conn.responseCode != 200) throw java.io.IOException("HTTP ${conn.responseCode} from $base/models")
-            val body = conn.inputStream.use { it.readBytes().decodeToString() }
-            val data = kotlinx.serialization.json.Json.parseToJsonElement(body).jsonObject["data"] as? kotlinx.serialization.json.JsonArray
-            return data.orEmpty().mapNotNull { (it.jsonObject["id"] as? kotlinx.serialization.json.JsonPrimitive)?.content }
-        } finally {
-            conn.disconnect()
-        }
+    // The hosts of the Wi-Fi or Ethernet network, none on mobile data: a scan there would reach the carrier.
+    private fun lanHosts(): List<String> {
+        val cm = getSystemService(android.net.ConnectivityManager::class.java)
+        val net = cm.activeNetwork ?: return emptyList()
+        val caps = cm.getNetworkCapabilities(net) ?: return emptyList()
+        if (!caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) &&
+            !caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET)) return emptyList()
+        val la = cm.getLinkProperties(net)?.linkAddresses?.firstOrNull { it.address is java.net.Inet4Address } ?: return emptyList()
+        return LanScan.hosts(la.address as java.net.Inet4Address, la.prefixLength)
     }
+
+    private var found: List<FoundServer>? = null
+    private var scanning = false
 
     // The token made on this screen, until the screen closes.
     private var fresh: Pair<String, String>? = null

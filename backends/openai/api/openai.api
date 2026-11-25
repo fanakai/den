@@ -34,6 +34,29 @@ public final class ai/fanak/den/backend/openai/Endpoint$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public final class ai/fanak/den/backend/openai/FoundServer {
+	public fun <init> (Ljava/lang/String;Ljava/util/List;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/util/List;)Lai/fanak/den/backend/openai/FoundServer;
+	public static synthetic fun copy$default (Lai/fanak/den/backend/openai/FoundServer;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lai/fanak/den/backend/openai/FoundServer;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBaseUrl ()Ljava/lang/String;
+	public final fun getModels ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ai/fanak/den/backend/openai/LanScan {
+	public static final field INSTANCE Lai/fanak/den/backend/openai/LanScan;
+	public final fun getPORTS ()Ljava/util/List;
+	public final fun hosts (Ljava/net/Inet4Address;I)Ljava/util/List;
+	public final fun models (Ljava/lang/String;IILjava/lang/String;)Ljava/util/List;
+	public static synthetic fun models$default (Lai/fanak/den/backend/openai/LanScan;Ljava/lang/String;IILjava/lang/String;ILjava/lang/Object;)Ljava/util/List;
+	public final fun scan (Ljava/util/List;Ljava/util/List;IILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun scan$default (Lai/fanak/den/backend/openai/LanScan;Ljava/util/List;Ljava/util/List;IILkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
 public final class ai/fanak/den/backend/openai/OpenAiBackend : ai/fanak/den/core/backend/DenBackend {
 	public fun <init> (Lai/fanak/den/backend/openai/Endpoint;II)V
 	public synthetic fun <init> (Lai/fanak/den/backend/openai/Endpoint;IIILkotlin/jvm/internal/DefaultConstructorMarker;)V
