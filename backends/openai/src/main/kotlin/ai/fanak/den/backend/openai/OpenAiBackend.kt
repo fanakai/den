@@ -126,6 +126,12 @@ class OpenAiBackend(
                     var outputTokens = 0
                     var usage: JsonObject? = null
                     var finish = Finish.STOP
+                    var thinking = false
+                    fun emit(text: String): Boolean {
+                        if (first == 0L) first = System.currentTimeMillis()
+                        outputTokens++
+                        return trySendBlocking(GenEvent.Text(text)).isSuccess
+                    }
                     conn.inputStream.bufferedReader().useLines { lines ->
                         for (line in lines) {
                             if (!line.startsWith("data:")) continue
@@ -134,17 +140,25 @@ class OpenAiBackend(
                             val chunk = JSON.parseToJsonElement(data).jsonObject
                             (chunk["usage"] as? JsonObject)?.let { usage = it }
                             val choice = (chunk["choices"] as? JsonArray)?.firstOrNull()?.jsonObject ?: continue
-                            val text = ((choice["delta"] as? JsonObject)?.get("content") as? JsonPrimitive)?.contentOrNull
+                            val delta = choice["delta"] as? JsonObject
+                            // llama-server and Lemonade send a thinking model's thoughts apart, as reasoning_content.
+                            // They go to the app in <think> tags, as the same model gives them on the phone.
+                            val thought = (delta?.get("reasoning_content") as? JsonPrimitive)?.contentOrNull
+                            if (!thought.isNullOrEmpty()) {
+                                if (!emit(if (thinking) thought else "<think>\n$thought")) return@useLines
+                                thinking = true
+                            }
+                            val text = (delta?.get("content") as? JsonPrimitive)?.contentOrNull
                             if (!text.isNullOrEmpty()) {
-                                if (first == 0L) first = System.currentTimeMillis()
-                                outputTokens++
-                                if (trySendBlocking(GenEvent.Text(text)).isFailure) return@useLines
+                                if (!emit(if (thinking) "\n</think>\n\n$text" else text)) return@useLines
+                                thinking = false
                             }
                             when ((choice["finish_reason"] as? JsonPrimitive)?.contentOrNull) {
                                 "length" -> finish = Finish.LENGTH
                             }
                         }
                     }
+                    if (thinking) trySendBlocking(GenEvent.Text("\n</think>"))
                     val end = System.currentTimeMillis()
                     val u = usage
                     send(GenEvent.Done(GenStats(
