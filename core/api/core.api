@@ -1617,6 +1617,15 @@ public final class ai/fanak/den/core/router/RouteExplanation {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class ai/fanak/den/core/router/RouteHint : java/lang/Enum {
+	public static final field CHEAP Lai/fanak/den/core/router/RouteHint;
+	public static final field PRIVATE Lai/fanak/den/core/router/RouteHint;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun limit (Ljava/util/Set;)Ljava/util/Set;
+	public static fun valueOf (Ljava/lang/String;)Lai/fanak/den/core/router/RouteHint;
+	public static fun values ()[Lai/fanak/den/core/router/RouteHint;
+}
+
 public final class ai/fanak/den/core/router/Router {
 	public static final field Companion Lai/fanak/den/core/router/Router$Companion;
 	public static final field OVERHEAD_MB I

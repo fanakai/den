@@ -26,3 +26,4 @@ change in place.
 | 4 | `httpPort`: the port of the HTTP endpoint, or -1 |
 | 5 | `openWith` (context length and the shortest accepted), `plan`; `IOpenCallback.onContext`, `onFailed` |
 | 6 | aliases resolved in `openWith` and `plan`; `IOpenCallback.onModel` |
+| 7 | `"hint"` in the options of `openWith` and `plan`: `private` (the phone only) or `cheap` (no cloud); it narrows what the user allows the app |
