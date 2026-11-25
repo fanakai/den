@@ -1622,12 +1622,12 @@ public final class ai/fanak/den/core/router/Router {
 	public static final field OVERHEAD_MB I
 	public fun <init> (Ljava/util/List;Lai/fanak/den/core/recipe/RecipeStore;Lai/fanak/den/core/model/ModelCatalog;Lai/fanak/den/core/model/ModelStore;Lai/fanak/den/core/router/FailureStore;Lai/fanak/den/core/recipe/RecipeStore;Lai/fanak/den/core/router/FirstRun;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;Lai/fanak/den/core/router/RoutingPolicy;Lkotlin/jvm/functions/Function0;)V
 	public synthetic fun <init> (Ljava/util/List;Lai/fanak/den/core/recipe/RecipeStore;Lai/fanak/den/core/model/ModelCatalog;Lai/fanak/den/core/model/ModelStore;Lai/fanak/den/core/router/FailureStore;Lai/fanak/den/core/recipe/RecipeStore;Lai/fanak/den/core/router/FirstRun;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;Lai/fanak/den/core/router/RoutingPolicy;Lkotlin/jvm/functions/Function0;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun explain (Ljava/lang/String;Lai/fanak/den/core/device/DeviceProfile;Ljava/lang/Integer;Z)Lai/fanak/den/core/router/RouteExplanation;
-	public static synthetic fun explain$default (Lai/fanak/den/core/router/Router;Ljava/lang/String;Lai/fanak/den/core/device/DeviceProfile;Ljava/lang/Integer;ZILjava/lang/Object;)Lai/fanak/den/core/router/RouteExplanation;
-	public final fun open (Ljava/lang/String;Lai/fanak/den/core/device/DeviceProfile;IZIILkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public static synthetic fun open$default (Lai/fanak/den/core/router/Router;Ljava/lang/String;Lai/fanak/den/core/device/DeviceProfile;IZIILkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
-	public final fun plan (Ljava/lang/String;Lai/fanak/den/core/device/DeviceProfile;Ljava/lang/Integer;Z)Ljava/util/List;
-	public static synthetic fun plan$default (Lai/fanak/den/core/router/Router;Ljava/lang/String;Lai/fanak/den/core/device/DeviceProfile;Ljava/lang/Integer;ZILjava/lang/Object;)Ljava/util/List;
+	public final fun explain (Ljava/lang/String;Lai/fanak/den/core/device/DeviceProfile;Ljava/lang/Integer;ZLjava/util/Set;)Lai/fanak/den/core/router/RouteExplanation;
+	public static synthetic fun explain$default (Lai/fanak/den/core/router/Router;Ljava/lang/String;Lai/fanak/den/core/device/DeviceProfile;Ljava/lang/Integer;ZLjava/util/Set;ILjava/lang/Object;)Lai/fanak/den/core/router/RouteExplanation;
+	public final fun open (Ljava/lang/String;Lai/fanak/den/core/device/DeviceProfile;IZIILjava/util/Set;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun open$default (Lai/fanak/den/core/router/Router;Ljava/lang/String;Lai/fanak/den/core/device/DeviceProfile;IZIILjava/util/Set;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun plan (Ljava/lang/String;Lai/fanak/den/core/device/DeviceProfile;Ljava/lang/Integer;ZLjava/util/Set;)Ljava/util/List;
+	public static synthetic fun plan$default (Lai/fanak/den/core/router/Router;Ljava/lang/String;Lai/fanak/den/core/device/DeviceProfile;Ljava/lang/Integer;ZLjava/util/Set;ILjava/lang/Object;)Ljava/util/List;
 	public final fun reportFailure (Lai/fanak/den/core/device/DeviceProfile;Lai/fanak/den/core/router/Candidate;Ljava/lang/Throwable;)V
 }
 

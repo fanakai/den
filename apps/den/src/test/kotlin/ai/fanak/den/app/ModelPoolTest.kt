@@ -1,6 +1,7 @@
 package ai.fanak.den.app
 
 import ai.fanak.den.DenModel
+import ai.fanak.den.core.backend.Location
 import ai.fanak.den.core.backend.GenEvent
 import ai.fanak.den.core.backend.GenRequest
 import ai.fanak.den.core.device.Accel
@@ -25,7 +26,7 @@ class ModelPoolTest {
     // A load waits on its gate when one is set, like a download in progress.
     private val gates = mutableMapOf<String, CompletableDeferred<Unit>>()
 
-    private inner class Fake(override val name: String) : DenModel() {
+    private inner class Fake(override val name: String, override val location: Location = Location.DEVICE) : DenModel() {
         override val backend = "fake"
         override val accel = Accel.CPU
         override val quant = "q4_0"
@@ -38,18 +39,33 @@ class ModelPoolTest {
     }
 
     private val pool = ModelPool(
-        load = { name ->
+        load = { name, reach ->
             gates[name]?.await()
             check(free >= sizes.getValue(name)) { "out of memory loading $name" }
             loads += name
             free -= sizes.getValue(name)
-            Fake(name)
+            // Like LOCAL_FIRST when no file runs on the phone: on the LAN server when the caller may go there.
+            Fake(name, if (name == "big" && Location.LAN in reach) Location.LAN else Location.DEVICE)
         },
         need = { name, avail -> sizes.getValue(name).takeIf { it <= avail } },
         availMb = { free },
         now = { clock },
         log = {},
     )
+
+    @Test
+    fun aModelOnAServerIsNotSharedWithAPhoneOnlyApp() = runBlocking {
+        val phone = setOf(Location.DEVICE)
+        free = 3000
+        pool.acquire("big", setOf(Location.DEVICE, Location.LAN))
+        val e = runCatching { pool.use("big", phone) {} }.exceptionOrNull()
+        assertTrue(e is IllegalStateException && "LAN" in e.message!!, "$e")
+        // The model loaded on the phone is shared with both.
+        pool.acquire("small", phone)
+        pool.use("small", setOf(Location.DEVICE, Location.LAN)) {}
+        assertEquals(listOf("big", "small"), loads)
+        assertEquals(listOf("big", "small"), pool.loadedNames().sorted())
+    }
 
     @Test
     fun sharedModelLoadsOnce() = runBlocking {
@@ -145,7 +161,7 @@ class ModelPoolTest {
         val npu = setOf("npu-a", "npu-b")
         val held = mutableListOf<String>()
         val p = ModelPool(
-            load = { name -> loads += name; held += name; object : DenModel() {
+            load = { name, _ -> loads += name; held += name; object : DenModel() {
                 override val name = name
                 override val backend = "qnn"
                 override val accel = if (name in npu) Accel.NPU else Accel.CPU
@@ -175,7 +191,7 @@ class ModelPoolTest {
         var clock = 0L
         val held = mutableListOf<String>()
         val pool = ModelPool(
-            load = { name ->
+            load = { name, _ ->
                 clock += loadMs[name] ?: 0
                 check(free >= 1000) { "out of memory loading $name" }
                 free -= 1000

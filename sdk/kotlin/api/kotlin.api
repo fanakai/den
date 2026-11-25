@@ -41,7 +41,8 @@ public final class ai/fanak/den/Den : java/lang/AutoCloseable {
 	public static synthetic fun bench$default (Lai/fanak/den/Den;Ljava/lang/String;ILjava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public fun close ()V
 	public final fun device ()Lai/fanak/den/core/device/DeviceProfile;
-	public final fun download (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun download (Ljava/lang/String;Ljava/util/Set;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun download$default (Lai/fanak/den/Den;Ljava/lang/String;Ljava/util/Set;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun exclusiveAccelerator (Ljava/lang/String;)Ljava/lang/String;
 	public final fun explain (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun fileName (Ljava/lang/String;)Ljava/lang/String;
@@ -56,11 +57,11 @@ public final class ai/fanak/den/Den : java/lang/AutoCloseable {
 	public final fun getRecipes ()Ljava/util/List;
 	public final fun httpEndpoint (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun licence (Ljava/lang/String;)Ljava/lang/String;
-	public final fun model (Ljava/lang/String;IILkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public static synthetic fun model$default (Lai/fanak/den/Den;Ljava/lang/String;IILkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun model (Ljava/lang/String;IILjava/util/Set;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun model$default (Lai/fanak/den/Den;Ljava/lang/String;IILjava/util/Set;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun newerCommit (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public final fun plan (Ljava/lang/String;Lai/fanak/den/core/device/DeviceProfile;I)Ljava/util/List;
-	public static synthetic fun plan$default (Lai/fanak/den/Den;Ljava/lang/String;Lai/fanak/den/core/device/DeviceProfile;IILjava/lang/Object;)Ljava/util/List;
+	public final fun plan (Ljava/lang/String;Lai/fanak/den/core/device/DeviceProfile;ILjava/util/Set;)Ljava/util/List;
+	public static synthetic fun plan$default (Lai/fanak/den/Den;Ljava/lang/String;Lai/fanak/den/core/device/DeviceProfile;ILjava/util/Set;ILjava/lang/Object;)Ljava/util/List;
 	public final fun ramNeedMb (Ljava/lang/String;Lai/fanak/den/core/device/DeviceProfile;)Ljava/lang/Integer;
 	public static synthetic fun ramNeedMb$default (Lai/fanak/den/Den;Ljava/lang/String;Lai/fanak/den/core/device/DeviceProfile;ILjava/lang/Object;)Ljava/lang/Integer;
 	public final fun removeFile (Ljava/lang/String;)V

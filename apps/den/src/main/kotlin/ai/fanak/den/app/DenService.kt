@@ -62,7 +62,8 @@ class DenService : Service() {
     )
     private val den by lazy {
         // Two apps at once share each decoding step of a model instead of waiting for each other (#154). The LAN
-        // servers of the Den screen run a model only when no file of it runs on the phone; none set, nothing leaves it.
+        // servers of the Den screen run a model only when no file of it runs on the phone, and only for the apps the
+        // user allowed to go there (Reach).
         val config = DenConfig(
             mode = DenMode.EMBEDDED, parallel = 2, onDownload = ::progress, beforeDownload = ::beforeDownload,
             backends = listOf(LlamaCppBackend(), OpenAiEndpoints({ ServerSettings.all(this) })),
@@ -72,7 +73,7 @@ class DenService : Service() {
     }
 
     // Holds the client's binder: a death link on a binder that is garbage-collected never fires.
-    private class Session(val model: String, val uid: Int, val client: IBinder, var death: IBinder.DeathRecipient? = null, var job: Job? = null)
+    private class Session(val model: String, val uid: Int, val pkg: String, val client: IBinder, var death: IBinder.DeathRecipient? = null, var job: Job? = null)
 
     // Opens still in progress, by the client's callback binder; they get the download progress of their model.
     private class Pending(var model: String, val uid: Int, val callback: IOpenCallback, var job: Job? = null)
@@ -84,13 +85,13 @@ class DenService : Service() {
     private val wanted = ConcurrentHashMap<String, Pair<Int, Int>>()
 
     private val pool = ModelPool(
-        load = { name -> wanted[name]?.let { (length, min) -> den.model(name, length, min) } ?: den.model(name) },
-        prepare = { name ->
+        load = { name, reach -> wanted[name]?.let { (length, min) -> den.model(name, length, min, reach) } ?: den.model(name, reach = reach) },
+        prepare = { name, reach ->
             den.resolve(name)
             val file = den.fileName(name)
             if (file != null) downloads[file] = name
             try {
-                den.download(name)
+                den.download(name, reach)
             } finally {
                 if (file != null) downloads.remove(file)
             }
@@ -122,7 +123,8 @@ class DenService : Service() {
             // Binder thread: hf: names need the network once, then their cache.
             runCatching { kotlinx.coroutines.runBlocking { kotlinx.coroutines.withTimeout(30_000) { den.resolve(model) } } }
             val target = runCatching { kotlinx.coroutines.runBlocking { den.resolveAlias(model) } }.getOrDefault(model)
-            return den.plan(target, minContextLength = min).map { "${it.backend.id} ${it.accel} ${it.variant.quant} ${it.source}" }.toTypedArray()
+            val reach = Reach.of(this@DenService, callerPackage(Binder.getCallingUid()))
+            return den.plan(target, minContextLength = min, reach = reach).map { "${it.backend.id} ${it.accel} ${it.variant.quant} ${it.source}" }.toTypedArray()
         }
 
         override fun cancelOpen(callback: IOpenCallback) {
@@ -154,16 +156,17 @@ class DenService : Service() {
                     val target = den.resolveAlias(model)
                     p.model = target
                     if (context != null) wanted[target] = context
-                    var m = pool.acquire(target)
+                    val reach = Reach.of(this@DenService, pkg)
+                    var m = pool.acquire(target, reach)
                     // Loaded for another app with a shorter context than this one accepts: reloaded when it is idle.
                     if (context != null && m.contextLength in 1 until context.second) {
                         pool.release(target)
                         if (!pool.evict(target)) throw IllegalStateException("$target runs with ${m.contextLength} tokens of context for another app; try again when it is idle")
-                        m = pool.acquire(target)
+                        m = pool.acquire(target, reach)
                     }
                     val id = nextId.getAndIncrement()
                     // A client that dies releases its sessions.
-                    val session = Session(target, uid, client)
+                    val session = Session(target, uid, pkg, client)
                     sessions[id] = session
                     session.death = IBinder.DeathRecipient { scope.launch { release(id) } }.also { client.linkToDeath(it, 0) }
                     log("open $target for ${caller(uid)}: session $id, ${m.backend} ${m.accel} ${m.quant}, sessions ${pool.sessions(target)}")
@@ -206,7 +209,8 @@ class DenService : Service() {
                         val messages = roles.zip(contents) { r, c ->
                             ChatMessage(requireNotNull(Role.entries.find { it.name == r.uppercase() }) { "unknown role $r" }, c)
                         }
-                        pool.use(s.model) { m -> recorded(s.model, m, m.chat(GenRequest(messages, maxTokens, temperature, topP, stop.toList()))).collect { e ->
+                        // Read on each request, so a level the user lowers applies to open sessions too.
+                        pool.use(s.model, Reach.of(this@DenService, s.pkg)) { m -> recorded(s.model, m, m.chat(GenRequest(messages, maxTokens, temperature, topP, stop.toList())), s.pkg).collect { e ->
                             when (e) {
                                 is GenEvent.Text -> callback.onText(e.text)
                                 is GenEvent.Done -> e.stats.run {
@@ -249,9 +253,10 @@ class DenService : Service() {
         // Aliases too, so OpenAI clients can list and pick them.
         models = { den.models + den.aliases.names.sorted() },
         // An alias opens the model behind it, so both share one loaded copy.
-        use = { name, block ->
+        use = { who, name, block ->
             val target = den.resolveAlias(name)
-            pool.use(target) { m -> block { req -> recorded(target, m, m.chat(req)) } }
+            val client = Reach.http(who)
+            pool.use(target, Reach.of(this, client)) { m -> block { req -> recorded(target, m, m.chat(req), client) } }
         },
         client = { HttpSettings.name(this, it) },
         log = ::log,
@@ -319,15 +324,16 @@ class DenService : Service() {
     }
 
     // For the diagnostics file: speeds and the path taken, never the text.
-    private fun recorded(model: String, m: DenModel, events: Flow<GenEvent>): Flow<GenEvent> {
+    private fun recorded(model: String, m: DenModel, events: Flow<GenEvent>, client: String): Flow<GenEvent> {
         var t0 = 0L
         var first: Long? = null
         return events.onStart { t0 = System.currentTimeMillis() }.onEach { e ->
             when (e) {
                 is GenEvent.Text -> if (first == null) first = System.currentTimeMillis() - t0
-                is GenEvent.Done -> Diagnostics.record(
-                    Diagnostics.Request(t0, model, m.backend, m.accel.name, m.quant, first, e.stats, den.device().thermal.name),
-                )
+                is GenEvent.Done -> {
+                    Diagnostics.record(Diagnostics.Request(t0, model, m.backend, m.accel.name, m.quant, first, e.stats, den.device().thermal.name))
+                    Reach.record(this, client, m.location, e.stats.promptTokens + e.stats.outputTokens)
+                }
             }
         }
     }

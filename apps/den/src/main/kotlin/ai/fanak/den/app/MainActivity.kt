@@ -326,12 +326,13 @@ class MainActivity : Activity() {
                 true -> "allowed"; false -> "denied"
                 null -> if (pkg in Approvals.pending) "waiting" else "not answered"
             }
-            apps.addView(TextView(this).apply { text = "${Approvals.label(context, pkg)} ($pkg): $state" })
+            apps.addView(TextView(this).apply { text = "${Approvals.label(context, pkg)} ($pkg): $state" + ran(pkg) })
             apps.addView(LinearLayout(this).apply {
                 if (allowed != true) addView(button("Allow") { Approvals.set(context, pkg, true) })
                 if (allowed != false) addView(button("Deny") { Approvals.set(context, pkg, false) })
                 if (allowed != null) addView(button("Forget") { Approvals.forget(context, pkg) })
             })
+            if (allowed == true) apps.addView(reachButton(pkg))
         }
     }
 
@@ -475,10 +476,26 @@ class MainActivity : Activity() {
         HttpSettings.all(this).forEach { (key, client) ->
             http.addView(LinearLayout(this).apply {
                 gravity = Gravity.CENTER_VERTICAL
-                addView(TextView(context).apply { text = client }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                addView(TextView(context).apply { text = client + ran(Reach.http(client)) }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
                 addView(button("Revoke") { HttpSettings.revoke(context, key) })
             })
+            http.addView(reachButton(Reach.http(client)))
         }
+    }
+
+    // Where a client's requests may run; a server is used only for a model with no file that runs on the phone.
+    private fun reachButton(client: String): Button {
+        val lan = Reach.lan(this, client)
+        return button(if (lan) "Phone and LAN servers (tap: phone only)" else "Phone only (tap: also LAN servers)") {
+            Reach.setLan(this, client, !lan)
+        }
+    }
+
+    // Where the client's requests ran, e.g. "ran on DEVICE 12 times (3400 tokens), LAN 2 times (310 tokens)".
+    private fun ran(client: String): String {
+        val r = Reach.ran(this, client)
+        if (r.isEmpty()) return ""
+        return "\nran on " + r.entries.joinToString { (l, v) -> "${l.name} ${v.first} times (${v.second} tokens)" }
     }
 
     // OpenAI-compatible servers on the LAN (llama-server, Lemonade, Ollama): used for a model only when no file of it

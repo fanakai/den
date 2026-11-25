@@ -23,6 +23,10 @@ it guards against, and what it does not cover yet.
   close it.
 - **The diagnostics file.** It is served to the app the user shares it with, by a per-file grant; the provider is not
   exported. It holds no prompt or reply text.
+- **Prompts off the phone.** An app or HTTP token runs its requests on the phone only until the user allows LAN
+  servers for it on the Den screen. The check is in the router and in the model pool, so a model that runs on a
+  server for one app is not shared with an app limited to the phone. The Den screen counts, per app and token, the
+  requests and tokens that ran on the phone and on the LAN.
 - **Work profiles.** An app in a work profile cannot bind to the Den app of the personal profile (another Android
   user); it runs the model in the app instead.
 
@@ -58,7 +62,8 @@ it guards against, and what it does not cover yet.
    traffic without root.
 4) A LAN server the user adds gets the prompts of the models it serves, in clear text when its URL is `http://`, as
    llama-server, Ollama and Lemonade serve by default. Anyone on that network can read them. The Den app allows plain
-   HTTP for this; downloads from the hubs stay on HTTPS. Per-app consent before a prompt leaves the phone is #62.
+   HTTP for this; downloads from the hubs stay on HTTPS. Only apps and tokens the user allowed for LAN servers reach
+   them.
 5) "Find servers" on the Den screen connects to a few known ports on each host of the Wi-Fi or Ethernet network, at
    most a /24, and sends `GET /models` where a port is open. It runs only when the user taps it, never on mobile
    data, and sends no prompt. A found server is used only once the user adds it. Any device on the network can answer
