@@ -338,7 +338,7 @@ class DenService : Service() {
                 is GenEvent.Text -> if (first == null) first = System.currentTimeMillis() - t0
                 is GenEvent.Done -> {
                     Diagnostics.record(Diagnostics.Request(t0, model, m.backend, m.accel.name, m.quant, first, e.stats, den.device().thermal.name))
-                    Reach.record(this, client, m.location, e.stats.promptTokens + e.stats.outputTokens)
+                    Reach.record(this, client, m.location, e.stats.promptTokens + e.stats.outputTokens, m.offPhone)
                 }
             }
         }

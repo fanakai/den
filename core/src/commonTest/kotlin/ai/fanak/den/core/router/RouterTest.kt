@@ -28,6 +28,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RouterTest {
@@ -544,6 +545,20 @@ class RouterTest {
         // Not allowed off the phone: it stays there, hot or not.
         assertEquals(listOf(dev), r.plan(model, hot, reach = setOf(dev)).map { it.location }.distinct())
         assertEquals(listOf(dev), policyRouter(RoutingPolicy.LOCAL_ONLY).plan(model, hot).map { it.location }.distinct())
+    }
+
+    @Test
+    fun aServerSaysWhyTheModelLeftThePhone() = runTest {
+        val hot = device.copy(thermal = ThermalState.SEVERE)
+        assertNull(policyRouter(RoutingPolicy.LOCAL_FIRST).open(model, device).offPhone)
+        val failing = policyRouter(RoutingPolicy.LOCAL_FIRST, local = llama(failOn = setOf(Accel.CPU, Accel.GPU)))
+        val failed = failing.open(model, device.copy(availRamMb = 6_000)).offPhone!!
+        assertTrue(failed.startsWith("on the phone, llamacpp cpu ") && "failed" in failed, failed)
+        val noRam = policyRouter(RoutingPolicy.LOCAL_FIRST).open(model, device.copy(availRamMb = 10)).offPhone!!
+        // q4_0 is the smallest file, though q4_k_m comes first in the catalog.
+        assertTrue(noRam.startsWith("no file fits the phone: q4_0 needs ") && "MB free" in noRam, noRam)
+        assertEquals("the routing policy puts servers first", policyRouter(RoutingPolicy.REMOTE_FIRST).open(model, device).offPhone)
+        assertEquals("the phone is hot (severe), a LAN server spares it", policyRouter(RoutingPolicy.LOCAL_FIRST).open(model, hot).offPhone)
     }
 
     @Test

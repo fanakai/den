@@ -1546,20 +1546,22 @@ public final class ai/fanak/den/core/router/NotEnoughMemoryException : java/lang
 }
 
 public final class ai/fanak/den/core/router/Opened {
-	public fun <init> (Lai/fanak/den/core/backend/Session;Lai/fanak/den/core/router/Candidate;Ljava/util/List;ILjava/util/List;)V
-	public synthetic fun <init> (Lai/fanak/den/core/backend/Session;Lai/fanak/den/core/router/Candidate;Ljava/util/List;ILjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lai/fanak/den/core/backend/Session;Lai/fanak/den/core/router/Candidate;Ljava/util/List;ILjava/util/List;Ljava/lang/String;)V
+	public synthetic fun <init> (Lai/fanak/den/core/backend/Session;Lai/fanak/den/core/router/Candidate;Ljava/util/List;ILjava/util/List;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lai/fanak/den/core/backend/Session;
 	public final fun component2 ()Lai/fanak/den/core/router/Candidate;
 	public final fun component3 ()Ljava/util/List;
 	public final fun component4 ()I
 	public final fun component5 ()Ljava/util/List;
-	public final fun copy (Lai/fanak/den/core/backend/Session;Lai/fanak/den/core/router/Candidate;Ljava/util/List;ILjava/util/List;)Lai/fanak/den/core/router/Opened;
-	public static synthetic fun copy$default (Lai/fanak/den/core/router/Opened;Lai/fanak/den/core/backend/Session;Lai/fanak/den/core/router/Candidate;Ljava/util/List;ILjava/util/List;ILjava/lang/Object;)Lai/fanak/den/core/router/Opened;
+	public final fun component6 ()Ljava/lang/String;
+	public final fun copy (Lai/fanak/den/core/backend/Session;Lai/fanak/den/core/router/Candidate;Ljava/util/List;ILjava/util/List;Ljava/lang/String;)Lai/fanak/den/core/router/Opened;
+	public static synthetic fun copy$default (Lai/fanak/den/core/router/Opened;Lai/fanak/den/core/backend/Session;Lai/fanak/den/core/router/Candidate;Ljava/util/List;ILjava/util/List;Ljava/lang/String;ILjava/lang/Object;)Lai/fanak/den/core/router/Opened;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getCandidate ()Lai/fanak/den/core/router/Candidate;
 	public final fun getContextLength ()I
 	public final fun getFailures ()Ljava/util/List;
 	public final fun getNeedsBenchmark ()Z
+	public final fun getOffPhone ()Ljava/lang/String;
 	public final fun getRejected ()Ljava/util/List;
 	public final fun getSession ()Lai/fanak/den/core/backend/Session;
 	public fun hashCode ()I

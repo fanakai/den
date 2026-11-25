@@ -89,6 +89,8 @@ data class Opened(
     val contextLength: Int = 0,
     // Left out of the plan before any try; [failures] are the tries that failed before this one (a fallback).
     val rejected: List<Rejection> = emptyList(),
+    // Why it runs off the phone, for the user to read; null on the phone.
+    val offPhone: String? = null,
 ) {
     // No recipe for this device: worth running a benchmark and submitting it.
     val needsBenchmark get() = candidate.source == Source.DEFAULT
@@ -237,6 +239,28 @@ class Router(
         return RouteExplanation(planned, rejected)
     }
 
+    private fun offPhone(model: String, why: RouteExplanation, tried: List<Failure>, device: DeviceProfile, reach: Set<Location>?): String {
+        val failed = tried.firstOrNull { it.candidate.location == Location.DEVICE }
+        return when {
+            failed != null -> with(failed.candidate) {
+                "on the phone, ${backend.id} ${accel.name.lowercase()} ${variant.quant} failed: ${failed.error.message ?: failed.error::class.simpleName}"
+            }
+            reach != null && Location.DEVICE !in reach -> "this call may not run on the phone"
+            why.candidates.none { it.location == Location.DEVICE } ->
+                smallest(model, why.rejected)?.let { "no file fits the phone: ${it.quant} ${it.detail}" } ?: "no file of this model runs on the phone"
+            policy == RoutingPolicy.REMOTE_FIRST -> "the routing policy puts servers first"
+            Thermal.hot(device.thermal) -> "the phone is hot (${device.thermal.name.lowercase()}), a LAN server spares it"
+            else -> "the phone was not tried"
+        }
+    }
+
+    // The smallest file left out says more than a bf16 one; a 1- or 2-bit file only when no other was left out.
+    private fun smallest(model: String, rejected: List<Rejection>): Rejection? {
+        val size = catalog.variants(model).associate { (it.quant to it.format) to it.sizeBytes }
+        return rejected.filter { !lowBit(it.quant) }.ifEmpty { rejected }
+            .minByOrNull { size[it.quant to it.format] ?: Long.MAX_VALUE }
+    }
+
     // Candidates off the phone, LAN before cloud: the phone's RAM and disk do not limit them, the network does.
     private fun remote(model: String, device: DeviceProfile, minContext: Int?, caps: Map<DenBackend, Capabilities?>): List<Candidate> {
         if (policy == RoutingPolicy.LOCAL_ONLY || !online()) return emptyList()
@@ -315,7 +339,7 @@ class Router(
                     if (e !is EngineCrashedException) throw NoUsableBackendException(model, tried + Failure(c, e))
                     throw e
                 }
-                return Opened(session, c, tried, context, why.rejected)
+                return Opened(session, c, tried, context, why.rejected, if (onPhone) null else offPhone(model, why, tried, device, reach))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: NoUsableBackendException) {
