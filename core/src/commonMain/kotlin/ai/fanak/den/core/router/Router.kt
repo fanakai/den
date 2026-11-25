@@ -268,9 +268,14 @@ class Router(
     }
 
     // Candidates off the phone, LAN before cloud: the phone's RAM and disk do not limit them, the network does.
-    private fun remote(model: String, device: DeviceProfile, minContext: Int?, caps: Map<DenBackend, Capabilities?>): List<Candidate> {
+    private fun remote(
+        model: String,
+        device: DeviceProfile,
+        minContext: Int?,
+        caps: Map<DenBackend, Capabilities?>,
+        lan: Boolean = localNetwork(),
+    ): List<Candidate> {
         if (policy == RoutingPolicy.LOCAL_ONLY || !online()) return emptyList()
-        val lan = localNetwork()
         val off = backends.filter { (it.about?.location ?: Location.DEVICE).let { l -> l == Location.CLOUD || (l == Location.LAN && lan) } }
         if (off.isEmpty()) return emptyList()
         val known = catalog.variants(model)
@@ -301,7 +306,14 @@ class Router(
         val tried = mutableListOf<Failure>()
         val why = explain(model, device, minContext, mmap, reach)
         var plan = why.candidates
-        if (plan.isEmpty()) throw NoUsableBackendException(model, tried, emptyPlanReason(model, device, minContext, mmap), why.rejected)
+        if (plan.isEmpty()) {
+            val reason = if (lanOutOfReach(model, device, minContext, reach)) {
+                "$model is on a LAN server, out of reach on mobile data: LAN servers need Wi-Fi, Ethernet or a VPN"
+            } else {
+                emptyPlanReason(model, device, minContext, mmap)
+            }
+            throw NoUsableBackendException(model, tried, reason, why.rejected)
+        }
         val first = plan.first()
         if (firstRun != null && first.source == Source.DEFAULT && first.location == Location.DEVICE && first.variant !in measured) {
             measured = measured + first.variant
@@ -360,6 +372,13 @@ class Router(
             }
         }
         throw NoUsableBackendException(model, tried, rejected = why.rejected)
+    }
+
+    // Whether a LAN server that has [model] would run it for this call, were the phone on Wi-Fi.
+    private fun lanOutOfReach(model: String, device: DeviceProfile, minContext: Int?, reach: Set<Location>?): Boolean {
+        if (localNetwork() || (reach != null && Location.LAN !in reach)) return false
+        val caps = backends.associateWith { runCatching { it.probe(device) }.getOrNull() }
+        return remote(model, device, minContext, caps, lan = true).any { it.location == Location.LAN && it.backend.serves(model) }
     }
 
     private fun emptyPlanReason(model: String, device: DeviceProfile, minContext: Int?, mmap: Boolean): String {
