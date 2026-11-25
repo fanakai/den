@@ -27,6 +27,17 @@ class RecipeParseTest {
     }
 
     @Test
+    fun aChoiceCanNameTheKvCache() {
+        val r = RecipeFiles.parse(recipe(choices = "      - { backend: b, accel: cpu, format: gguf, quant: q, kv_cache: q8_0 }\n"))
+        assertEquals(ai.fanak.den.core.backend.KvCache.Q8_0, r.rankings.single().choices.single().kvCache)
+        assertEquals(ai.fanak.den.core.backend.KvCache.F16, RecipeFiles.parse(recipe()).rankings.single().choices.single().kvCache)
+        assertEquals(r, RecipeFiles.parse(RecipeFiles.encode(r)))
+        assertFailsWith<RecipeFormatException> {
+            RecipeFiles.parse(recipe(choices = "      - { backend: b, accel: cpu, format: gguf, quant: q, kv_cache: q4_0 }\n"))
+        }
+    }
+
+    @Test
     fun aFormatOfANewEngineNeedsNoChangeToCore() {
         val r = RecipeFiles.parse(recipe(choices = "      - { backend: mnn, accel: cpu, format: mnn, quant: q4 }\n"))
         val format = r.rankings.single().choices.single().format

@@ -52,10 +52,12 @@ class RouterTest {
     ) : DenBackend {
         val loaded = mutableListOf<Pair<Variant, Accel>>()
         var sequences = 0
+        var kvCache: ai.fanak.den.core.backend.KvCache? = null
         override fun probe(device: DeviceProfile) = caps
         override suspend fun load(artifact: Artifact, opts: LoadOptions): Session {
             loaded += artifact.variant to opts.accel
             sequences = opts.sequences
+            kvCache = opts.kvCache
             if (opts.accel in crashOn) throw EngineCrashedException("engine died on ${opts.accel}")
             if (opts.accel in failOn) error("load failed on ${opts.accel}")
             return object : Session {
@@ -440,6 +442,28 @@ class RouterTest {
         assertEquals(1, Thermal.threads(1, ThermalState.CRITICAL))
         // Unknown engine choice: left to the engine.
         assertEquals(null, Thermal.threads(0, ThermalState.SEVERE))
+    }
+
+    @Test
+    fun aRecipeCanNameTheKvCache() = runTest {
+        val q8 = ai.fanak.den.core.backend.KvCache.Q8_0
+        val recipe = Recipe(
+            socFamily = "snapdragon-8-elite",
+            rankings = listOf(Ranking(ModelSize("qwen3", 1.7), listOf(RecipeChoice("llamacpp", Accel.CPU, ModelFormat.GGUF, "q4_0", q8)))),
+        )
+        val b = llama()
+        val r = router(listOf(b), listOf(recipe))
+        val plan = r.plan(model, device)
+        assertEquals(q8, plan.first().kvCache)
+        // The default paths keep F16.
+        assertTrue(plan.drop(1).all { it.kvCache == ai.fanak.den.core.backend.KvCache.F16 })
+        r.open(model, device)
+        assertEquals(q8, b.kvCache)
+        // A q8_0 cache counts 34/64 of the F16 one.
+        val v = q40.copy(kvBytesPerToken = 64 * 1024)
+        val f16 = Router.ramNeed(v, 4096).freeMb - Router.OVERHEAD_MB
+        assertEquals(256, f16)
+        assertEquals(136, Router.ramNeed(v, 4096, cache = q8).freeMb - Router.OVERHEAD_MB)
     }
 
     @Test

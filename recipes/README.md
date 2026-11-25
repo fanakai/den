@@ -33,6 +33,7 @@ avoid:                              # optional: a choice that fails for one mode
 How a model finds its ranking: the catalog gives each file its GGUF architecture and parameter count (from the hub's metadata, or pinned for built-in models), so `qwen3-1.7b` and `hf:unsloth/Qwen3-1.7B-GGUF` match the same ranking. The router takes the ranking of the nearest measured size, on a log scale, among the rankings of the same architecture when there are any. A model whose size is unknown gets the default order.
 
 Values: `accel` is `cpu`, `gpu` or `npu`; `format` is `gguf`, `litertlm`, `pte` or `qnn`.
+A choice may add `kv_cache: q8_0` for a q8_0 KV cache with flash attention, half the RAM of the default `f16`; only where it was measured on that phone, speed and quality (#170). Backends with one cache type ignore it.
 In CI, unknown fields are rejected, so a typo fails the build; `RecipeLintTest` also checks that every ranking has a `measured` block with speeds, the device, a past date and the protocol, that every backend exists, and that the file is named after its SoC or family. On the phone, recipes are read leniently: unknown fields are ignored, and a recipe of a newer `schema` or one that cannot be read is skipped.
 
 ## Current recipes

@@ -104,7 +104,7 @@ std::vector<Device> init_backends(const std::string &lib_dir) {
 }
 
 // One context with n_seq sequences of n_ctx tokens each; the threads are set again before each step.
-static llama_context *new_context(llama_model *model, int n_ctx, int n_threads, int n_seq) {
+static llama_context *new_context(llama_model *model, int n_ctx, int n_threads, int n_seq, bool kv_q8) {
     Threads t = n_threads > 0 ? Threads{n_threads, n_threads} : pick_threads();
     auto cp = llama_context_default_params();
     cp.n_ctx = n_ctx * n_seq;
@@ -112,6 +112,12 @@ static llama_context *new_context(llama_model *model, int n_ctx, int n_threads, 
     cp.n_batch = std::min(n_ctx * n_seq, 512);
     cp.n_threads = t.decode;
     cp.n_threads_batch = t.batch;
+    // A quantized V cache needs flash attention. On the A52s it decodes faster than F16 (#161, #170).
+    if (kv_q8) {
+        cp.type_k = GGML_TYPE_Q8_0;
+        cp.type_v = GGML_TYPE_Q8_0;
+        cp.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED;
+    }
     return llama_init_from_model(model, cp);
 }
 
@@ -142,7 +148,7 @@ struct Engine::Request {
 };
 
 bool Engine::start(int n_seq, std::string &err) {
-    ctx_ = new_context(model_.get(), n_ctx_, threads_, n_seq);
+    ctx_ = new_context(model_.get(), n_ctx_, threads_, n_seq, kv_q8_);
     if (!ctx_) {
         err = "failed to create context";
         return false;
@@ -154,7 +160,8 @@ bool Engine::start(int n_seq, std::string &err) {
 }
 
 std::unique_ptr<Engine> Engine::load(const std::string &path, int n_ctx, int n_threads,
-                                     int n_gpu_layers, bool use_mmap, std::string &err, int n_seq) {
+                                     int n_gpu_layers, bool use_mmap, std::string &err, int n_seq,
+                                     bool kv_q8) {
     if (ggml_backend_dev_count() == 0) {
         err = "no ggml backend loaded; call init_backends first";
         return nullptr;
@@ -172,6 +179,7 @@ std::unique_ptr<Engine> Engine::load(const std::string &path, int n_ctx, int n_t
     e->model_ = std::shared_ptr<llama_model>(model, llama_model_free);
     e->threads_ = n_threads;
     e->n_ctx_ = n_ctx;
+    e->kv_q8_ = kv_q8;
     if (!e->start(std::max(n_seq, 1), err)) return nullptr;
     return e;
 }
@@ -181,6 +189,7 @@ std::unique_ptr<Engine> Engine::fork(std::string &err) const {
     e->model_ = model_;
     e->threads_ = threads_;
     e->n_ctx_ = n_ctx_;
+    e->kv_q8_ = kv_q8_;
     if (!e->start((int) busy_.size(), err)) {
         err = "failed to create a second context";
         return nullptr;

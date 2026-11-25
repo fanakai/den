@@ -2,6 +2,7 @@ package ai.fanak.den.core.router
 
 import ai.fanak.den.core.backend.Capabilities
 import ai.fanak.den.core.backend.DenBackend
+import ai.fanak.den.core.backend.KvCache
 import ai.fanak.den.core.backend.Location
 import ai.fanak.den.core.backend.LoadOptions
 import ai.fanak.den.core.backend.Session
@@ -34,6 +35,8 @@ data class Candidate(
     val accel: Accel,
     val variant: Variant,
     val source: Source,
+    // From the recipe that names this path; F16 for the others.
+    val kvCache: KvCache = KvCache.F16,
 ) {
     // Where it runs, from its backend's descriptor; a backend without one runs on the phone.
     val location: Location get() = backend.about?.location ?: Location.DEVICE
@@ -165,7 +168,7 @@ class Router(
                     .filter { it.format == choice.format && it.quant == choice.quant }
                     .sortedByDescending { it.soc != null }
                     .filter { usable(backend, choice.accel, it) }
-                    .map { Candidate(backend, choice.accel, it, source) }
+                    .map { Candidate(backend, choice.accel, it, source, choice.kvCache) }
             }
         }
 
@@ -174,7 +177,7 @@ class Router(
                 val backend = backends.find { it.id == choice.backend } ?: return@flatMap emptyList()
                 variants
                     .filter { it.format == choice.format && it.quant == choice.quant && usable(backend, choice.accel, it) }
-                    .map { Candidate(backend, choice.accel, it, Source.RECIPE_LOCAL) }
+                    .map { Candidate(backend, choice.accel, it, Source.RECIPE_LOCAL, choice.kvCache) }
             }
         }
 
@@ -354,9 +357,9 @@ class Router(
                     throw e
                 }
                 // Each sequence has its own KV cache; one when free RAM has no room for more.
-                val seqs = if (sequences > 1 && onPhone && !fits(c.variant, context * sequences, device, mmap, free)) 1 else sequences
+                val seqs = if (sequences > 1 && onPhone && !fits(c.variant, context * sequences, device, mmap, free, c.kvCache)) 1 else sequences
                 val session = try {
-                    c.backend.load(artifact, LoadOptions(c.accel, context, mmap = mmap, sequences = seqs))
+                    c.backend.load(artifact, LoadOptions(c.accel, context, mmap = mmap, sequences = seqs, kvCache = c.kvCache))
                 } catch (e: EngineLostException) {
                     // The engine did not start or the system stopped it: other files would only be downloaded in vain.
                     if (e !is EngineCrashedException) throw NoUsableBackendException(model, tried + Failure(c, e))
@@ -417,8 +420,8 @@ class Router(
 
     private fun licenceOk(v: Variant) = allowLicence(catalog.remote(v)?.licence)
 
-    private fun fits(v: Variant, context: Int, device: DeviceProfile, mmap: Boolean, free: Int) =
-        ramNeed(v, context, mmap).let { it.freeMb <= free && it.totalMb <= device.ramMb }
+    private fun fits(v: Variant, context: Int, device: DeviceProfile, mmap: Boolean, free: Int, kv: KvCache = KvCache.F16) =
+        ramNeed(v, context, mmap, kv).let { it.freeMb <= free && it.totalMb <= device.ramMb }
 
     // On disk already, or room to download it.
     private fun onDisk(v: Variant) = store.has(v) || store.freeBytes()?.let { v.sizeBytes <= it } ?: true
@@ -455,10 +458,12 @@ class Router(
         /**
          * With the KV cache size known, free RAM must hold the KV cache and the overhead; weights read through mmap are
          * file pages the system can drop again, so they count only without mmap (the A52s runs qwen3-0.6b with 1155 MB
-         * free and a peak RSS of 1201 MB). Without the size, the catalog's rough minRamMb.
+         * free and a peak RSS of 1201 MB). Without the size, the catalog's rough minRamMb. [kvBytesPerToken] is
+         * for F16; the plan counts F16, so a q8_0 path is never left out for RAM it does not need.
          */
-        fun ramNeed(v: Variant, context: Int, mmap: Boolean = true): RamNeed {
-            val kv = v.kvBytesPerToken ?: return RamNeed(v.minRamMb, v.minRamMb)
+        fun ramNeed(v: Variant, context: Int, mmap: Boolean = true, cache: KvCache = KvCache.F16): RamNeed {
+            val f16 = v.kvBytesPerToken ?: return RamNeed(v.minRamMb, v.minRamMb)
+            val kv = if (cache == KvCache.Q8_0) f16 * 34 / 64 else f16
             val weights = (v.sizeBytes shr 20).toInt()
             val anon = ((kv * context) shr 20).toInt() + OVERHEAD_MB
             return RamNeed(anon + if (mmap) 0 else weights, anon + weights)
