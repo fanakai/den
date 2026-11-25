@@ -526,17 +526,24 @@ class MainActivity : Activity() {
                 return@button
             }
             scanning = true
+            // Without it, Wi-Fi may filter packets not sent to the phone itself, such as the Lemonade beacon's broadcast.
+            val lock = getSystemService(android.net.wifi.WifiManager::class.java)?.createMulticastLock("den-scan")
             scope.launch {
-                found = LanScan.scan(hosts)
+                lock?.acquire()
+                found = try {
+                    LanScan.find(hosts)
+                } finally {
+                    lock?.release()
+                }
                 scanning = false
-                status = "found ${found!!.size} server(s) on ${hosts.size} hosts, ports ${LanScan.PORTS.joinToString()}"
+                status = "found ${found!!.size} server(s) on ${hosts.size} hosts, ports ${LanScan.PORTS.joinToString()}, and by Lemonade beacons"
                 showServers()
                 showModels()
             }
         })
         found?.let { list ->
             if (list.isEmpty()) servers.addView(TextView(this).apply {
-                text = "None found. A server must listen on the network (llama-server --host 0.0.0.0), on one of the ports ${LanScan.PORTS.joinToString()}."
+                text = "None found. A server must listen on the network (llama-server --host 0.0.0.0), on one of the ports ${LanScan.PORTS.joinToString()}, or send the Lemonade beacon."
             })
             val added = ServerSettings.all(this).map { it.baseUrl }.toSet()
             list.filter { it.baseUrl !in added }.forEach { f ->
