@@ -501,6 +501,22 @@ class RouterTest {
     }
 
     @Test
+    fun aRefusedDownloadStillLeavesTheLanServer() = runTest {
+        var fetches = 0
+        val refusing = object : ModelStore {
+            override suspend fun fetch(variant: Variant): Artifact {
+                fetches++
+                throw ai.fanak.den.core.model.DownloadRefusedException("not approved")
+            }
+        }
+        val opened = policyRouter(RoutingPolicy.LOCAL_FIRST, s = refusing).open(model, device)
+        assertEquals("lan", opened.candidate.backend.id)
+        // One download asked, the other files of the phone skipped.
+        assertEquals(1, fetches)
+        assertEquals("not approved", opened.failures.single().error.message)
+    }
+
+    @Test
     fun remoteFirstPutsTheNetworkFirstAndOfflineDropsIt() {
         val plan = policyRouter(RoutingPolicy.REMOTE_FIRST).plan(model, device)
         assertEquals(ai.fanak.den.core.backend.Location.LAN, plan.first().location)

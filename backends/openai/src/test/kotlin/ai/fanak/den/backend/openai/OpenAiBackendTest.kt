@@ -125,7 +125,28 @@ class OpenAiBackendTest {
         assertEquals("openai:pc", backend.id)
     }
 
+    @Test
+    fun theEndpointsOfALocationAreOneBackendReadOnEachLoad() = runBlocking {
+        var list = emptyList<Endpoint>()
+        val lan = OpenAiEndpoints({ list })
+        assertEquals(ai.fanak.den.core.backend.Capabilities.NONE, lan.probe(DEVICE))
+        assertFailsWith<IllegalStateException> { lan.load(Artifact(variant, ""), LoadOptions(Accel.CPU)) }
+        // A server that is down first, then the one that serves the model.
+        val free = ServerSocket(0).use { it.localPort }
+        list = listOf(endpoint.copy(name = "down", baseUrl = "http://127.0.0.1:$free/v1"), endpoint)
+        assertTrue(Accel.CPU in lan.probe(DEVICE).accels)
+        val text = lan.load(Artifact(variant, ""), LoadOptions(Accel.CPU)).generate(ask("hello there")).filterIsInstance<GenEvent.Text>().toList()
+        assertEquals("hello there ", text.joinToString("") { it.text })
+        // A cloud endpoint is not in the LAN backend.
+        list = listOf(endpoint.copy(location = Location.CLOUD))
+        assertEquals(ai.fanak.den.core.backend.Capabilities.NONE, lan.probe(DEVICE))
+        assertEquals(Location.LAN, lan.about.location)
+    }
+
     private companion object {
         const val TOKEN = "test-token"
+        val DEVICE = ai.fanak.den.core.device.DeviceProfile(
+            ai.fanak.den.core.device.Platform.ANDROID, 34, "SM7325", "snapdragon-778g", "arm64-v8a", 5_500, 1_900,
+        )
     }
 }

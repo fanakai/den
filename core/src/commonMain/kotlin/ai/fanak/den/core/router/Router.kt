@@ -242,8 +242,10 @@ class Router(
             }
             plan = plan(model, device, minContext, mmap).ifEmpty { plan }
         }
+        var noDownloads = false
         for (c in plan) {
             val onPhone = c.location == Location.DEVICE
+            if (noDownloads && onPhone && !store.has(c.variant)) continue
             // Free RAM changes while files download and other apps run: checked again for each candidate.
             val free = freeRamMb?.invoke() ?: device.availRamMb
             val context = if (onPhone) contextFor(c.variant, contextLength, minContext, device, mmap, free)
@@ -257,8 +259,13 @@ class Router(
                 val artifact = if (!onPhone) Artifact(c.variant, "") else try {
                     store.fetch(c.variant)
                 } catch (e: IOException) {
-                    // Without network, or when the download is refused, every other file fails the same way.
-                    if (e.isNetwork() || e is ai.fanak.den.core.model.DownloadRefusedException) throw NoUsableBackendException(model, tried + Failure(c, e))
+                    // Without network, or when the download is refused, every other download fails the same way: only
+                    // files on disk and servers off the phone are left to try.
+                    if (e.isNetwork() || e is ai.fanak.den.core.model.DownloadRefusedException) {
+                        tried += Failure(c, e)
+                        noDownloads = true
+                        continue
+                    }
                     throw e
                 }
                 // Each sequence has its own KV cache; one when free RAM has no room for more.

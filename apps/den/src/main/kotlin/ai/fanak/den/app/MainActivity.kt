@@ -34,6 +34,7 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.jsonObject
 
 // What Den sees on this phone, and which apps may use it. Model management UI comes later.
 class MainActivity : Activity() {
@@ -42,6 +43,7 @@ class MainActivity : Activity() {
     private var status: String? = null
     private lateinit var apps: LinearLayout
     private lateinit var http: LinearLayout
+    private lateinit var servers: LinearLayout
     private lateinit var downloads: LinearLayout
     private lateinit var aliasesView: LinearLayout
     private lateinit var bench: LinearLayout
@@ -66,6 +68,7 @@ class MainActivity : Activity() {
         models = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         apps = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         http = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        servers = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         downloads = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         aliasesView = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         bench = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -81,6 +84,7 @@ class MainActivity : Activity() {
             addView(bench)
             addView(apps)
             addView(http)
+            addView(servers)
             addView(diag)
             addView(notices())
         }
@@ -97,6 +101,7 @@ class MainActivity : Activity() {
         showBench()
         showApps()
         showHttp()
+        showServers()
         showDiagnostics()
     }
 
@@ -475,6 +480,65 @@ class MainActivity : Activity() {
         }
     }
 
+    // OpenAI-compatible servers on the LAN (llama-server, Lemonade, Ollama): used for a model only when no file of it
+    // runs on this phone.
+    private fun showServers() {
+        servers.removeAllViews()
+        servers.addView(TextView(this).apply { text = "\nLAN servers (OpenAI-compatible)"; textSize = 18f })
+        servers.addView(TextView(this).apply {
+            text = "A model goes to a server here only when no file of it runs on this phone. Apps see the reply as from Den."
+        })
+        ServerSettings.all(this).forEach { e ->
+            servers.addView(LinearLayout(this).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                addView(TextView(context).apply {
+                    text = "${e.name}: ${e.baseUrl}\n" + e.models.entries.joinToString("\n") { "  ${it.key} -> ${it.value}" }
+                }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                addView(button("Remove") { ServerSettings.remove(context, e.name) })
+            })
+        }
+        val url = EditText(this).apply { hint = "http://192.168.1.20:8080/v1"; inputType = InputType.TYPE_TEXT_VARIATION_URI }
+        val names = EditText(this).apply { hint = "den-name = server-model, one per line (empty: the server's names)"; minLines = 2 }
+        servers.addView(url)
+        servers.addView(names)
+        servers.addView(button("Add server") {
+            val base = url.text.toString().trim().trimEnd('/')
+            val text = names.text.toString()
+            scope.launch {
+                status = withContext(Dispatchers.IO) {
+                    try {
+                        val ids = serverModels(base)
+                        val map = ServerSettings.parseModels(text, ids)
+                        val u = java.net.URL(base)
+                        val name = "${u.host}:${u.port}"
+                        ServerSettings.add(this@MainActivity, ai.fanak.den.backend.openai.Endpoint(name, base, ai.fanak.den.core.backend.Location.LAN, map))
+                        "added $name: ${map.size} model(s); the server has ${ids.joinToString().ifEmpty { "none listed" }}"
+                    } catch (e: Exception) {
+                        "cannot add $base: ${e.message}"
+                    }
+                }
+                showServers()
+                showModels()
+            }
+        })
+    }
+
+    // The ids of GET /models, which also checks that the server answers.
+    private fun serverModels(base: String): List<String> {
+        val conn = java.net.URL("$base/models").openConnection() as java.net.HttpURLConnection
+        conn.connectTimeout = 3_000
+        conn.readTimeout = 10_000
+        conn.setRequestProperty("User-Agent", "fanak-den/0.1")
+        try {
+            if (conn.responseCode != 200) throw java.io.IOException("HTTP ${conn.responseCode} from $base/models")
+            val body = conn.inputStream.use { it.readBytes().decodeToString() }
+            val data = kotlinx.serialization.json.Json.parseToJsonElement(body).jsonObject["data"] as? kotlinx.serialization.json.JsonArray
+            return data.orEmpty().mapNotNull { (it.jsonObject["id"] as? kotlinx.serialization.json.JsonPrimitive)?.content }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
     // The token made on this screen, until the screen closes.
     private var fresh: Pair<String, String>? = null
 
@@ -483,8 +547,8 @@ class MainActivity : Activity() {
         const val PICK_FOLDER = 8
     }
 
-    private fun button(label: String, onClick: () -> Unit) = Button(this).apply {
+    private fun button(label: String, onClick: () -> Unit): Button = Button(this).apply {
         text = label
-        setOnClickListener { onClick(); showModels(); showDownloads(); showAliases(); showBench(); showApps(); showHttp(); showDiagnostics() }
+        setOnClickListener { onClick(); showModels(); showDownloads(); showAliases(); showBench(); showApps(); showHttp(); showServers(); showDiagnostics() }
     }
 }

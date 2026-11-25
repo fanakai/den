@@ -54,6 +54,7 @@ kotlin {
 dependencies {
     implementation(project(":sdk:kotlin"))
     implementation(project(":backends:llamacpp"))
+    implementation(project(":backends:openai"))
     implementation(project(":service"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
