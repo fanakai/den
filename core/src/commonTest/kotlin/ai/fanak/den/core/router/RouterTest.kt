@@ -556,6 +556,10 @@ class RouterTest {
         // Not allowed off the phone: it stays there, hot or not.
         assertEquals(listOf(dev), r.plan(model, hot, reach = setOf(dev)).map { it.location }.distinct())
         assertEquals(listOf(dev), policyRouter(RoutingPolicy.LOCAL_ONLY).plan(model, hot).map { it.location }.distinct())
+        // A low battery, as the platform tells it, moves the same way.
+        val low = device.copy(batteryLow = true)
+        assertEquals(listOf(lan, dev, cloud), r.plan(model, low).map { it.location }.distinct())
+        assertEquals(listOf(dev), r.plan(model, low, reach = setOf(dev)).map { it.location }.distinct())
     }
 
     @Test
@@ -570,6 +574,10 @@ class RouterTest {
         assertTrue(noRam.startsWith("no file fits the phone: q4_0 needs ") && "MB free" in noRam, noRam)
         assertEquals("the routing policy puts servers first", policyRouter(RoutingPolicy.REMOTE_FIRST).open(model, device).offPhone)
         assertEquals("the phone is hot (severe), a LAN server spares it", policyRouter(RoutingPolicy.LOCAL_FIRST).open(model, hot).offPhone)
+        assertEquals(
+            "the phone's battery is low, a LAN server spares it",
+            policyRouter(RoutingPolicy.LOCAL_FIRST).open(model, device.copy(batteryLow = true)).offPhone,
+        )
     }
 
     @Test

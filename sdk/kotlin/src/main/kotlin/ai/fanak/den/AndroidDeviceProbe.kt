@@ -9,7 +9,10 @@ import ai.fanak.den.core.device.SocFamilies
 import ai.fanak.den.core.device.ThermalState
 import android.app.ActivityManager
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
 import java.io.File
@@ -51,8 +54,14 @@ internal class AndroidDeviceProbe(context: Context) : DeviceProbe {
             cpuFeatures = cpuFeatures,
             vulkan = vulkan,
             openCl = openCl,
+            batteryLow = batteryLow(),
         )
     }
+
+    // The last battery broadcast, kept by the system: no receiver stays registered.
+    private fun batteryLow(): Boolean =
+        context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            ?.getBooleanExtra(BatteryManager.EXTRA_BATTERY_LOW, false) == true
 
     override fun thermal(): ThermalState {
         if (Build.VERSION.SDK_INT < 29) return ThermalState.NONE

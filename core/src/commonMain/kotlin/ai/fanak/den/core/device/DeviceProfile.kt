@@ -38,6 +38,8 @@ data class DeviceProfile(
     // Vulkan version the GPU driver reports (e.g. "1.1"), and whether an OpenCL driver is present.
     val vulkan: String? = null,
     val openCl: Boolean = false,
+    // The platform's own low-battery state: low and not charging (Android: BatteryManager.EXTRA_BATTERY_LOW).
+    val batteryLow: Boolean = false,
 )
 
 interface DeviceProbe {
