@@ -1,5 +1,6 @@
 // Standalone check of the engine, runnable from Termux:
-// den-smoke <model.gguf> [threads] [gpu_layers] [prompt | long]
+// den-smoke <model.gguf> [threads] [gpu_layers] [prompt | long | long:N]
+// DEN_CTX=4096 sets the context, 2048 by default.
 // The ggml backend libraries are loaded from the binary's own folder.
 #include <unistd.h>
 
@@ -18,10 +19,10 @@ std::string exe_dir() {
     return p.substr(0, p.find_last_of('/'));
 }
 
-// About 400 tokens, to measure prefill on more than a handful of tokens.
-std::string long_prompt() {
+// About 24 tokens per repeat, to measure prefill on more than a handful of tokens.
+std::string long_prompt(int repeats) {
     std::string s = "Summarize the following notes in one sentence. /no_think\n";
-    for (int i = 0; i < 12; ++i) {
+    for (int i = 0; i < repeats; ++i) {
         s += "The fennec fox lives in the Sahara and digs dens in the sand to escape the heat of the day. ";
     }
     return s;
@@ -31,13 +32,15 @@ std::string long_prompt() {
 
 int main(int argc, char **argv) {
     if (argc < 2) {
-        std::fprintf(stderr, "usage: %s <model.gguf> [threads] [gpu_layers] [prompt | long]\n", argv[0]);
+        std::fprintf(stderr, "usage: %s <model.gguf> [threads] [gpu_layers] [prompt | long | long:N]\n", argv[0]);
         return 2;
     }
     int threads = argc > 2 ? std::atoi(argv[2]) : 0;
     int gpu_layers = argc > 3 ? std::atoi(argv[3]) : 0;
     std::string prompt = argc > 4 ? argv[4] : "Name three colors. /no_think";
-    if (prompt == "long") prompt = long_prompt();
+    if (prompt == "long") prompt = long_prompt(12);
+    else if (prompt.rfind("long:", 0) == 0) prompt = long_prompt(std::atoi(prompt.c_str() + 5));
+    const char *ctx = std::getenv("DEN_CTX");
 
     for (const auto &d : den::init_backends(exe_dir())) {
         std::printf("device %s: %s%s\n", d.name.c_str(), d.description.c_str(), d.gpu ? " (gpu)" : "");
@@ -46,7 +49,7 @@ int main(int argc, char **argv) {
     std::string err;
     // DEN_KV=q8_0: the q8_0 KV cache, as a recipe can choose it.
     const char *kv = std::getenv("DEN_KV");
-    auto engine = den::Engine::load(argv[1], 2048, threads, gpu_layers, std::getenv("DEN_NO_MMAP") == nullptr, err, 1,
+    auto engine = den::Engine::load(argv[1], ctx ? std::atoi(ctx) : 2048, threads, gpu_layers, std::getenv("DEN_NO_MMAP") == nullptr, err, 1,
                                     kv != nullptr && std::string(kv) == "q8_0");
     if (!engine) {
         std::fprintf(stderr, "load: %s\n", err.c_str());
