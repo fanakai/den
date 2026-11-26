@@ -4,6 +4,7 @@ import ai.fanak.den.Den
 import ai.fanak.den.DenConfig
 import ai.fanak.den.DenMode
 import ai.fanak.den.ModelFiles
+import ai.fanak.den.core.backend.KvCache
 import ai.fanak.den.core.backend.Location
 import ai.fanak.den.core.bench.BenchResult
 import ai.fanak.den.core.model.HubLinks
@@ -173,6 +174,8 @@ class MainActivity : Activity() {
     private var benchJob: Job? = null
     private var benchRunning = false
     private var benchLines = listOf<String>()
+    // Measure each file with a q8_0 KV cache too (#170).
+    private var benchQ8 = false
     private var benched: Pair<BenchResult, String?>? = null
 
     private fun showBench() {
@@ -187,6 +190,7 @@ class MainActivity : Activity() {
             bench.addView(button("Stop") { benchJob?.cancel() })
         } else {
             if (files.isEmpty()) bench.addView(TextView(this).apply { text = "Download a model first." })
+            bench.addView(button(if (benchQ8) "KV cache: F16 and q8_0 (tap: F16 only)" else "KV cache: F16 only (tap: also q8_0)") { benchQ8 = !benchQ8 })
             files.groupBy { it.model }.forEach { (m, fs) ->
                 bench.addView(button("Benchmark $m (${fs.joinToString { it.quant }})") { startBench(m, fs.map { it.quant }.toSet()) })
             }
@@ -220,7 +224,8 @@ class MainActivity : Activity() {
         benchJob = scope.launch {
             try {
                 if (!DenService.unload(model)) error("$model is generating for an app; try again when it is idle")
-                val r = benchDen.bench(model, quants = quants) { line -> benchLines = benchLines + line; showBench() }
+                val kv = if (benchQ8) setOf(KvCache.F16, KvCache.Q8_0) else setOf(KvCache.F16)
+                val r = benchDen.bench(model, quants = quants, kvCaches = kv) { line -> benchLines = benchLines + line; showBench() }
                 val yaml = r.recipe()?.let { RecipeFiles.encode(it) }
                 withContext(Dispatchers.IO) {
                     val dir = File(getExternalFilesDir(null), "bench").apply { mkdirs() }

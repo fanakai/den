@@ -87,6 +87,34 @@ class BenchTest {
     }
 
     @Test
+    fun bothCacheTypesAreMeasuredAndTheFasterLeadsTheRecipe() = runTest {
+        val q8 = ai.fanak.den.core.backend.KvCache.Q8_0
+        val f16 = ai.fanak.den.core.backend.KvCache.F16
+        // decode tok/s: F16 10.0, q8_0 11.5; the q8_0 reply differs in one word of five.
+        val b = object : DenBackend {
+            override val id = "llamacpp"
+            override fun probe(device: DeviceProfile) = Capabilities(setOf(Accel.CPU), setOf(ModelFormat.GGUF))
+            override suspend fun load(artifact: Artifact, opts: LoadOptions): Session = object : Session {
+                override fun generate(req: GenRequest) = flow {
+                    emit(GenEvent.Text(if (opts.kvCache == q8) "The fox digs a hole." else "The fox digs a den."))
+                    emit(GenEvent.Done(GenStats(300, 100, 1_500, if (opts.kvCache == q8) 8_696 else 10_000)))
+                }
+                override fun unload() {}
+            }
+            override fun health() = Health.Ok
+        }
+        val c = Candidate(b, Accel.CPU, q40, Source.DEFAULT)
+        val results = Bench(store, runs = 3).run(listOf(c, c.copy(kvCache = q8)))
+        assertEquals(listOf(f16, q8), results.map { it.kvCache })
+        // The F16 reply is the reference of the q8_0 one.
+        assertEquals(null, results[0].match)
+        assertTrue(results[1].match!! < 1.0, "${results[1].match}")
+        val recipe = result(results).recipe()!!
+        assertEquals(listOf(q8, f16), recipe.rankings.single().choices.map { it.kvCache })
+        assertEquals(recipe, RecipeFiles.parse(RecipeFiles.encode(recipe)))
+    }
+
+    @Test
     fun writesARecipeThatParsesStrictly() = runTest {
         val b = Fake(mapOf((Accel.CPU to "q4_0") to Triple(1_500L, 10_000L, "fox")))
         val sha = "33bcc57074ec7b6eada5a90651ee546ec0c2b271002c22baf9f1b2dd1e8f75cb"

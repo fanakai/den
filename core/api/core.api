@@ -479,8 +479,8 @@ public final class ai/fanak/den/core/bench/BenchResult$Companion {
 
 public final class ai/fanak/den/core/bench/CandidateResult {
 	public static final field Companion Lai/fanak/den/core/bench/CandidateResult$Companion;
-	public synthetic fun <init> (Ljava/lang/String;Lai/fanak/den/core/device/Accel;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Long;Lai/fanak/den/core/bench/Spread;Lai/fanak/den/core/bench/Spread;Lai/fanak/den/core/bench/Spread;Lai/fanak/den/core/bench/Spread;IIILjava/lang/Integer;Ljava/lang/String;Ljava/lang/Double;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public synthetic fun <init> (Ljava/lang/String;Lai/fanak/den/core/device/Accel;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Long;Lai/fanak/den/core/bench/Spread;Lai/fanak/den/core/bench/Spread;Lai/fanak/den/core/bench/Spread;Lai/fanak/den/core/bench/Spread;IIILjava/lang/Integer;Ljava/lang/String;Ljava/lang/Double;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Lai/fanak/den/core/device/Accel;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Long;Lai/fanak/den/core/bench/Spread;Lai/fanak/den/core/bench/Spread;Lai/fanak/den/core/bench/Spread;Lai/fanak/den/core/bench/Spread;IIILjava/lang/Integer;Ljava/lang/String;Ljava/lang/Double;Ljava/lang/String;Lai/fanak/den/core/backend/KvCache;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Lai/fanak/den/core/device/Accel;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Long;Lai/fanak/den/core/bench/Spread;Lai/fanak/den/core/bench/Spread;Lai/fanak/den/core/bench/Spread;Lai/fanak/den/core/bench/Spread;IIILjava/lang/Integer;Ljava/lang/String;Ljava/lang/Double;Ljava/lang/String;Lai/fanak/den/core/backend/KvCache;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component10 ()Lai/fanak/den/core/bench/Spread;
 	public final fun component11 ()Lai/fanak/den/core/bench/Spread;
@@ -491,6 +491,7 @@ public final class ai/fanak/den/core/bench/CandidateResult {
 	public final fun component16 ()Ljava/lang/String;
 	public final fun component17 ()Ljava/lang/Double;
 	public final fun component18 ()Ljava/lang/String;
+	public final fun component19 ()Lai/fanak/den/core/backend/KvCache;
 	public final fun component2 ()Lai/fanak/den/core/device/Accel;
 	public final fun component3-WHKAPV0 ()Ljava/lang/String;
 	public final fun component4 ()Ljava/lang/String;
@@ -499,8 +500,8 @@ public final class ai/fanak/den/core/bench/CandidateResult {
 	public final fun component7 ()Ljava/lang/Long;
 	public final fun component8 ()Lai/fanak/den/core/bench/Spread;
 	public final fun component9 ()Lai/fanak/den/core/bench/Spread;
-	public final fun copy-tlKIcxQ (Ljava/lang/String;Lai/fanak/den/core/device/Accel;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Long;Lai/fanak/den/core/bench/Spread;Lai/fanak/den/core/bench/Spread;Lai/fanak/den/core/bench/Spread;Lai/fanak/den/core/bench/Spread;IIILjava/lang/Integer;Ljava/lang/String;Ljava/lang/Double;Ljava/lang/String;)Lai/fanak/den/core/bench/CandidateResult;
-	public static synthetic fun copy-tlKIcxQ$default (Lai/fanak/den/core/bench/CandidateResult;Ljava/lang/String;Lai/fanak/den/core/device/Accel;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Long;Lai/fanak/den/core/bench/Spread;Lai/fanak/den/core/bench/Spread;Lai/fanak/den/core/bench/Spread;Lai/fanak/den/core/bench/Spread;IIILjava/lang/Integer;Ljava/lang/String;Ljava/lang/Double;Ljava/lang/String;ILjava/lang/Object;)Lai/fanak/den/core/bench/CandidateResult;
+	public final fun copy-XhjrfZo (Ljava/lang/String;Lai/fanak/den/core/device/Accel;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Long;Lai/fanak/den/core/bench/Spread;Lai/fanak/den/core/bench/Spread;Lai/fanak/den/core/bench/Spread;Lai/fanak/den/core/bench/Spread;IIILjava/lang/Integer;Ljava/lang/String;Ljava/lang/Double;Ljava/lang/String;Lai/fanak/den/core/backend/KvCache;)Lai/fanak/den/core/bench/CandidateResult;
+	public static synthetic fun copy-XhjrfZo$default (Lai/fanak/den/core/bench/CandidateResult;Ljava/lang/String;Lai/fanak/den/core/device/Accel;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Long;Lai/fanak/den/core/bench/Spread;Lai/fanak/den/core/bench/Spread;Lai/fanak/den/core/bench/Spread;Lai/fanak/den/core/bench/Spread;IIILjava/lang/Integer;Ljava/lang/String;Ljava/lang/Double;Ljava/lang/String;Lai/fanak/den/core/backend/KvCache;ILjava/lang/Object;)Lai/fanak/den/core/bench/CandidateResult;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getAccel ()Lai/fanak/den/core/device/Accel;
 	public final fun getBackend ()Ljava/lang/String;
@@ -509,6 +510,7 @@ public final class ai/fanak/den/core/bench/CandidateResult {
 	public final fun getEngine ()Ljava/lang/String;
 	public final fun getError ()Ljava/lang/String;
 	public final fun getFormat-WHKAPV0 ()Ljava/lang/String;
+	public final fun getKvCache ()Lai/fanak/den/core/backend/KvCache;
 	public final fun getLoadMs ()Ljava/lang/Long;
 	public final fun getLongPromptTokens ()I
 	public final fun getMatch ()Ljava/lang/Double;

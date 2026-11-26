@@ -82,22 +82,24 @@ class MainActivity : Activity() {
         if (intent.getBooleanExtra("remote", false)) remoteCheck(model, prompt.text.toString())
     }
 
-    // den bench: --ez bench true [--ei runs 5] [--es quants q4_0,q4_k_m | all]. Writes <soc>-<model>.yaml (the recipe)
+    // den bench: --ez bench true [--ei runs 5] [--es quants q4_0,q4_k_m | all] [--es kv f16,q8_0]. Writes <soc>-<model>.yaml (the recipe)
     // and .json (every candidate) to /sdcard/Android/data/ai.fanak.den.testapp/files/bench.
     private fun bench() {
         val runs = intent.getIntExtra("runs", 5)
         val quants = intent.getStringExtra("quants")?.let { if (it == "all") null else it.split(',').toSet() } ?: setOf("q4_0", "q4_k_m")
+        val kv = intent.getStringExtra("kv")?.split(',')?.map { ai.fanak.den.core.backend.KvCache.valueOf(it.uppercase()) }?.toSet()
+            ?: setOf(ai.fanak.den.core.backend.KvCache.F16)
         // A benchmark takes minutes: the screen must not time out, or the phone slows down and the GPU stalls.
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         job = scope.launch {
             try {
-                val r = den.bench(model, runs, quants) { log(it) }
+                val r = den.bench(model, runs, quants, kvCaches = kv) { log(it) }
                 val dir = java.io.File(getExternalFilesDir(null), "bench").apply { mkdirs() }
                 val name = "${r.soc}-${model.replace(Regex("[^A-Za-z0-9._-]"), "_")}"
                 java.io.File(dir, "$name.json").writeText(r.toJson())
                 val yaml = r.recipe()?.let { ai.fanak.den.core.recipe.RecipeFiles.encode(it) }
                 if (yaml != null) java.io.File(dir, "$name.yaml").writeText(yaml)
-                r.ranked().forEach { c -> log("bench ranked: ${c.accel} ${c.quant}, prefill ${c.prefillTps}, decode ${c.decodeTps}, ttft ${c.ttftMs} ms, peak ${c.peakRamMb} MB") }
+                r.ranked().forEach { c -> log("bench ranked: ${c.accel} ${c.quant} kv ${c.kvCache.name.lowercase()}, prefill ${c.prefillTps}, decode ${c.decodeTps}, ttft ${c.ttftMs} ms, peak ${c.peakRamMb} MB") }
                 r.candidates.filter { !it.ok }.forEach { c -> log("bench failed: ${c.accel} ${c.quant}: ${c.error}") }
                 log("bench done: ${dir.path}/$name.${if (yaml != null) "yaml" else "json (no recipe: model size unknown or nothing ran)"}")
                 yaml?.lines()?.forEach { log("recipe: $it") }

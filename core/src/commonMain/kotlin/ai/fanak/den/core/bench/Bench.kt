@@ -4,6 +4,7 @@ import ai.fanak.den.core.backend.ChatMessage
 import ai.fanak.den.core.backend.GenEvent
 import ai.fanak.den.core.backend.GenRequest
 import ai.fanak.den.core.backend.GenStats
+import ai.fanak.den.core.backend.KvCache
 import ai.fanak.den.core.backend.LoadOptions
 import ai.fanak.den.core.backend.Role
 import ai.fanak.den.core.backend.Session
@@ -61,9 +62,10 @@ data class CandidateResult(
     val sample: String? = null,
     val match: Double? = null,
     val error: String? = null,
+    val kvCache: KvCache = KvCache.F16,
 ) {
     val ok get() = error == null && decodeTps != null && prefillTps != null
-    val choice get() = RecipeChoice(backend, accel, format, quant)
+    val choice get() = RecipeChoice(backend, accel, format, quant, kvCache)
 }
 
 // Battery and heat at the start or the end of a benchmark: both change the numbers on a phone.
@@ -150,10 +152,11 @@ class Bench(
         // The CPU runs first, so each file has its reference output before the other accelerators run.
         return candidates.sortedBy { it.accel != Accel.CPU }.map { c ->
             check()?.let { throw IllegalStateException("den bench stopped: $it") }
-            val label = "${c.backend.id} ${c.accel} ${c.variant.quant}"
+            val label = "${c.backend.id} ${c.accel} ${c.variant.quant}" + if (c.kvCache != KvCache.F16) " kv ${c.kvCache.name.lowercase()}" else ""
             onProgress("bench $label")
             val r = measure(c, reference[c.variant])
-            if (c.accel == Accel.CPU && r.result.error == null) r.text?.let { reference[c.variant] = it }
+            // The first CPU run of a file stays the reference: an F16 cache, when both are measured.
+            if (c.accel == Accel.CPU && r.result.error == null) r.text?.let { reference.getOrPut(c.variant) { it } }
             onProgress("bench $label: ${r.result.error ?: "decode ${r.result.decodeTps?.median} tok/s"}")
             r.result
         }
@@ -164,7 +167,7 @@ class Bench(
     private suspend fun measure(c: Candidate, ref: String?): Measured {
         val base = CandidateResult(
             c.backend.id, c.accel, c.variant.format, c.variant.quant,
-            engine = runCatching { c.backend.version }.getOrNull(), sha256 = sha256(c.variant),
+            engine = runCatching { c.backend.version }.getOrNull(), sha256 = sha256(c.variant), kvCache = c.kvCache,
         )
         var peak: Int? = null
         return try {
@@ -178,7 +181,7 @@ class Bench(
                 }
                 try {
                     val t0 = clock()
-                    val session = c.backend.load(artifact, LoadOptions(c.accel, minOf(contextLength, c.variant.maxContext ?: contextLength)))
+                    val session = c.backend.load(artifact, LoadOptions(c.accel, minOf(contextLength, c.variant.maxContext ?: contextLength), kvCache = c.kvCache))
                     val loadMs = clock() - t0
                     try {
                         run(session, base.copy(loadMs = loadMs), ref)
