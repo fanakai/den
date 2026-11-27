@@ -32,6 +32,7 @@ import ai.fanak.den.core.recipe.InMemoryRecipeStore
 import ai.fanak.den.core.recipe.LocalRecipeStore
 import ai.fanak.den.core.recipe.Recipe
 import ai.fanak.den.core.recipe.RecipeFiles
+import ai.fanak.den.core.backend.GenStats
 import ai.fanak.den.core.router.Candidate
 import ai.fanak.den.core.router.Failure
 import ai.fanak.den.core.router.Opened
@@ -473,9 +474,9 @@ class Den private constructor(context: Context, private val config: DenConfig) :
         if (backends.isEmpty()) throw noBackend(name)
         val target = resolveAlias(name)
         if (target != name) Log.i("Den", "$name is $target")
-        val reopen: suspend () -> Opened = { router.open(target, device(), contextLength, config.useMmap, minContextLength, config.parallel, hint?.limit(reach) ?: reach) }
+        val reopen: suspend () -> Opened = { router.open(target, device(), contextLength, config.useMmap, minContextLength, config.parallel, hint?.limit(reach) ?: reach, hint) }
         val crashed = { o: Opened, e: Throwable -> router.reportFailure(device(), o.candidate, e) }
-        return LocalModel(target, reopen(), reopen, crashed, probe::thermal) { local -= it }.also {
+        return LocalModel(target, reopen(), reopen, crashed, probe::thermal, router::reportSpeed) { local -= it }.also {
             it.licenceOf = ::licence
             it.alias = name.takeIf { n -> n != target }
             local += it
@@ -573,6 +574,7 @@ internal class LocalModel(
     private val reopen: suspend () -> Opened,
     private val crashed: (Opened, Throwable) -> Unit = { _, _ -> },
     private val thermal: () -> ThermalState = { ThermalState.NONE },
+    private val speed: (Candidate, GenStats) -> Unit = { _, _ -> },
     private val onClose: (LocalModel) -> Unit = {},
 ) : DenModel() {
     // Decode threads the engine picked on its own, the base for fewer threads when the phone heats up.
@@ -623,7 +625,10 @@ internal class LocalModel(
                     .catch { if (it is EngineLostException) lost = it else throw it }
                     .collect {
                         if (it is GenEvent.Text) sent = true
-                        if (it is GenEvent.Done && req.threads == null && it.stats.threads > 0) autoThreads = it.stats.threads
+                        if (it is GenEvent.Done) {
+                            if (req.threads == null && it.stats.threads > 0) autoThreads = it.stats.threads
+                            speed(o.candidate, it.stats)
+                        }
                         emit(it)
                     }
             } finally {

@@ -125,6 +125,8 @@ internal class DenAppConnection(
     suspend fun open(model: String, contextLength: Int, minContextLength: Int, hint: RouteHint? = null): DenModel {
         val svc = service()
         val v5 = svc.version() >= 5
+        // A Den app older than version 8 would read an unknown hint as private: FAST goes without a hint there.
+        val sent = if (hint == RouteHint.FAST && svc.version() < 8) null else hint
         return suspendCancellableCoroutine { cont ->
             val callback = object : IOpenCallback.Stub() {
                 @Volatile private var context = 0
@@ -166,7 +168,7 @@ internal class DenAppConnection(
                 }
             }
             cont.invokeOnCancellation { runCatching { svc.cancelOpen(callback) } }
-            if (v5) svc.openWith(model, options(contextLength, minContextLength, hint), callback) else svc.open(model, callback)
+            if (v5) svc.openWith(model, options(contextLength, minContextLength, sent), callback) else svc.open(model, callback)
         }
     }
 

@@ -26,7 +26,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 // Drive from adb: am start -n ai.fanak.den.testapp/.MainActivity --es model qwen3-0.6b --es prompt "..." --ez autorun true
-// (--es hint private|cheap: where the model may run, narrowed from what the Den app allows this app)
+// (--es hint private|cheap|fast: where the model may run, narrowed from what the Den app allows this app; fast: the fastest measured path first)
 class MainActivity : Activity() {
     private val scope = MainScope()
     private val den by lazy {

@@ -39,7 +39,7 @@ class ModelPoolTest {
     }
 
     private val pool = ModelPool(
-        load = { name, reach ->
+        load = { name, reach, _ ->
             gates[name]?.await()
             check(free >= sizes.getValue(name)) { "out of memory loading $name" }
             loads += name
@@ -161,7 +161,7 @@ class ModelPoolTest {
         val npu = setOf("npu-a", "npu-b")
         val held = mutableListOf<String>()
         val p = ModelPool(
-            load = { name, _ -> loads += name; held += name; object : DenModel() {
+            load = { name, _, _ -> loads += name; held += name; object : DenModel() {
                 override val name = name
                 override val backend = "qnn"
                 override val accel = if (name in npu) Accel.NPU else Accel.CPU
@@ -191,7 +191,7 @@ class ModelPoolTest {
         var clock = 0L
         val held = mutableListOf<String>()
         val pool = ModelPool(
-            load = { name, _ ->
+            load = { name, _, _ ->
                 clock += loadMs[name] ?: 0
                 check(free >= 1000) { "out of memory loading $name" }
                 free -= 1000

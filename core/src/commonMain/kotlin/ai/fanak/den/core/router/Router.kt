@@ -2,6 +2,7 @@ package ai.fanak.den.core.router
 
 import ai.fanak.den.core.backend.Capabilities
 import ai.fanak.den.core.backend.DenBackend
+import ai.fanak.den.core.backend.GenStats
 import ai.fanak.den.core.backend.KvCache
 import ai.fanak.den.core.backend.Location
 import ai.fanak.den.core.backend.LoadOptions
@@ -16,6 +17,7 @@ import ai.fanak.den.core.model.ModelStore
 import ai.fanak.den.core.model.Variant
 import ai.fanak.den.core.recipe.RecipeStore
 import kotlin.concurrent.Volatile
+import kotlin.math.roundToInt
 import kotlinx.io.IOException
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -55,12 +57,16 @@ enum class RouteHint {
     PRIVATE,
 
     // No paid endpoint: the phone and LAN servers.
-    CHEAP;
+    CHEAP,
+
+    // The path that decoded this model fastest on earlier requests, wherever the reach allows.
+    FAST;
 
     fun limit(reach: Set<Location>?): Set<Location> {
         val allowed = when (this) {
             PRIVATE -> setOf(Location.DEVICE)
             CHEAP -> setOf(Location.DEVICE, Location.LAN)
+            FAST -> Location.entries.toSet()
         }
         return reach?.intersect(allowed) ?: allowed
     }
@@ -127,6 +133,8 @@ class Router(
     private val online: () -> Boolean = { true },
     // Whether the phone is on Wi-Fi, Ethernet or a VPN now: on mobile data alone a LAN server is out of reach.
     private val localNetwork: () -> Boolean = { true },
+    // Speeds of the requests that ran; the FAST hint orders by them.
+    private val speeds: SpeedStore = InMemorySpeedStore(),
 ) {
     // Variants measured by the first run in this process, so a run that saved nothing is not repeated on each open.
     @Volatile private var measured: Set<Variant> = emptySet()
@@ -138,7 +146,7 @@ class Router(
      * [minContext]: the shortest context the app accepts, in tokens. A file is left out when its maximum context is
      * lower, when it does not fit in RAM with that context, or when it is not on disk and the disk has no room for it.
      * [reach]: where this call may run the model, e.g. only on the phone for an app the user did not allow further;
-     * null leaves it to the policy.
+     * null leaves it to the policy. [hint] FAST puts the paths that ran this model before first, the fastest first.
      */
     fun plan(
         model: String,
@@ -146,6 +154,7 @@ class Router(
         minContext: Int? = null,
         mmap: Boolean = true,
         reach: Set<Location>? = null,
+        hint: RouteHint? = null,
     ): List<Candidate> {
         val caps = backends.associateWith { runCatching { it.probe(device) }.getOrNull() }
         val variants = catalog.variants(model)
@@ -206,9 +215,21 @@ class Router(
                 onPhone + remote
             }
             RoutingPolicy.REMOTE_FIRST -> remote + onPhone
-        }
+        }.let { plan -> if (hint == RouteHint.FAST) fastestFirst(plan) else plan }
         return if (reach == null) ordered else ordered.filter { it.location in reach }
     }
+
+    // Paths with a measured speed first, fastest first; the others after them, in the policy's order.
+    private fun fastestFirst(plan: List<Candidate>): List<Candidate> {
+        val known = plan.mapNotNull { c -> speeds.of(c)?.let { c to it.decodeTps } }.sortedByDescending { it.second }.map { it.first }
+        return known + (plan - known.toSet())
+    }
+
+    /** What earlier requests on [candidate] gave, or null when none ran on it. */
+    fun speedOf(candidate: Candidate): Speed? = speeds.of(candidate)
+
+    /** Records what a request on [candidate] gave, for the FAST hint. */
+    fun reportSpeed(candidate: Candidate, stats: GenStats) = speeds.record(candidate, stats)
 
     /** The plan of [model] with what it leaves out: each file with the first reason that removes it, then each path that crashed before. */
     fun explain(
@@ -217,8 +238,9 @@ class Router(
         minContext: Int? = null,
         mmap: Boolean = true,
         reach: Set<Location>? = null,
+        hint: RouteHint? = null,
     ): RouteExplanation {
-        val planned = plan(model, device, minContext, mmap, reach)
+        val planned = plan(model, device, minContext, mmap, reach, hint)
         val caps = backends.mapNotNull { b -> runCatching { b.probe(device) }.getOrNull()?.let { b to it } }
         val ctx = minContext ?: 0
         val rejected = mutableListOf<Rejection>()
@@ -247,8 +269,11 @@ class Router(
         return RouteExplanation(planned, rejected)
     }
 
-    private fun offPhone(model: String, why: RouteExplanation, tried: List<Failure>, device: DeviceProfile, reach: Set<Location>?): String {
+    private fun offPhone(
+        model: String, why: RouteExplanation, tried: List<Failure>, device: DeviceProfile, reach: Set<Location>?, hint: RouteHint?, chosen: Candidate,
+    ): String {
         val failed = tried.firstOrNull { it.candidate.location == Location.DEVICE }
+        val fast = speeds.of(chosen)?.takeIf { hint == RouteHint.FAST }
         return when {
             failed != null -> with(failed.candidate) {
                 "on the phone, ${backend.id} ${accel.name.lowercase()} ${variant.quant} failed: ${failed.error.message ?: failed.error::class.simpleName}"
@@ -257,6 +282,7 @@ class Router(
             catalog.variants(model).isEmpty() -> "no catalog has a file of it, a server has it by this name"
             why.candidates.none { it.location == Location.DEVICE } ->
                 smallest(model, why.rejected)?.let { "no file fits the phone: ${it.quant} ${it.detail}" } ?: "no file of this model runs on the phone"
+            fast != null -> "the app asked for speed, and this server is the fastest path measured for it (${(fast.decodeTps * 10).roundToInt() / 10.0} tok/s)"
             policy == RoutingPolicy.REMOTE_FIRST -> "the routing policy puts servers first"
             Thermal.hot(device.thermal) -> "the phone is hot (${device.thermal.name.lowercase()}), a LAN server spares it"
             device.batteryLow -> "the phone's battery is low, a LAN server spares it"
@@ -305,10 +331,11 @@ class Router(
         minContext: Int = contextLength,
         sequences: Int = 1,
         reach: Set<Location>? = null,
+        hint: RouteHint? = null,
     ): Opened {
         catalog.resolve(model)
         val tried = mutableListOf<Failure>()
-        val why = explain(model, device, minContext, mmap, reach)
+        val why = explain(model, device, minContext, mmap, reach, hint)
         var plan = why.candidates
         if (plan.isEmpty()) {
             val reason = if (lanOutOfReach(model, device, minContext, reach)) {
@@ -328,7 +355,7 @@ class Router(
             } catch (e: Throwable) {
                 // The default order still works.
             }
-            plan = plan(model, device, minContext, mmap, reach).ifEmpty { plan }
+            plan = plan(model, device, minContext, mmap, reach, hint).ifEmpty { plan }
         }
         var noDownloads = false
         for (c in plan) {
@@ -365,7 +392,7 @@ class Router(
                     if (e !is EngineCrashedException) throw NoUsableBackendException(model, tried + Failure(c, e))
                     throw e
                 }
-                return Opened(session, c, tried, context, why.rejected, if (onPhone) null else offPhone(model, why, tried, device, reach))
+                return Opened(session, c, tried, context, why.rejected, if (onPhone) null else offPhone(model, why, tried, device, reach, hint, c))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: NoUsableBackendException) {
