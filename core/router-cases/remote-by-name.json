@@ -1,0 +1,58 @@
+{
+  "description": "A name no catalog knows runs only on a server that has a model of that name",
+  "device": {
+    "platform": "ANDROID",
+    "osApi": 34,
+    "soc": "SM7325",
+    "socFamily": "snapdragon-778g",
+    "abi": "arm64-v8a",
+    "ramMb": 5500,
+    "availRamMb": 1900
+  },
+  "backends": [
+    {
+      "id": "llamacpp",
+      "accels": [
+        "cpu",
+        "gpu"
+      ],
+      "formats": [
+        "gguf"
+      ]
+    },
+    {
+      "id": "openai-lan",
+      "accels": [
+        "cpu"
+      ],
+      "formats": [
+        "gguf"
+      ],
+      "location": "LAN",
+      "serves": [
+        "qwen3-coder-30b"
+      ]
+    },
+    {
+      "id": "openai-cloud",
+      "accels": [
+        "cpu"
+      ],
+      "formats": [
+        "gguf"
+      ],
+      "location": "CLOUD"
+    }
+  ],
+  "variants": [],
+  "policy": "LOCAL_FIRST",
+  "request": {
+    "model": "qwen3-coder-30b"
+  },
+  "expect": {
+    "plan": [
+      "openai-lan cpu server"
+    ],
+    "source": "DEFAULT"
+  }
+}
