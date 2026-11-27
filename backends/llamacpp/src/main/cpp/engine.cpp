@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
+#include <dirent.h>
 #include <mutex>
 
 #include <dlfcn.h>
@@ -75,6 +77,41 @@ static void load_best_cpu() {
     ggml_backend_load(best.c_str());
     DEN_LOG_INFO("cpu backend %s (score %d)", best.c_str(), best_score);
 }
+
+// The Hexagon NPU, in APKs built with den.hexagon. The DSP reads its skel (libggml-htp-v<NN>.so) from a folder
+// through ADSP_LIBRARY_PATH, so the libraries must be extracted next to this one. The backend lists a device whose
+// session failed (no skel for this DSP, no access) as null, so it is registered only when every device opened.
+static void load_hexagon() {
+    void *h = dlopen("libggml-hexagon.so", RTLD_NOW | RTLD_LOCAL);
+    if (!h) return;
+    Dl_info info{};
+    std::string dir = dladdr((void *) &load_hexagon, &info) && info.dli_fname ? info.dli_fname : "";
+    dir = dir.substr(0, dir.rfind('/'));
+    bool skels = false;
+    if (DIR *d = opendir(dir.c_str())) {
+        while (dirent *e = readdir(d)) skels |= std::string(e->d_name).rfind("libggml-htp-v", 0) == 0;
+        closedir(d);
+    }
+    auto init = reinterpret_cast<ggml_backend_reg_t (*)()>(dlsym(h, "ggml_backend_init"));
+    if (!skels || !init) {
+        DEN_LOG_INFO("hexagon backend skipped: %s", skels ? "no ggml_backend_init" : "skels not extracted (useLegacyPackaging)");
+        dlclose(h);
+        return;
+    }
+    const char *old = getenv("ADSP_LIBRARY_PATH");
+    setenv("ADSP_LIBRARY_PATH", (old && *old ? dir + ";" + old : dir).c_str(), 1);
+    ggml_backend_reg_t reg = init();
+    size_t n = reg ? ggml_backend_reg_dev_count(reg) : 0;
+    bool ok = n > 0;
+    for (size_t i = 0; i < n; ++i) ok &= ggml_backend_reg_dev_get(reg, i) != nullptr;
+    if (!ok) {
+        // Not closed: the backend may still hold DSP state from the failed session.
+        DEN_LOG_INFO("hexagon backend skipped: no session opened");
+        return;
+    }
+    ggml_backend_register(reg);
+    DEN_LOG_INFO("hexagon backend, %zu device(s)", n);
+}
 #endif
 
 std::vector<Device> init_backends(const std::string &lib_dir) {
@@ -87,6 +124,7 @@ std::vector<Device> init_backends(const std::string &lib_dir) {
             // In an APK the libraries are usually not extracted, so load by name; a missing one is skipped.
             load_best_cpu();
             ggml_backend_load("libggml-opencl.so");
+            load_hexagon();
 #endif
             // Desktop builds link the CPU backend statically; nothing to load.
         } else {
@@ -97,8 +135,10 @@ std::vector<Device> init_backends(const std::string &lib_dir) {
     std::vector<Device> out;
     for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
         auto *d = ggml_backend_dev_get(i);
+        // The Hexagon backend reports its HTP devices as GPUs.
+        bool npu = std::string(ggml_backend_reg_name(ggml_backend_dev_backend_reg(d))) == "HTP";
         out.push_back({ggml_backend_dev_name(d), ggml_backend_dev_description(d),
-                       ggml_backend_dev_type(d) == GGML_BACKEND_DEVICE_TYPE_GPU});
+                       !npu && ggml_backend_dev_type(d) == GGML_BACKEND_DEVICE_TYPE_GPU, npu});
     }
     return out;
 }
@@ -161,7 +201,7 @@ bool Engine::start(int n_seq, std::string &err) {
 
 std::unique_ptr<Engine> Engine::load(const std::string &path, int n_ctx, int n_threads,
                                      int n_gpu_layers, bool use_mmap, std::string &err, int n_seq,
-                                     bool kv_q8) {
+                                     bool kv_q8, const std::string &device) {
     if (ggml_backend_dev_count() == 0) {
         err = "no ggml backend loaded; call init_backends first";
         return nullptr;
@@ -170,6 +210,15 @@ std::unique_ptr<Engine> Engine::load(const std::string &path, int n_ctx, int n_t
 
     auto mp = llama_model_default_params();
     mp.n_gpu_layers = n_gpu_layers;
+    // Only the named device, or none: llama.cpp otherwise takes every GPU, and the HTP counts as one.
+    ggml_backend_dev_t devs[2] = {nullptr, nullptr};
+    if (!device.empty()) {
+        if (device != "none" && !(devs[0] = ggml_backend_dev_by_name(device.c_str()))) {
+            err = "no ggml device " + device;
+            return nullptr;
+        }
+        mp.devices = devs;
+    }
     mp.use_mmap = use_mmap;
     llama_model *model = llama_model_load_from_file(path.c_str(), mp);
     if (!model) {

@@ -56,25 +56,30 @@ class LlamaCppBackend : DenBackend {
     @Volatile
     private var lastError: String? = null
 
-    // GPU is reported only when the OpenCL backend loaded and found a device (Adreno 7xx and newer).
-    private val hasGpu by lazy {
-        runCatching { LlamaNative.devices().any { it.endsWith("\tgpu") } }.getOrDefault(false)
+    // The ggml device for each accelerator: GPU when the OpenCL backend found a device (Adreno 7xx and newer), NPU
+    // when the Hexagon backend opened a session (APKs built with den.hexagon). The CPU uses no device.
+    private val devices by lazy {
+        val all = runCatching { LlamaNative.devices().map { it.split('\t') } }.getOrDefault(emptyList())
+        buildMap {
+            put(Accel.CPU, "none")
+            all.firstOrNull { it.last() == "gpu" }?.let { put(Accel.GPU, it.first()) }
+            all.firstOrNull { it.last() == "npu" }?.let { put(Accel.NPU, it.first()) }
+        }
     }
 
     override fun probe(device: DeviceProfile): Capabilities {
         if (device.platform != Platform.ANDROID || device.abi != "arm64-v8a") return Capabilities.NONE
-        val accels = if (hasGpu) setOf(Accel.CPU, Accel.GPU) else setOf(Accel.CPU)
-        return Capabilities(accels, setOf(ModelFormat.GGUF), ARCHITECTURES)
+        return Capabilities(devices.keys, setOf(ModelFormat.GGUF), ARCHITECTURES)
     }
 
     override suspend fun load(artifact: Artifact, opts: LoadOptions): Session {
-        require(opts.accel == Accel.CPU || opts.accel == Accel.GPU) { "llamacpp: ${opts.accel} not supported" }
-        val gpuLayers = if (opts.accel == Accel.GPU) 999 else 0
+        val device = requireNotNull(devices[opts.accel]) { "llamacpp: ${opts.accel} not supported" }
+        val gpuLayers = if (opts.accel == Accel.CPU) 0 else 999
         // 0 = native picks from the cores Android allows right now; availableProcessors() ignores that.
         val threads = opts.threads ?: 0
         val handle = withContext(Dispatchers.IO) {
             try {
-                LlamaNative.load(artifact.path, opts.contextLength, threads, gpuLayers, opts.mmap, opts.sequences.coerceAtLeast(1), opts.kvCache == KvCache.Q8_0).also { h ->
+                LlamaNative.load(artifact.path, opts.contextLength, threads, gpuLayers, opts.mmap, opts.sequences.coerceAtLeast(1), opts.kvCache == KvCache.Q8_0, device).also { h ->
                     // Warm-up with a prompt as long as a real one: a 1-token "hi" left the first request at
                     // 3.8 tok/s prefill on the A52s, against ~75 for the next ones.
                     LlamaNative.generate(h, arrayOf("user"), arrayOf(WARMUP.encodeToByteArray()), 2, 0f, 1f, emptyArray(), false, 0, emptyArray()) { true }

@@ -1,6 +1,6 @@
 # backends/llamacpp
 
-The llama.cpp backend (GGUF) through JNI, on the CPU and on Adreno GPUs through OpenCL.
+The llama.cpp backend (GGUF) through JNI, on the CPU, on Adreno GPUs through OpenCL and, in builds that opt in, on the Hexagon NPU.
 
 It has three parts:
 
@@ -20,6 +20,23 @@ git submodule update --init
 ```
 
 Requires Android SDK platform 36, NDK 29.0.14206865, CMake 3.22.1 and Python 3 (to embed the OpenCL kernels).
+
+## Hexagon NPU (opt-in)
+
+The Hexagon backend of llama.cpp runs on the NPU of Snapdragon phones, from a normal app process: the DSP code runs in an unsigned session, with no root.
+It needs the Hexagon SDK, so the normal build leaves it out. To add it:
+
+```
+scripts/build-hexagon.sh                  # Docker; on Windows, in WSL
+./gradlew :apps:den:assembleRelease -Pden.hexagon=backends/llamacpp/build/hexagon
+```
+
+The script builds `libggml-hexagon.so` and one HTP skel per Hexagon version (`libggml-htp-v73.so` to `v81`) from the submodule, in the public `ghcr.io/snapdragon-toolchain/arm64-android` image.
+With `den.hexagon`, the Den app and the test app extract their native libraries, since the DSP reads the skel from a folder (`ADSP_LIBRARY_PATH`); another app sets `packaging.jniLibs.useLegacyPackaging = true` itself.
+
+The engine registers the backend only when its session opened. A phone without a skel for its DSP, or without `libcdsprpc.so`, keeps the CPU and the GPU.
+The backend then offers `Accel.NPU` beside them, and each accelerator loads on its own device only.
+The licence of the HTP skels for a release is still open (#56).
 
 ## Smoke test without an app
 

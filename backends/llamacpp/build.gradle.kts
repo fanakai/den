@@ -35,6 +35,12 @@ android {
         }
     }
 
+    // The Hexagon NPU, opt-in: -Pden.hexagon=<folder> made by scripts/build-hexagon.sh (libggml-hexagon.so and the
+    // HTP skels). The app must extract its native libraries (useLegacyPackaging), so the DSP can read the skel.
+    providers.gradleProperty("den.hexagon").orNull?.takeIf { it.isNotBlank() }?.let { dir ->
+        sourceSets["main"].jniLibs.srcDir(rootProject.file(dir))
+    }
+
     // Link-time stub only; the vendor libOpenCL.so must be the one loaded on the phone.
     packaging {
         jniLibs {
