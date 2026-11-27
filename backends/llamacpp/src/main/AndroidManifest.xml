@@ -3,5 +3,7 @@
     <application>
         <!-- Vendor OpenCL driver; listed in /vendor/etc/public.libraries.txt on Snapdragon phones. -->
         <uses-native-library android:name="libOpenCL.so" android:required="false" />
+        <!-- FastRPC to the Hexagon DSP, for builds with den.hexagon; public on Snapdragon phones too. -->
+        <uses-native-library android:name="libcdsprpc.so" android:required="false" />
     </application>
 </manifest>

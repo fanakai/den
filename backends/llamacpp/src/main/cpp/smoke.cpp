@@ -43,14 +43,15 @@ int main(int argc, char **argv) {
     const char *ctx = std::getenv("DEN_CTX");
 
     for (const auto &d : den::init_backends(exe_dir())) {
-        std::printf("device %s: %s%s\n", d.name.c_str(), d.description.c_str(), d.gpu ? " (gpu)" : "");
+        std::printf("device %s: %s%s\n", d.name.c_str(), d.description.c_str(), d.npu ? " (npu)" : d.gpu ? " (gpu)" : "");
     }
 
     std::string err;
-    // DEN_KV=q8_0: the q8_0 KV cache, as a recipe can choose it.
+    // DEN_KV=q8_0: the q8_0 KV cache, as a recipe can choose it. DEN_DEVICE: the only device to offload to.
     const char *kv = std::getenv("DEN_KV");
+    const char *device = std::getenv("DEN_DEVICE");
     auto engine = den::Engine::load(argv[1], ctx ? std::atoi(ctx) : 2048, threads, gpu_layers, std::getenv("DEN_NO_MMAP") == nullptr, err, 1,
-                                    kv != nullptr && std::string(kv) == "q8_0");
+                                    kv != nullptr && std::string(kv) == "q8_0", device ? device : "");
     if (!engine) {
         std::fprintf(stderr, "load: %s\n", err.c_str());
         return 1;

@@ -58,7 +58,7 @@ class EngineTest {
     }
 
     private fun withEngine(nCtx: Int = 256, nSeq: Int = 1, kvQ8: Boolean = false, block: (Long) -> Unit) {
-        val h = LlamaNative.load(model.path, nCtx, 2, 0, true, nSeq, kvQ8)
+        val h = LlamaNative.load(model.path, nCtx, 2, 0, true, nSeq, kvQ8, "none")
         try {
             block(h)
         } finally {
@@ -175,7 +175,7 @@ class EngineTest {
     // next choice; on the PC, Qwen3-0.6B loads and generates with it.
     @Test
     fun aQ8CacheTheModelCannotHoldFailsToLoad() {
-        assertFailsWith<EngineException> { LlamaNative.load(model.path, 256, 2, 0, true, 1, true) }
+        assertFailsWith<EngineException> { LlamaNative.load(model.path, 256, 2, 0, true, 1, true, "none") }
     }
 
     @Test

@@ -53,6 +53,7 @@ struct Device {
     std::string name;
     std::string description;
     bool gpu;
+    bool npu;
 };
 
 // Loads the ggml backend libraries (once) and lists the devices they offer.
@@ -63,10 +64,11 @@ class Engine {
 public:
     // n_threads <= 0 picks threads automatically before each generation. n_seq: requests that run at the same
     // time, each a sequence of n_ctx tokens in one context; they share each decoding step. kv_q8: a q8_0 KV cache,
-    // with flash attention, instead of F16.
+    // with flash attention, instead of F16. device: the only ggml device to offload to, "none" for the CPU alone,
+    // empty for llama.cpp's choice (every GPU).
     static std::unique_ptr<Engine> load(const std::string &path, int n_ctx, int n_threads,
                                         int n_gpu_layers, bool use_mmap, std::string &err, int n_seq = 1,
-                                        bool kv_q8 = false);
+                                        bool kv_q8 = false, const std::string &device = "");
     ~Engine();
 
     // Safe to call from several threads at once: up to n_seq requests run together, further ones wait.

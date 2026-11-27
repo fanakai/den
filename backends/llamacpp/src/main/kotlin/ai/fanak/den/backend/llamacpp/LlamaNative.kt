@@ -12,11 +12,12 @@ internal object LlamaNative {
         System.getProperty("den.engineLib")?.let { System.load(it) } ?: System.loadLibrary("den_llamacpp")
     }
 
-    // "name\tdescription\tgpu|cpu" per device
+    // "name\tdescription\tgpu|npu|cpu" per device
     external fun devices(): Array<String>
 
-    // nSeq: requests that generate on the handle at the same time, decoded together; further ones wait.
-    external fun load(path: String, nCtx: Int, nThreads: Int, nGpuLayers: Int, useMmap: Boolean, nSeq: Int, kvQ8: Boolean): Long
+    // nSeq: requests that generate on the handle at the same time, decoded together; further ones wait. device: the
+    // only ggml device to offload to, "none" for the CPU alone.
+    external fun load(path: String, nCtx: Int, nThreads: Int, nGpuLayers: Int, useMmap: Boolean, nSeq: Int, kvQ8: Boolean, device: String): Long
 
     // [promptTokens, outputTokens, prefillMs, decodeMs, finish, cachedTokens, threads]; contents and stop strings
     // as UTF-8. Several threads may call it at once; free must wait for them.

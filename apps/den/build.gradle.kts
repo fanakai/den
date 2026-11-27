@@ -44,6 +44,9 @@ android {
         }
     }
 
+    // With the Hexagon NPU (den.hexagon), native libraries are extracted: the DSP reads its skel from that folder.
+    packaging { jniLibs { useLegacyPackaging = !providers.gradleProperty("den.hexagon").orNull.isNullOrBlank() } }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
