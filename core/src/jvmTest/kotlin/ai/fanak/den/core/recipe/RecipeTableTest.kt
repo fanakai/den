@@ -5,23 +5,24 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * The table of recipes in recipes/README.md is made from the recipe files, so it cannot drift from them.
- * After a recipe change: `./gradlew :core:jvmTest -Pden.writeTable`, and commit the README with it.
+ * The table of recipes in recipes/README.md and in the README of the repository is made from the recipe files, so it
+ * cannot drift from them. After a recipe change: `./gradlew :core:jvmTest -Pden.writeTable`, and commit both READMEs.
  */
 class RecipeTableTest {
     private val dir = File(System.getProperty("den.recipes"))
-    private val readme = File(dir, "README.md")
 
     @Test
-    fun theReadmeTableMatchesTheRecipes() {
-        val text = readme.readText()
-        val start = text.indexOf(START)
-        val end = text.indexOf(END)
-        check(start >= 0 && end > start) { "recipes/README.md has no generated table" }
+    fun theReadmeTablesMatchTheRecipes() {
         val table = table(RecipeFiles.load(dir))
-        val updated = text.substring(0, start + START.length) + "\n" + table + text.substring(end)
-        if (System.getProperty("den.writeTable") != null) return readme.writeText(updated)
-        assertEquals(text, updated, "the table in recipes/README.md is out of date: ./gradlew :core:jvmTest -Pden.writeTable")
+        for (readme in listOf(File(dir, "README.md"), File(dir.parentFile, "README.md"))) {
+            val text = readme.readText()
+            val start = text.indexOf(START)
+            val end = text.indexOf(END)
+            check(start >= 0 && end > start) { "$readme has no generated table" }
+            val updated = text.substring(0, start + START.length) + "\n" + table + text.substring(end)
+            if (System.getProperty("den.writeTable") != null) readme.writeText(updated)
+            else assertEquals(text, updated, "the table in $readme is out of date: ./gradlew :core:jvmTest -Pden.writeTable")
+        }
     }
 
     private fun table(recipes: List<Recipe>): String = buildString {
