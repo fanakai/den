@@ -1,0 +1,49 @@
+{
+  "description": "Fast with nothing measured yet: the usual order",
+  "device": {
+    "platform": "ANDROID",
+    "osApi": 37,
+    "soc": "SM8750",
+    "socFamily": "snapdragon-8-elite",
+    "abi": "arm64-v8a",
+    "ramMb": 11000,
+    "availRamMb": 3400
+  },
+  "backends": [
+    {
+      "id": "llamacpp",
+      "accels": [
+        "cpu",
+        "gpu",
+        "npu"
+      ],
+      "formats": [
+        "gguf"
+      ]
+    }
+  ],
+  "variants": [
+    {
+      "model": "qwen3-0.6b",
+      "format": "gguf",
+      "quant": "q4_0",
+      "sizeBytes": 400000000,
+      "minRamMb": 381,
+      "arch": "qwen3",
+      "params": 596049920,
+      "kvBytesPerToken": 114688
+    }
+  ],
+  "request": {
+    "model": "qwen3-0.6b",
+    "hint": "FAST"
+  },
+  "expect": {
+    "plan": [
+      "llamacpp cpu q4_0",
+      "llamacpp gpu q4_0",
+      "llamacpp npu q4_0"
+    ],
+    "source": "DEFAULT"
+  }
+}

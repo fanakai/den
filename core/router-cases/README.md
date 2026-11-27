@@ -9,6 +9,8 @@ Each file is one routing case as data: a device profile, its backends, the catal
 - `disk`: free space in MB and the quants already on disk; `crashed`: `{ backend, accel, quant }` paths.
 - `backends[].location`: `DEVICE` (the default), `LAN` or `CLOUD`; `backends[].serves`: model names a server has that no catalog knows.
 - `network`: `online` (any network) and `localNetwork` (Wi-Fi, Ethernet or a VPN), both true by default.
-- `policy`: `LOCAL_ONLY` (the default), `LOCAL_FIRST` or `REMOTE_FIRST`; `request.reach`: where this call may run the model, for an app the user limited or a hint.
+- `policy`: `LOCAL_ONLY` (the default), `LOCAL_FIRST` or `REMOTE_FIRST`; `request.reach`: where this call may run the model, for an app the user limited.
+- `request.hint`: `PRIVATE`, `CHEAP` or `FAST`, as an app asks; it narrows the reach (`RouteHint.limit`), as the SDK and the Den app do.
+- `speeds`: `{ backend, accel, quant, decodeTps }` of earlier requests on this phone, which `FAST` orders by.
 
-The numbers are test data, not measurements. Every reason a case can reach, every policy and every location must have a case.
+The numbers are test data, not measurements. Every reason a case can reach, every policy, every location and every hint must have a case.

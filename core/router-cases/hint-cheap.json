@@ -1,0 +1,67 @@
+{
+  "description": "Cheap: no paid endpoint, so servers first leaves only the LAN server and the phone",
+  "device": {
+    "platform": "ANDROID",
+    "osApi": 34,
+    "soc": "SM7325",
+    "socFamily": "snapdragon-778g",
+    "abi": "arm64-v8a",
+    "ramMb": 5500,
+    "availRamMb": 1900
+  },
+  "backends": [
+    {
+      "id": "llamacpp",
+      "accels": [
+        "cpu"
+      ],
+      "formats": [
+        "gguf"
+      ]
+    },
+    {
+      "id": "openai-lan",
+      "accels": [
+        "cpu"
+      ],
+      "formats": [
+        "gguf"
+      ],
+      "location": "LAN"
+    },
+    {
+      "id": "openai-cloud",
+      "accels": [
+        "cpu"
+      ],
+      "formats": [
+        "gguf"
+      ],
+      "location": "CLOUD"
+    }
+  ],
+  "variants": [
+    {
+      "model": "qwen3-0.6b",
+      "format": "gguf",
+      "quant": "q4_0",
+      "sizeBytes": 400000000,
+      "minRamMb": 381,
+      "arch": "qwen3",
+      "params": 596049920,
+      "kvBytesPerToken": 114688
+    }
+  ],
+  "policy": "REMOTE_FIRST",
+  "request": {
+    "model": "qwen3-0.6b",
+    "hint": "CHEAP"
+  },
+  "expect": {
+    "plan": [
+      "openai-lan cpu q4_0",
+      "llamacpp cpu q4_0"
+    ],
+    "source": "DEFAULT"
+  }
+}

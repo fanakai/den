@@ -4,6 +4,7 @@ import ai.fanak.den.core.backend.BackendDescriptor
 import ai.fanak.den.core.backend.BackendMode
 import ai.fanak.den.core.backend.Capabilities
 import ai.fanak.den.core.backend.DenBackend
+import ai.fanak.den.core.backend.GenStats
 import ai.fanak.den.core.backend.Health
 import ai.fanak.den.core.backend.LoadOptions
 import ai.fanak.den.core.backend.Location
@@ -48,6 +49,8 @@ class RouterCasesTest {
         val disk: Disk = Disk(),
         val network: Network = Network(),
         val policy: RoutingPolicy = RoutingPolicy.LOCAL_ONLY,
+        // Decode speeds of earlier requests on this phone, which the FAST hint orders by.
+        val speeds: List<MeasuredSpeed> = emptyList(),
         val request: Request,
         val expect: Expect,
     )
@@ -66,6 +69,9 @@ class RouterCasesTest {
     @Serializable
     private data class CrashedPath(val backend: String, val accel: Accel, val quant: String)
 
+    @Serializable
+    private data class MeasuredSpeed(val backend: String, val accel: Accel, val quant: String, val decodeTps: Double)
+
     // Free disk space, and the quants already on disk.
     @Serializable
     private data class Disk(val freeMb: Long = 100_000, val has: Set<String> = emptySet())
@@ -74,9 +80,15 @@ class RouterCasesTest {
     @Serializable
     private data class Network(val online: Boolean = true, val localNetwork: Boolean = true)
 
-    // reach: where this call may run the model; null leaves it to the policy.
+    // reach: where this call may run the model; null leaves it to the policy. hint: narrows the reach, as an app asks.
     @Serializable
-    private data class Request(val model: String, val minContext: Int? = null, val mmap: Boolean = true, val reach: Set<Location>? = null)
+    private data class Request(
+        val model: String,
+        val minContext: Int? = null,
+        val mmap: Boolean = true,
+        val reach: Set<Location>? = null,
+        val hint: RouteHint? = null,
+    )
 
     // plan: "backend accel quant" in order; rejected: "quant REASON", or "quant REASON backend accel" for a path.
     @Serializable
@@ -125,16 +137,24 @@ class RouterCasesTest {
             override fun has(variant: Variant) = variant.quant in case.disk.has
             override fun freeBytes() = case.disk.freeMb shl 20
         }
+        val speeds = object : SpeedStore {
+            override fun record(candidate: Candidate, stats: GenStats) = Unit
+            override fun of(candidate: Candidate) = case.speeds.firstOrNull {
+                it.backend == candidate.backend.id && it.accel == candidate.accel && it.quant == candidate.variant.quant
+            }?.let { Speed(it.decodeTps, 0, 1) }
+        }
         val router = Router(
             backends, InMemoryRecipeStore(case.recipes), catalog, store,
             policy = case.policy, online = { case.network.online }, localNetwork = { case.network.localNetwork },
+            speeds = speeds,
         )
         case.crashed.forEach { p ->
             val v = case.variants.first { it.quant == p.quant }
             router.reportFailure(case.device, Candidate(backends.first { it.id == p.backend }, p.accel, v, Source.DEFAULT), EngineCrashedException("crashed"))
         }
         val r = case.request
-        val why = router.explain(r.model, case.device, r.minContext, r.mmap, r.reach)
+        // As the SDK and the Den app pass them: the hint narrows the reach, and orders the plan.
+        val why = router.explain(r.model, case.device, r.minContext, r.mmap, r.hint?.limit(r.reach) ?: r.reach, r.hint)
         return Expect(
             plan = why.candidates.map { "${it.backend.id} ${it.accel.name.lowercase()} ${it.variant.quant}" },
             source = why.candidates.firstOrNull()?.source,
@@ -153,9 +173,10 @@ class RouterCasesTest {
     }
 
     @Test
-    fun theCasesCoverEveryPolicyAndLocation() {
+    fun theCasesCoverEveryPolicyLocationAndHint() {
         val all = cases().map { it.second }
         assertEquals(RoutingPolicy.entries.toSet(), all.map { it.policy }.toSet(), "a routing policy without a case")
         assertEquals(Location.entries.toSet(), all.flatMap { c -> c.backends.map { it.location } }.toSet(), "a location without a case")
+        assertEquals(RouteHint.entries.toSet(), all.mapNotNull { it.request.hint }.toSet(), "a route hint without a case")
     }
 }
