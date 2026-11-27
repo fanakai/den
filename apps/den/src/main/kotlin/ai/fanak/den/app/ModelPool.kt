@@ -2,6 +2,7 @@ package ai.fanak.den.app
 
 import ai.fanak.den.DenModel
 import ai.fanak.den.core.backend.Location
+import ai.fanak.den.core.router.RouteHint
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -14,7 +15,8 @@ import kotlinx.coroutines.withContext
  * with an app that may use the phone only.
  */
 internal class ModelPool(
-    private val load: suspend (String, Set<Location>) -> DenModel,
+    // The app's hint orders the router's choices when this call loads the model; a loaded model is shared as it is.
+    private val load: suspend (String, Set<Location>, RouteHint?) -> DenModel,
     // Gets the file on disk (download) before the load; runs outside both locks, so downloads do not block loads.
     private val prepare: suspend (String, Set<Location>) -> Unit = { _, _ -> },
     // RAM the router would need to load this model, given this much free RAM; null when nothing fits.
@@ -49,15 +51,15 @@ internal class ModelPool(
     private val loading = Mutex()
 
     // An AIDL session keeps its slot; the model may still be unloaded while the session is idle.
-    suspend fun acquire(name: String, reach: Set<Location> = ANYWHERE): DenModel = hold(name, reach) { it.sessions++ }
+    suspend fun acquire(name: String, reach: Set<Location> = ANYWHERE, hint: RouteHint? = null): DenModel = hold(name, reach, hint) { it.sessions++ }
 
     suspend fun release(name: String) = lock.withLock {
         val s = slots[name] ?: return@withLock
         if (--s.sessions <= 0 && s.busy == 0 && !pinned(name)) unload(s, "no sessions")
     }
 
-    suspend fun <T> use(name: String, reach: Set<Location> = ANYWHERE, block: suspend (DenModel) -> T): T {
-        val m = hold(name, reach) { it.busy++ }
+    suspend fun <T> use(name: String, reach: Set<Location> = ANYWHERE, hint: RouteHint? = null, block: suspend (DenModel) -> T): T {
+        val m = hold(name, reach, hint) { it.busy++ }
         val s = lock.withLock { slots.getValue(name) }
         try {
             return block(m)
@@ -100,7 +102,7 @@ internal class ModelPool(
     }
 
     // Loads the model if needed, then marks it held under the lock, so it cannot be unloaded in between.
-    private suspend fun hold(name: String, reach: Set<Location>, mark: (Slot) -> Unit): DenModel {
+    private suspend fun hold(name: String, reach: Set<Location>, hint: RouteHint?, mark: (Slot) -> Unit): DenModel {
         while (true) {
             lock.withLock {
                 val s = slots.getOrPut(name) { Slot(name) }
@@ -124,7 +126,7 @@ internal class ModelPool(
                     val before = availMb()
                     val t0 = now()
                     val m = try {
-                        load(name, reach)
+                        load(name, reach, hint)
                     } catch (e: Throwable) {
                         withContext(NonCancellable) {
                             lock.withLock { slots[name]?.takeIf { it.model == null && it.sessions <= 0 && it.busy == 0 }?.let { slots.remove(name) } }

@@ -27,3 +27,4 @@ change in place.
 | 5 | `openWith` (context length and the shortest accepted), `plan`; `IOpenCallback.onContext`, `onFailed` |
 | 6 | aliases resolved in `openWith` and `plan`; `IOpenCallback.onModel` |
 | 7 | `"hint"` in the options of `openWith` and `plan`: `private` (the phone only) or `cheap` (no cloud); it narrows what the user allows the app |
+| 8 | `"hint": "fast"`: the path that decoded the model fastest on earlier requests first, within what the user allows; the SDK sends it only to version 8 or later |

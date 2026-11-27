@@ -91,7 +91,7 @@ class DenService : Service() {
     private val wanted = ConcurrentHashMap<String, Pair<Int, Int>>()
 
     private val pool = ModelPool(
-        load = { name, reach -> wanted[name]?.let { (length, min) -> den.model(name, length, min, reach) } ?: den.model(name, reach = reach) },
+        load = { name, reach, hint -> wanted[name]?.let { (length, min) -> den.model(name, length, min, reach, hint) } ?: den.model(name, reach = reach, hint = hint) },
         prepare = { name, reach ->
             den.resolve(name)
             val file = den.fileName(name)
@@ -113,7 +113,7 @@ class DenService : Service() {
     private val nextId = AtomicLong(1)
 
     private val binder = object : IDenService.Stub() {
-        override fun version() = 7
+        override fun version() = 8
 
         override fun httpPort() = if (HttpSettings.enabled(this@DenService)) http.port else -1
 
@@ -163,12 +163,12 @@ class DenService : Service() {
                     p.model = target
                     if (context != null) wanted[target] = context
                     val reach = reachOf(pkg, hint)
-                    var m = pool.acquire(target, reach)
+                    var m = pool.acquire(target, reach, hint)
                     // Loaded for another app with a shorter context than this one accepts: reloaded when it is idle.
                     if (context != null && m.contextLength in 1 until context.second) {
                         pool.release(target)
                         if (!pool.evict(target)) throw IllegalStateException("$target runs with ${m.contextLength} tokens of context for another app; try again when it is idle")
-                        m = pool.acquire(target, reach)
+                        m = pool.acquire(target, reach, hint)
                     }
                     val id = nextId.getAndIncrement()
                     // A client that dies releases its sessions.
@@ -216,7 +216,7 @@ class DenService : Service() {
                             ChatMessage(requireNotNull(Role.entries.find { it.name == r.uppercase() }) { "unknown role $r" }, c)
                         }
                         // Read on each request, so a level the user lowers applies to open sessions too.
-                        pool.use(s.model, reachOf(s.pkg, s.hint)) { m -> recorded(s.model, m, m.chat(GenRequest(messages, maxTokens, temperature, topP, stop.toList())), s.pkg).collect { e ->
+                        pool.use(s.model, reachOf(s.pkg, s.hint), s.hint) { m -> recorded(s.model, m, m.chat(GenRequest(messages, maxTokens, temperature, topP, stop.toList())), s.pkg).collect { e ->
                             when (e) {
                                 is GenEvent.Text -> callback.onText(e.text)
                                 is GenEvent.Done -> e.stats.run {

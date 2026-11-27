@@ -569,6 +569,46 @@ class RouterTest {
     }
 
     @Test
+    fun fastPutsTheFastestMeasuredPathFirst() = runTest {
+        val dev = ai.fanak.den.core.backend.Location.DEVICE
+        val lan = ai.fanak.den.core.backend.Location.LAN
+        val cloud = ai.fanak.den.core.backend.Location.CLOUD
+        val r = policyRouter(RoutingPolicy.LOCAL_FIRST)
+        val plan = r.plan(model, device)
+        // Nothing measured yet: the policy's order.
+        assertEquals(plan, r.plan(model, device, hint = RouteHint.FAST))
+        val phone = plan.first { it.location == dev }
+        val server = plan.first { it.location == lan }
+        // 64 tokens in 2 s on the phone, in 1 s on the LAN server.
+        r.reportSpeed(phone, ai.fanak.den.core.backend.GenStats(300, 64, 900, 2000))
+        r.reportSpeed(server, ai.fanak.den.core.backend.GenStats(300, 64, 200, 1000))
+        val fast = r.plan(model, device, hint = RouteHint.FAST)
+        assertEquals(listOf(server, phone), fast.take(2))
+        // The rest keep the policy's order, and the plan without the hint is unchanged.
+        assertEquals(plan - setOf(server, phone), fast.drop(2))
+        assertEquals(plan, r.plan(model, device))
+        // The reach still holds.
+        assertEquals(listOf(dev), r.plan(model, device, reach = setOf(dev), hint = RouteHint.FAST).map { it.location }.distinct())
+        val opened = r.open(model, device, hint = RouteHint.FAST)
+        assertEquals("lan", opened.candidate.backend.id)
+        assertEquals("the app asked for speed, and this server is the fastest path measured for it (64.0 tok/s)", opened.offPhone)
+        assertEquals(listOf(dev, lan, cloud), RouteHint.FAST.limit(null).sorted())
+    }
+
+    @Test
+    fun speedsAreTheMedianOfTheLastRequests() {
+        val store = InMemorySpeedStore(keep = 3)
+        val c = policyRouter(RoutingPolicy.LOCAL_ONLY).plan(model, device).first()
+        assertNull(store.of(c))
+        // A short reply is not counted.
+        store.record(c, ai.fanak.den.core.backend.GenStats(10, 8, 100, 100))
+        assertNull(store.of(c))
+        listOf(1000L, 2000L, 4000L, 500L).forEach { store.record(c, ai.fanak.den.core.backend.GenStats(10, 40, 100, it)) }
+        // The last 3: 20, 10 and 80 tok/s.
+        assertEquals(Speed(20.0, 100, 3), store.of(c))
+    }
+
+    @Test
     fun aHotPhoneMovesToTheLanWhenAllowed() {
         val dev = ai.fanak.den.core.backend.Location.DEVICE
         val lan = ai.fanak.den.core.backend.Location.LAN
