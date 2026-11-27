@@ -7,6 +7,7 @@ import ai.fanak.den.core.backend.UnsupportedFeatureException
 import ai.fanak.den.core.backend.features
 import ai.fanak.den.core.device.Accel
 import ai.fanak.den.core.model.DownloadProgress
+import ai.fanak.den.core.router.Expected
 import ai.fanak.den.core.router.NoUsableBackendException
 import ai.fanak.den.core.router.RouteHint
 import ai.fanak.den.core.router.Source
@@ -108,9 +109,12 @@ internal class DenAppConnection(
     }
 
     // A Den app older than version 7 ignores the hint; it has no server to send the model to.
-    private fun options(contextLength: Int, minContextLength: Int, hint: RouteHint? = null) =
+    // A Den app older than version 9 ignores the expected lengths.
+    private fun options(contextLength: Int, minContextLength: Int, hint: RouteHint? = null, expected: Expected? = null) =
         org.json.JSONObject().put("contextLength", contextLength).put("minContextLength", minContextLength)
-            .apply { if (hint != null) put("hint", hint.name.lowercase()) }.toString()
+            .apply { if (hint != null) put("hint", hint.name.lowercase()) }
+            .apply { if (expected != null) put("promptTokens", expected.promptTokens).put("outputTokens", expected.outputTokens) }
+            .toString()
 
     // The Den app's route, or null when it is older than version 5.
     suspend fun plan(model: String, contextLength: Int, minContextLength: Int): List<Route>? {
@@ -122,7 +126,7 @@ internal class DenAppConnection(
         }
     }
 
-    suspend fun open(model: String, contextLength: Int, minContextLength: Int, hint: RouteHint? = null): DenModel {
+    suspend fun open(model: String, contextLength: Int, minContextLength: Int, hint: RouteHint? = null, expected: Expected? = null): DenModel {
         val svc = service()
         val v5 = svc.version() >= 5
         // A Den app older than version 8 would read an unknown hint as private: FAST goes without a hint there.
@@ -168,7 +172,7 @@ internal class DenAppConnection(
                 }
             }
             cont.invokeOnCancellation { runCatching { svc.cancelOpen(callback) } }
-            if (v5) svc.openWith(model, options(contextLength, minContextLength, sent), callback) else svc.open(model, callback)
+            if (v5) svc.openWith(model, options(contextLength, minContextLength, sent, expected), callback) else svc.open(model, callback)
         }
     }
 

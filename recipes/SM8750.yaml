@@ -6,21 +6,71 @@ rankings:
     choices:
       - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_0 }
       - { backend: llamacpp, accel: gpu, format: gguf, quant: q4_0 }
+      - { backend: llamacpp, accel: npu, format: gguf, quant: q4_0 }
       - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_k_m }
     measured:
-      prefill_tps: 213.8
-      decode_tps: 40.9
+      prefill_tps: 555.8
+      decode_tps: 59.4
       device: Galaxy S25 (SM-S931B)
-      date: 2026-11-20
-      protocol: den-smoke, llama.cpp b9590 CPU variant armv8.6_1 (i8mm), 4 threads, 300-token prompt, 64 tokens greedy, mean of 3 runs, Termux in background
+      date: 2026-11-27
+      peak_ram_mb: 1338
+      sha256: 33bcc57074ec7b6eada5a90651ee546ec0c2b271002c22baf9f1b2dd1e8f75cb
+      protocol: den bench, 0.14.0-d2462f8f7, automatic threads, 289-token prompt, 128 tokens greedy, 2094-token long prompt, 16 tokens, median of 3 runs, KV cache f16, release build, foreground, screen on, battery 83%, thermal NONE, Hexagon build (-Pden.hexagon)
+    speeds:
+      - choice: { backend: llamacpp, accel: cpu, format: gguf, quant: q4_0 }
+        prompt_tokens: 289
+        prefill_tps: 555.8
+        decode_tps: 59.4
+        long_prompt_tokens: 2094
+        prefill_long_tps: 184.6
+        decode_long_tps: 23.0
+      - choice: { backend: llamacpp, accel: gpu, format: gguf, quant: q4_0 }
+        prompt_tokens: 289
+        prefill_tps: 218.6
+        decode_tps: 39.5
+        long_prompt_tokens: 2094
+        prefill_long_tps: 95.8
+        decode_long_tps: 15.4
+      - choice: { backend: llamacpp, accel: npu, format: gguf, quant: q4_0 }
+        prompt_tokens: 289
+        prefill_tps: 1445.0
+        decode_tps: 32.8
+        long_prompt_tokens: 2094
+        prefill_long_tps: 1275.3
+        decode_long_tps: 25.6
   - model: { arch: qwen3, params_b: 1.7 }
     choices:
-      - { backend: llamacpp, accel: gpu, format: gguf, quant: q4_0 }
       - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_0 }
+      - { backend: llamacpp, accel: gpu, format: gguf, quant: q4_0 }
+      - { backend: llamacpp, accel: npu, format: gguf, quant: q4_0 }
       - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_k_m }
     measured:
-      prefill_tps: 196.4
-      decode_tps: 24.3
+      prefill_tps: 166.7
+      decode_tps: 32.6
       device: Galaxy S25 (SM-S931B)
-      date: 2026-11-19
-      protocol: den-smoke, llama.cpp b9590, 300-token prompt, 64 tokens greedy, mean of 2 runs, Termux in background
+      date: 2026-11-27
+      peak_ram_mb: 2630
+      sha256: c876f159707a4e4f70e045106c69db15bfc935a4981706fd4f65c6e7ea1e81c5
+      protocol: den bench, 0.14.0-d2462f8f7, automatic threads, 289-token prompt, 128 tokens greedy, 2094-token long prompt, 16 tokens, median of 3 runs, KV cache f16, release build, foreground, screen on, battery 83%, thermal NONE, Hexagon build (-Pden.hexagon)
+    speeds:
+      - choice: { backend: llamacpp, accel: cpu, format: gguf, quant: q4_0 }
+        prompt_tokens: 289
+        prefill_tps: 166.7
+        decode_tps: 32.6
+        long_prompt_tokens: 2094
+        prefill_long_tps: 110.8
+        decode_long_tps: 17.2
+      - choice: { backend: llamacpp, accel: gpu, format: gguf, quant: q4_0 }
+        prompt_tokens: 289
+        prefill_tps: 178.0
+        decode_tps: 23.9
+        long_prompt_tokens: 2094
+        prefill_long_tps: 86.8
+        decode_long_tps: 12.3
+      - choice: { backend: llamacpp, accel: npu, format: gguf, quant: q4_0 }
+        prompt_tokens: 289
+        prefill_tps: 656.8
+        decode_tps: 17.1
+        long_prompt_tokens: 2094
+        prefill_long_tps: 569.8
+        decode_long_tps: 15.9

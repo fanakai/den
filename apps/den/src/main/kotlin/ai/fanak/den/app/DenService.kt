@@ -19,6 +19,7 @@ import ai.fanak.den.core.backend.Role
 import ai.fanak.den.core.model.DownloadProgress
 import ai.fanak.den.core.model.RemoteFile
 import ai.fanak.den.core.model.Variant
+import ai.fanak.den.core.router.Expected
 import ai.fanak.den.core.router.NoUsableBackendException
 import ai.fanak.den.core.router.RouteHint
 import ai.fanak.den.core.router.RoutingPolicy
@@ -90,8 +91,14 @@ class DenService : Service() {
     // The context the next load of a model uses: what the last version 5 client asked for, (length, shortest).
     private val wanted = ConcurrentHashMap<String, Pair<Int, Int>>()
 
+    // The prompt and answer lengths the last app that opened the model expects, for the path its copy is loaded on.
+    private val expectedOf = ConcurrentHashMap<String, Expected>()
+
     private val pool = ModelPool(
-        load = { name, reach, hint -> wanted[name]?.let { (length, min) -> den.model(name, length, min, reach, hint) } ?: den.model(name, reach = reach, hint = hint) },
+        load = { name, reach, hint ->
+            val e = expectedOf[name]
+            wanted[name]?.let { (length, min) -> den.model(name, length, min, reach, hint, e) } ?: den.model(name, reach = reach, hint = hint, expected = e)
+        },
         prepare = { name, reach ->
             den.resolve(name)
             val file = den.fileName(name)
@@ -113,7 +120,7 @@ class DenService : Service() {
     private val nextId = AtomicLong(1)
 
     private val binder = object : IDenService.Stub() {
-        override fun version() = 8
+        override fun version() = 9
 
         override fun httpPort() = if (HttpSettings.enabled(this@DenService)) http.port else -1
 
@@ -122,7 +129,7 @@ class DenService : Service() {
         override fun open(model: String, callback: IOpenCallback) = start(model, callback, null, null)
 
         override fun openWith(model: String, options: String, callback: IOpenCallback) =
-            start(model, callback, runCatching { contextOf(options) }.getOrNull(), hintOf(options))
+            start(model, callback, runCatching { contextOf(options) }.getOrNull(), hintOf(options), expectedOf(options))
 
         override fun plan(model: String, options: String): Array<String> {
             val (_, min) = runCatching { contextOf(options) }.getOrNull() ?: (0 to 0)
@@ -138,7 +145,7 @@ class DenService : Service() {
         }
 
         // [context]: (length, shortest accepted) from a version 5 client, which also gets onContext and onFailed.
-        private fun start(model: String, callback: IOpenCallback, context: Pair<Int, Int>?, hint: RouteHint?) {
+        private fun start(model: String, callback: IOpenCallback, context: Pair<Int, Int>?, hint: RouteHint?, expected: Expected? = null) {
             val v5 = context != null
             fun fail(kind: String, message: String) =
                 runCatching { if (v5) callback.onFailed(kind, message) else callback.onError(message) }
@@ -162,6 +169,7 @@ class DenService : Service() {
                     val target = den.resolveAlias(model)
                     p.model = target
                     if (context != null) wanted[target] = context
+                    if (expected != null) expectedOf[target] = expected
                     val reach = reachOf(pkg, hint)
                     var m = pool.acquire(target, reach, hint)
                     // Loaded for another app with a shorter context than this one accepts: reloaded when it is idle.
@@ -354,6 +362,13 @@ class DenService : Service() {
         if (h.isEmpty()) return null
         return RouteHint.entries.find { it.name.equals(h, ignoreCase = true) } ?: RouteHint.PRIVATE
     }
+
+    // {"promptTokens":3000,"outputTokens":200} -> Expected(3000, 200); null without promptTokens.
+    private fun expectedOf(options: String): Expected? = runCatching {
+        val o = org.json.JSONObject(options)
+        if (!o.has("promptTokens")) null
+        else Expected(o.getInt("promptTokens").coerceIn(1, 1 shl 20), o.optInt("outputTokens", 0).coerceIn(0, 1 shl 20))
+    }.getOrNull()
 
     private fun contextOf(options: String): Pair<Int, Int> {
         val o = org.json.JSONObject(options)

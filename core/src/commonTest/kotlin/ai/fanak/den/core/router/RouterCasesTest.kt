@@ -81,6 +81,7 @@ class RouterCasesTest {
     private data class Network(val online: Boolean = true, val localNetwork: Boolean = true)
 
     // reach: where this call may run the model; null leaves it to the policy. hint: narrows the reach, as an app asks.
+    // promptTokens and outputTokens: what the app expects, which orders the paths measured at two prompt lengths.
     @Serializable
     private data class Request(
         val model: String,
@@ -88,6 +89,8 @@ class RouterCasesTest {
         val mmap: Boolean = true,
         val reach: Set<Location>? = null,
         val hint: RouteHint? = null,
+        val promptTokens: Int? = null,
+        val outputTokens: Int? = null,
     )
 
     // plan: "backend accel quant" in order; rejected: "quant REASON", or "quant REASON backend accel" for a path.
@@ -154,7 +157,8 @@ class RouterCasesTest {
         }
         val r = case.request
         // As the SDK and the Den app pass them: the hint narrows the reach, and orders the plan.
-        val why = router.explain(r.model, case.device, r.minContext, r.mmap, r.hint?.limit(r.reach) ?: r.reach, r.hint)
+        val expected = r.promptTokens?.let { Expected(it, r.outputTokens ?: 0) }
+        val why = router.explain(r.model, case.device, r.minContext, r.mmap, r.hint?.limit(r.reach) ?: r.reach, r.hint, expected)
         return Expect(
             plan = why.candidates.map { "${it.backend.id} ${it.accel.name.lowercase()} ${it.variant.quant}" },
             source = why.candidates.firstOrNull()?.source,

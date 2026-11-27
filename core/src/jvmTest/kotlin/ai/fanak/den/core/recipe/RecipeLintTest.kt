@@ -43,6 +43,10 @@ class RecipeLintTest {
         assertTrue(problems(ok.copy(rankings = listOf(ranking.copy(measured = ranking.measured!!.copy(protocol = null))))).any { "protocol" in it })
         assertTrue(problems(ok.copy(rankings = listOf(ranking.copy(measured = ranking.measured!!.copy(date = "2026-13-40"))))).any { "date" in it })
         assertTrue(problems(ok.copy(rankings = listOf(ranking.copy(measured = ranking.measured!!.copy(decodeTps = 0.0))))).any { "speeds" in it })
+        val speed = PathSpeed(ranking.choices[0], 289, 50.0, 14.0, 1900, 40.0, 9.0)
+        assertTrue(problems(ok.copy(rankings = listOf(ranking.copy(speeds = listOf(speed))))).isEmpty())
+        assertTrue(problems(ok.copy(rankings = listOf(ranking.copy(speeds = listOf(speed.copy(decodeLongTps = 0.0)))))).any { "two prompt lengths" in it })
+        assertTrue(problems(ok.copy(rankings = listOf(ranking.copy(speeds = listOf(speed.copy(choice = speed.choice.copy(quant = "q8_0"))))))).any { "not a choice" in it })
         assertTrue(problems(ok.copy(socFamily = "unisoc")).any { "soc_family" in it })
         assertTrue(problems(ok, name = "t760-copy").any { "file name" in it })
         assertTrue(problems(ok.copy(soc = "t760"), name = "t760").any { "upper case" in it })
@@ -66,6 +70,10 @@ class RecipeLintTest {
             val at = "$file, ${k.model.arch} ${k.model.paramsB}B"
             k.choices.filter { it.backend !in backends }.forEach { add("$at: unknown backend ${it.backend}") }
             k.choices.filter { it.quant != it.quant.lowercase() }.forEach { add("$at: quant ${it.quant} must be lower case") }
+            k.speeds.filter { it.choice !in k.choices }.forEach { add("$at: speeds of ${it.choice.accel} ${it.choice.quant}, which is not a choice") }
+            k.speeds.filter { s ->
+                listOf(s.prefillTps, s.decodeTps, s.prefillLongTps, s.decodeLongTps).any { it <= 0 } || s.longPromptTokens <= s.promptTokens
+            }.forEach { add("$at: speeds of ${it.choice.accel} ${it.choice.quant} must be measured at two prompt lengths, above 0") }
             val m = k.measured
             if (m == null) {
                 add("$at: no measured block")

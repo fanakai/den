@@ -38,12 +38,37 @@ data class ModelSize(
     @SerialName("params_b") val paramsB: Double,
 )
 
-// The choices in order for one measured model; `measured` is for the first choice.
+/**
+ * One choice measured at two prompt lengths on that phone: prefill, then decode with that prompt in the context. The
+ * router estimates the time of a request from them, for an app that says how long its prompts and answers are.
+ */
+@Serializable
+data class PathSpeed(
+    val choice: RecipeChoice,
+    @SerialName("prompt_tokens") val promptTokens: Int,
+    @SerialName("prefill_tps") val prefillTps: Double,
+    @SerialName("decode_tps") val decodeTps: Double,
+    @SerialName("long_prompt_tokens") val longPromptTokens: Int,
+    @SerialName("prefill_long_tps") val prefillLongTps: Double,
+    @SerialName("decode_long_tps") val decodeLongTps: Double,
+) {
+    /** Seconds for [prompt] tokens and an answer of [output] tokens; speeds between the two points, held beyond them. */
+    fun seconds(prompt: Int, output: Int): Double {
+        val span = longPromptTokens - promptTokens
+        val t = if (span <= 0) 0.0 else ((prompt - promptTokens).toDouble() / span).coerceIn(0.0, 1.0)
+        val prefill = prefillTps + t * (prefillLongTps - prefillTps)
+        val decode = decodeTps + t * (decodeLongTps - decodeTps)
+        return prompt / prefill + output / decode
+    }
+}
+
+// The choices in order for one measured model; `measured` is for the first choice, `speeds` for any of them.
 @Serializable
 data class Ranking(
     val model: ModelSize,
     val choices: List<RecipeChoice>,
     val measured: Measurement? = null,
+    val speeds: List<PathSpeed> = emptyList(),
 )
 
 // A choice that fails for one model (crash, unsupported operator, wrong output) although it suits its size.
@@ -86,6 +111,10 @@ data class Recipe(
         val avoided = avoid.filter { it.model.arch == arch && near(it.model.paramsB, params!!) }.map { it.choice }
         return r.choices - avoided.toSet()
     }
+
+    /** The measured speeds of the ranking [choicesFor] uses. */
+    fun speedsFor(arch: String?, params: Long?, sameSize: Boolean = false): List<PathSpeed> =
+        rankingFor(arch, params, sameSize)?.speeds.orEmpty()
 
     private fun near(paramsB: Double, params: Long) = abs(ln(paramsB / (params / 1e9))) < ln(1.25)
 

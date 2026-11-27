@@ -13,6 +13,7 @@ import ai.fanak.den.core.model.ModelFormat
 import ai.fanak.den.core.model.ModelStore
 import ai.fanak.den.core.model.Variant
 import ai.fanak.den.core.recipe.Measurement
+import ai.fanak.den.core.recipe.PathSpeed
 import ai.fanak.den.core.recipe.ModelSize
 import ai.fanak.den.core.recipe.Ranking
 import ai.fanak.den.core.recipe.Recipe
@@ -53,6 +54,8 @@ data class CandidateResult(
     val ttftMs: Spread? = null,
     val prefillTps: Spread? = null,
     val prefillLongTps: Spread? = null,
+    // Decode with the long prompt in the context.
+    val decodeLongTps: Spread? = null,
     val decodeTps: Spread? = null,
     val promptTokens: Int = 0,
     val longPromptTokens: Int = 0,
@@ -108,7 +111,14 @@ data class BenchResult(
             first.prefillTps!!.median, first.decodeTps!!.median, device, date, first.peakRamMb, protocol, first.sha256,
         )
         val size = ModelSize(arch, (params / 1e8).roundToInt() / 10.0)
-        return Recipe(socFamily = socFamily, soc = soc, rankings = listOf(Ranking(size, ranked.map { it.choice }, measured)))
+        val speeds = ranked.mapNotNull { c ->
+            if (c.prefillLongTps == null || c.decodeLongTps == null) return@mapNotNull null
+            PathSpeed(
+                c.choice, c.promptTokens, c.prefillTps!!.median, c.decodeTps!!.median,
+                c.longPromptTokens, c.prefillLongTps.median, c.decodeLongTps.median,
+            )
+        }
+        return Recipe(socFamily = socFamily, soc = soc, rankings = listOf(Ranking(size, ranked.map { it.choice }, measured, speeds)))
     }
 
     // Every candidate with its numbers, failures included: kept beside the recipe.
@@ -208,7 +218,15 @@ class Bench(
         repeat(runs) {
             val s = generate(session, SHORT, outputTokens)
             short += s.ttftMs to s.stats
-            if (full) long += generate(session, LONG, 1).stats
+            // A model whose context is shorter than the long prompt has no long numbers; tried once.
+            if (full && (it == 0 || long.isNotEmpty())) {
+                try {
+                    long += generate(session, LONG, LONG_TOKENS).stats
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                }
+            }
         }
         val match = ref?.let { matchShare(text, it) }
         val stats = short.map { it.second }
@@ -216,6 +234,7 @@ class Bench(
             ttftMs = Spread.of(short.map { it.first.toDouble() }),
             prefillTps = Spread.of(stats.map { it.prefillTps }),
             prefillLongTps = if (long.isEmpty()) null else Spread.of(long.map { it.prefillTps }),
+            decodeLongTps = long.filter { it.outputTokens > 1 }.ifEmpty { null }?.let { l -> Spread.of(l.map { it.decodeTps }) },
             decodeTps = Spread.of(stats.map { it.decodeTps }),
             promptTokens = stats.first().promptTokens,
             longPromptTokens = long.firstOrNull()?.promptTokens ?: 0,
@@ -258,6 +277,9 @@ class Bench(
             "The fennec fox lives in the Sahara and digs dens in the sand to escape the heat of the day. /no_think"
         const val CHECK_TOKENS = 48
 
+        // Decoded after the long prompt.
+        const val LONG_TOKENS = 16
+
         // The reply without an empty or filled <think> block.
         fun reply(text: String) = text.replace(Regex("(?s)<think>.*?</think>"), "").trim()
 
@@ -267,10 +289,10 @@ class Bench(
             repeat(11) { append("The fennec fox lives in the Sahara and digs dens in the sand to escape the heat of the day. ") }
         }
 
-        // About 1,000 tokens, for prefill on a longer context.
+        // About 2,000 tokens, for prefill and decode on a longer context.
         val LONG = buildString {
             append("Summarize the following notes in one sentence. /no_think\n")
-            repeat(45) { append("The fennec fox lives in the Sahara and digs dens in the sand to escape the heat of the day. ") }
+            repeat(90) { append("The fennec fox lives in the Sahara and digs dens in the sand to escape the heat of the day. ") }
         }
 
         // Share of the reference that the text reproduces from the start, in characters.

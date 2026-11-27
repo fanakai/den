@@ -15,6 +15,8 @@ import ai.fanak.den.core.model.ModelCatalog
 import ai.fanak.den.core.model.ModelFormat
 import ai.fanak.den.core.model.ModelStore
 import ai.fanak.den.core.model.Variant
+import ai.fanak.den.core.recipe.PathSpeed
+import ai.fanak.den.core.recipe.RecipeChoice
 import ai.fanak.den.core.recipe.RecipeStore
 import kotlin.concurrent.Volatile
 import kotlin.math.roundToInt
@@ -73,6 +75,9 @@ enum class RouteHint {
 }
 
 data class Failure(val candidate: Candidate, val error: Throwable)
+
+/** How long an app expects its prompts and answers to be, in tokens: the router puts the path that answers soonest first. */
+data class Expected(val promptTokens: Int, val outputTokens: Int)
 
 // Why a file, or a path for it, is not in the plan.
 enum class RejectReason { OTHER_SOC, CONTEXT, LICENCE, RAM, PHONE_RAM, DISK, NO_BACKEND, ARCHITECTURE, LOW_BIT, CRASHED }
@@ -147,6 +152,8 @@ class Router(
      * lower, when it does not fit in RAM with that context, or when it is not on disk and the disk has no room for it.
      * [reach]: where this call may run the model, e.g. only on the phone for an app the user did not allow further;
      * null leaves it to the policy. [hint] FAST puts the paths that ran this model before first, the fastest first.
+     * [expected]: the paths on the phone with speeds measured at two prompt lengths go in the order of the time they
+     * take for such a request, in the places they had.
      */
     fun plan(
         model: String,
@@ -155,6 +162,7 @@ class Router(
         mmap: Boolean = true,
         reach: Set<Location>? = null,
         hint: RouteHint? = null,
+        expected: Expected? = null,
     ): List<Candidate> {
         val caps = backends.associateWith { runCatching { it.probe(device) }.getOrNull() }
         val variants = catalog.variants(model)
@@ -199,10 +207,15 @@ class Router(
                 }
             }
 
+        // Measured on this phone first, then the recipes of its SoC and family.
+        val measured = (local?.find(device).orEmpty().flatMap { it.speedsFor(size?.arch, size?.params, sameSize = true) } +
+            recipes.find(device).flatMap { it.speedsFor(size?.arch, size?.params) }).distinctBy { it.choice }.associateBy { it.choice }
+
         val onPhone = (fromRecipes + fromLocal + defaults)
             .filter { it.location == Location.DEVICE }
             .distinctBy { Triple(it.backend.id, it.accel, it.variant) }
             .filterNot { failures.isBlocked(key(device, it)) }
+            .let { plan -> if (expected == null) plan else soonestFirst(plan, measured, expected) }
             // Hot: smaller files first, each still on its accelerators in order (a stable sort).
             .let { plan -> if (Thermal.hot(device.thermal)) plan.sortedBy { it.variant.sizeBytes } else plan }
         val remote = remote(model, device, minContext, caps)
@@ -217,6 +230,17 @@ class Router(
             RoutingPolicy.REMOTE_FIRST -> remote + onPhone
         }.let { plan -> if (hint == RouteHint.FAST) fastestFirst(plan) else plan }
         return if (reach == null) ordered else ordered.filter { it.location in reach }
+    }
+
+    // The paths with speeds for the expected lengths swap places, soonest first; the others keep theirs.
+    private fun soonestFirst(plan: List<Candidate>, speeds: Map<RecipeChoice, PathSpeed>, e: Expected): List<Candidate> {
+        val time = plan.associateWith { c ->
+            speeds[RecipeChoice(c.backend.id, c.accel, c.variant.format, c.variant.quant, c.kvCache)]?.seconds(e.promptTokens, e.outputTokens)
+        }
+        val timed = plan.filter { time[it] != null }
+        if (timed.size < 2) return plan
+        val soonest = timed.sortedBy { time[it] }.iterator()
+        return plan.map { if (time[it] != null) soonest.next() else it }
     }
 
     // Paths with a measured speed first, fastest first; the others after them, in the policy's order.
@@ -239,8 +263,9 @@ class Router(
         mmap: Boolean = true,
         reach: Set<Location>? = null,
         hint: RouteHint? = null,
+        expected: Expected? = null,
     ): RouteExplanation {
-        val planned = plan(model, device, minContext, mmap, reach, hint)
+        val planned = plan(model, device, minContext, mmap, reach, hint, expected)
         val caps = backends.mapNotNull { b -> runCatching { b.probe(device) }.getOrNull()?.let { b to it } }
         val ctx = minContext ?: 0
         val rejected = mutableListOf<Rejection>()
@@ -332,10 +357,11 @@ class Router(
         sequences: Int = 1,
         reach: Set<Location>? = null,
         hint: RouteHint? = null,
+        expected: Expected? = null,
     ): Opened {
         catalog.resolve(model)
         val tried = mutableListOf<Failure>()
-        val why = explain(model, device, minContext, mmap, reach, hint)
+        val why = explain(model, device, minContext, mmap, reach, hint, expected)
         var plan = why.candidates
         if (plan.isEmpty()) {
             val reason = if (lanOutOfReach(model, device, minContext, reach)) {
@@ -355,7 +381,7 @@ class Router(
             } catch (e: Throwable) {
                 // The default order still works.
             }
-            plan = plan(model, device, minContext, mmap, reach, hint).ifEmpty { plan }
+            plan = plan(model, device, minContext, mmap, reach, hint, expected).ifEmpty { plan }
         }
         var noDownloads = false
         for (c in plan) {
