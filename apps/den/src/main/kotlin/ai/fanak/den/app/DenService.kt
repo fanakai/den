@@ -8,6 +8,7 @@ import ai.fanak.den.IDenService
 import ai.fanak.den.IGenCallback
 import ai.fanak.den.IOpenCallback
 import ai.fanak.den.ModelFiles
+import ai.fanak.den.backend.litertlm.LiteRtLmBackend
 import ai.fanak.den.backend.llamacpp.LlamaCppBackend
 import ai.fanak.den.backend.openai.OpenAiEndpoints
 import ai.fanak.den.core.backend.BackendDescriptor
@@ -70,7 +71,7 @@ class DenService : Service() {
         val servers = { ServerSettings.all(this) }
         val config = DenConfig(
             mode = DenMode.EMBEDDED, parallel = 2, onDownload = ::progress, beforeDownload = ::beforeDownload,
-            backends = listOf(LlamaCppBackend(), OpenAiEndpoints(servers), OpenAiEndpoints(servers, Location.CLOUD)),
+            backends = listOf(LlamaCppBackend(), LiteRtLmBackend(this), OpenAiEndpoints(servers), OpenAiEndpoints(servers, Location.CLOUD)),
             routing = RoutingPolicy.LOCAL_FIRST,
         )
         Den.connect(this, config).also { AliasSettings.applyTo(this, it.aliases) }

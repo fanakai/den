@@ -42,11 +42,28 @@ internal object BuiltinCatalog : ModelCatalog {
         )
     }
 
+    // LiteRT-LM files of litert-community, pinned to a commit: the repositories replace files under the same name.
+    // int4: dynamic INT4 weights (block 32), float activations; 4,096 tokens of context in the file's metadata. The KV
+    // cache is float, twice the bytes of llama.cpp's F16 per token.
+    private fun qwen3Litert(size: String, commit: String, bytes: Long, ramMb: Int, sha256: String): CatalogEntry {
+        val file = "Qwen3-${size}_dynamic_wi4b32_afp32.litertlm"
+        return CatalogEntry(
+            Variant("qwen3-${size.lowercase()}", ModelFormat.LITERTLM, "int4", bytes, ramMb, arch = "qwen3", params = PARAMS[size], maxContext = 4096, kvBytesPerToken = 2 * QWEN3_KV),
+            file,
+            "https://huggingface.co/litert-community/Qwen3-$size/resolve/$commit/$file",
+            sha256,
+            "hf/litert-community/Qwen3-$size/$file",
+            "apache-2.0",
+        )
+    }
+
     val entries = listOf(
         qwen3("0.6B", "q4_0", 382_156_480, 700, "33bcc57074ec7b6eada5a90651ee546ec0c2b271002c22baf9f1b2dd1e8f75cb"),
         qwen3("0.6B", "q4_k_m", 396_705_472, 700, "ac2d97712095a558e31573f62f466a3f9d93990898b0ec79d7c974c1780d524a"),
         qwen3("1.7B", "q4_0", 1_056_782_912, 1_500, "c876f159707a4e4f70e045106c69db15bfc935a4981706fd4f65c6e7ea1e81c5"),
         qwen3("1.7B", "q4_k_m", 1_107_409_472, 1_500, "b139949c5bd74937ad8ed8c8cf3d9ffb1e99c866c823204dc42c0d91fa181897"),
+        qwen3Litert("0.6B", "8d42ab5f1db14cad987fac57aeb17d070f9e180d", 343_490_560, 700, "bf1aba9ce8d963124407353c6aa4cbf72eba78db21ae133de983eac672ce83e0"),
+        qwen3Litert("1.7B", "c421cc3775575372ac2ca4aa1bebc97300ae36b6", 977_184_032, 1_500, "2a72330b504a6596d53a2c00923c57173b10f1b83e6a541213ffec08d1fc5de8"),
     )
 
     override val models get() = entries.map { it.variant.model }.distinct()

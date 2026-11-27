@@ -9,6 +9,7 @@ Instructions for coding agents and contributors working on Fanak Den. Den runs o
 | `core/` | Router, backend interface, model files, recipes. Kotlin Multiplatform (JVM and `linuxX64`), no Android dependency; files and network in `jvmMain`. |
 | `service/` | The OpenAI-compatible HTTP server, plain Kotlin (JVM), tested with the OpenAI Java client. |
 | `backends/llamacpp/` | llama.cpp through JNI (`llama.cpp` is a git submodule), CPU and Adreno OpenCL; Hexagon NPU as an opt-in (`den.hexagon`). |
+| `backends/litertlm/` | LiteRT-LM from Google Maven: `.litertlm` files on the CPU and the GPU. |
 | `backends/openai/` | OpenAI-compatible servers on the LAN or in the cloud, plain Kotlin (JVM), tested against `service/`. |
 | `sdk/kotlin/` | Android SDK: device probe, built-in catalog, downloads, connected mode (AIDL client). No backend: an app adds `backends/llamacpp` for embedded mode. |
 | `apps/den/` | The Den app: AIDL service, model pool, app approvals, OpenAI-compatible HTTP endpoint. |
@@ -27,7 +28,7 @@ git submodule update --init
 ```
 
 - After a change to an AIDL file or another interface, run `./gradlew build --rerun-tasks` before opening a PR: an incremental build can miss a class that implements the interface.
-- The public API of `core/`, `sdk/kotlin/`, `backends/llamacpp/` and `backends/openai/` is in their `api/*.api` files, and `./gradlew build` fails when it changes. After an intended change, run `./gradlew apiDump` and commit the updated files with it.
+- The public API of `core/`, `sdk/kotlin/` and `backends/*` is in their `api/*.api` files, and `./gradlew build` fails when it changes. After an intended change, run `./gradlew apiDump` and commit the updated files with it.
 - The recipe table in `README.md` and in `recipes/README.md` is made from the recipe files, and `./gradlew build` fails when either differs. After a recipe change, run `./gradlew :core:jvmTest -Pden.writeTable` and commit both READMEs with it.
 - CI (`.github/workflows/build.yml`) runs `./gradlew build` on every pull request and must pass before merging.
 - A tag `v<major>.<minor>.<patch>` publishes the Den app on GitHub Releases and the libraries on Maven Central ([docs/releasing.md](docs/releasing.md)); `publishToMavenLocal` checks the libraries before.
