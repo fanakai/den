@@ -41,3 +41,8 @@ tasks.named<Test>("jvmTest") {
     }
     inputs.dir(rootProject.file("recipes"))
 }
+
+tasks.named<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeTest>("linuxX64Test") {
+    environment("DEN_ROUTER_CASES", file("router-cases").absolutePath)
+    inputs.dir(file("router-cases"))
+}

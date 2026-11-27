@@ -1,0 +1,70 @@
+{
+  "description": "A file too big for the phone still runs on servers: their RAM is not the phone's",
+  "device": {
+    "platform": "ANDROID",
+    "osApi": 34,
+    "soc": "SM7325",
+    "socFamily": "snapdragon-778g",
+    "abi": "arm64-v8a",
+    "ramMb": 5500,
+    "availRamMb": 1900
+  },
+  "backends": [
+    {
+      "id": "llamacpp",
+      "accels": [
+        "cpu",
+        "gpu"
+      ],
+      "formats": [
+        "gguf"
+      ]
+    },
+    {
+      "id": "openai-lan",
+      "accels": [
+        "cpu"
+      ],
+      "formats": [
+        "gguf"
+      ],
+      "location": "LAN"
+    },
+    {
+      "id": "openai-cloud",
+      "accels": [
+        "cpu"
+      ],
+      "formats": [
+        "gguf"
+      ],
+      "location": "CLOUD"
+    }
+  ],
+  "variants": [
+    {
+      "model": "qwen3-32b",
+      "format": "gguf",
+      "quant": "q4_k_m",
+      "sizeBytes": 19800000000,
+      "minRamMb": 19000,
+      "arch": "qwen3",
+      "params": 32762123264,
+      "kvBytesPerToken": 262144
+    }
+  ],
+  "policy": "LOCAL_FIRST",
+  "request": {
+    "model": "qwen3-32b"
+  },
+  "expect": {
+    "plan": [
+      "openai-lan cpu q4_k_m",
+      "openai-cloud cpu q4_k_m"
+    ],
+    "source": "DEFAULT",
+    "rejected": [
+      "q4_k_m PHONE_RAM"
+    ]
+  }
+}
