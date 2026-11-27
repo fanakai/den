@@ -2,7 +2,19 @@ plugins {
     id("com.android.library")
     kotlin("android")
     kotlin("plugin.serialization")
+    id("org.jetbrains.dokka")
+    id("com.vanniktech.maven.publish")
 }
+
+// AGP's own javadoc runs an old Dokka that cannot read the sealed classes of core, so Dokka's jar is attached instead.
+mavenPublishing {
+    configure(com.vanniktech.maven.publish.AndroidSingleVariantLibrary("release", sourcesJar = true, publishJavadocJar = false))
+}
+val javadocJar = tasks.register<Jar>("dokkaJavadocJar") {
+    archiveClassifier.set("javadoc")
+    from(tasks.named("dokkaHtml"))
+}
+publishing.publications.withType<MavenPublication>().configureEach { artifact(javadocJar) }
 
 android {
     namespace = "ai.fanak.den"

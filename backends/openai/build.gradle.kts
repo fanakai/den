@@ -3,6 +3,12 @@
 plugins {
     kotlin("jvm")
     kotlin("plugin.serialization")
+    id("org.jetbrains.dokka")
+    id("com.vanniktech.maven.publish")
+}
+
+mavenPublishing {
+    configure(com.vanniktech.maven.publish.KotlinJvm(com.vanniktech.maven.publish.JavadocJar.Dokka("dokkaHtml")))
 }
 
 dependencies {
