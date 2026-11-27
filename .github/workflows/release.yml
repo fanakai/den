@@ -1,0 +1,86 @@
+name: release
+
+# A tag v1.2.3 builds the Den app signed with the release key and puts it on a GitHub release, then publishes the
+# libraries (ai.fanak:den, den-core, den-llamacpp, den-openai) to Maven Central. Secrets: docs/releasing.md.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Version from the tag
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::tag $GITHUB_REF_NAME is not v<major>.<minor>.<patch>"; exit 1; }
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - run: echo "SDK=$ANDROID_HOME" >> "$GITHUB_ENV"
+      - id: sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.SDK }}/ndk/29.0.14206865
+            ${{ env.SDK }}/cmake/3.22.1
+          key: android-ndk-29.0.14206865-cmake-3.22.1
+      - if: steps.sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          for i in 1 2 3; do
+            yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" "ndk;29.0.14206865" "cmake;3.22.1" > /dev/null && exit 0
+            echo "sdkmanager failed, attempt $i"
+          done
+          exit 1
+      - uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ hashFiles('build.gradle.kts') }}
+      - run: ./gradlew build --console=plain -Pden.version="$VERSION"
+
+      - name: Den app, signed with the release key
+        env:
+          KEYSTORE: ${{ secrets.DEN_RELEASE_KEYSTORE }}
+          PASSWORD: ${{ secrets.DEN_RELEASE_PASSWORD }}
+          ALIAS: ${{ secrets.DEN_RELEASE_KEY_ALIAS }}
+        run: |
+          [ -n "$KEYSTORE" ] && [ -n "$PASSWORD" ] || { echo "::error::the release key secrets are not set"; exit 1; }
+          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/den.jks"
+          printf '%s\n' "$PASSWORD" > "$RUNNER_TEMP/den.pass"
+          ./gradlew :apps:den:assembleRelease --console=plain -Pden.version="$VERSION" \
+            -Pden.release.storeFile="$RUNNER_TEMP/den.jks" -Pden.release.passwordFile="$RUNNER_TEMP/den.pass" \
+            -Pden.release.keyAlias="${ALIAS:-den}"
+          rm -f "$RUNNER_TEMP/den.jks" "$RUNNER_TEMP/den.pass"
+          apk="den-$VERSION.apk"
+          cp apps/den/build/outputs/apk/release/den-release.apk "$apk"
+          # The SDK trusts the Den app only with this certificate (DEN_CERTIFICATES); any other key fails the release.
+          apksigner="$(ls -d "$SDK"/build-tools/* | sort -V | tail -1)/apksigner"
+          "$apksigner" verify --print-certs "$apk" | grep -q "SHA-256 digest: 18cceb3706589de26a13391755582a0b73db2b6770073296a9794a71a50124a9" \
+            || { echo "::error::$apk is not signed with the release key"; exit 1; }
+          sha256sum "$apk" > "$apk.sha256"
+          echo "APK=$apk" >> "$GITHUB_ENV"
+
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" "$APK" "$APK.sha256" --verify-tag --generate-notes --title "Den $VERSION"
+
+      - name: Maven Central
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          [ -n "$ORG_GRADLE_PROJECT_mavenCentralUsername" ] && [ -n "$ORG_GRADLE_PROJECT_signingInMemoryKey" ] \
+            || { echo "::error::the Maven Central secrets are not set"; exit 1; }
+          ./gradlew publishAndReleaseToMavenCentral --console=plain --no-configuration-cache -Pden.version="$VERSION"

@@ -11,8 +11,11 @@ android {
         applicationId = "ai.fanak.den"
         minSdk = 28
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1"
+        // From den.version: 1.2.3 is version code 10203.
+        val version = property("den.version") as String
+        versionName = version
+        versionCode = version.substringBefore('-').split('.').map { it.toInt() }
+            .let { (major, minor, patch) -> major * 10_000 + minor * 100 + patch }
         ndk { abiFilters += "arm64-v8a" }
     }
 

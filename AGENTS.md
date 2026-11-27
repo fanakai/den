@@ -30,6 +30,7 @@ git submodule update --init
 - The public API of `core/`, `sdk/kotlin/`, `backends/llamacpp/` and `backends/openai/` is in their `api/*.api` files, and `./gradlew build` fails when it changes. After an intended change, run `./gradlew apiDump` and commit the updated files with it.
 - The recipe table in `README.md` and in `recipes/README.md` is made from the recipe files, and `./gradlew build` fails when either differs. After a recipe change, run `./gradlew :core:jvmTest -Pden.writeTable` and commit both READMEs with it.
 - CI (`.github/workflows/build.yml`) runs `./gradlew build` on every pull request and must pass before merging.
+- A tag `v<major>.<minor>.<patch>` publishes the Den app on GitHub Releases and the libraries on Maven Central ([docs/releasing.md](docs/releasing.md)); `publishToMavenLocal` checks the libraries before.
 - On Linux and macOS, `./gradlew :backends:llamacpp:test` also builds the engine for the machine (cmake and a C++ compiler needed) and runs it through JNI on a 1.2 MB model: generation, stop strings, cancel, context limits. On Windows these tests are skipped; CI runs them.
 
 ## Testing on a phone

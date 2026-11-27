@@ -4,9 +4,15 @@
 plugins {
     kotlin("multiplatform")
     kotlin("plugin.serialization")
+    id("org.jetbrains.dokka")
+    id("com.vanniktech.maven.publish")
 }
 
 group = "ai.fanak"
+
+mavenPublishing {
+    configure(com.vanniktech.maven.publish.KotlinMultiplatform(com.vanniktech.maven.publish.JavadocJar.Dokka("dokkaHtml")))
+}
 
 kotlin {
     jvmToolchain(17)
