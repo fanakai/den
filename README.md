@@ -23,8 +23,8 @@ The router follows these choices, in order, and falls back to the next one when 
 | Galaxy Z Flip7 (S5E9955) | Qwen3 1.7B | llamacpp, CPU, Q4_0 | llamacpp, CPU, Q4_K_M | 107.0 | 13.7 | 2026-11-21 |
 | Galaxy A52s 5G (SM7325) | Qwen3 0.6B | llamacpp, CPU, Q4_0 | llamacpp, CPU, Q4_K_M | 43.6 | 30.0 | 2026-11-19 |
 | Galaxy A52s 5G (SM7325) | Qwen3 1.7B | llamacpp, CPU, Q4_0 | llamacpp, CPU, Q4_K_M | 33.3 | 12.8 | 2026-11-19 |
-| Galaxy S25 (SM8750) | Qwen3 0.6B | llamacpp, CPU, Q4_0 | llamacpp, GPU, Q4_0; llamacpp, CPU, Q4_K_M | 213.8 | 40.9 | 2026-11-20 |
-| Galaxy S25 (SM8750) | Qwen3 1.7B | llamacpp, GPU, Q4_0 | llamacpp, CPU, Q4_0; llamacpp, CPU, Q4_K_M | 196.4 | 24.3 | 2026-11-19 |
+| Galaxy S25 (SM8750) | Qwen3 0.6B | llamacpp, CPU, Q4_0 | llamacpp, GPU, Q4_0; llamacpp, NPU, Q4_0; llamacpp, CPU, Q4_K_M | 555.8 | 59.4 | 2026-11-27 |
+| Galaxy S25 (SM8750) | Qwen3 1.7B | llamacpp, CPU, Q4_0 | llamacpp, GPU, Q4_0; llamacpp, NPU, Q4_0; llamacpp, CPU, Q4_K_M | 166.7 | 32.6 | 2026-11-27 |
 | ZTE Blade A75 5G (T760) | Qwen3 0.6B | llamacpp, CPU, Q4_0 | llamacpp, CPU, Q4_K_M | 166.4 | 13.6 | 2026-11-20 |
 <!-- End of the generated table. -->
 

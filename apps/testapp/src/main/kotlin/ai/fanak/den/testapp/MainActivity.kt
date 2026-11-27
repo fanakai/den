@@ -27,6 +27,7 @@ import kotlinx.coroutines.launch
 
 // Drive from adb: am start -n ai.fanak.den.testapp/.MainActivity --es model qwen3-0.6b --es prompt "..." --ez autorun true
 // (--es hint private|cheap|fast: where the model may run, narrowed from what the Den app allows this app; fast: the fastest measured path first)
+// (--ei promptTokens N --ei outputTokens M: the lengths the app expects, which order the paths the recipe measured)
 class MainActivity : Activity() {
     private val scope = MainScope()
     private val den by lazy {
@@ -170,7 +171,9 @@ class MainActivity : Activity() {
             try {
                 val t0 = System.currentTimeMillis()
                 val hint = intent.getStringExtra("hint")?.let { ai.fanak.den.core.router.RouteHint.valueOf(it.uppercase()) }
-                val m = loaded ?: den.model(model, hint = hint).also { loaded = it }
+                val expected = intent.getIntExtra("promptTokens", 0).takeIf { it > 0 }
+                    ?.let { ai.fanak.den.core.router.Expected(it, intent.getIntExtra("outputTokens", 0)) }
+                val m = loaded ?: den.model(model, hint = hint, expected = expected).also { loaded = it }
                 m.failures.forEach { log("failed: ${it.candidate.accel} ${it.candidate.variant.quant}: ${it.error.message}") }
                 m.rejected.forEach { log("left out: ${it.quant}${it.accel?.let { a -> " on $a" } ?: ""}: ${it.reason}, ${it.detail}") }
                 log("using ${m.backend} ${m.accel} ${m.quant} (${m.source}), licence ${m.licence}, connected ${m.connected}, load ${System.currentTimeMillis() - t0} ms, free ${den.device().availRamMb} MB")

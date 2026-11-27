@@ -35,4 +35,6 @@ interface IDenService {
     String[] plan(String model, String options);
 
     // Version 6: openWith and plan resolve aliases (den.*) with the Den app's own, which the user can move.
+
+    // Version 9: openWith options may hold "promptTokens" and "outputTokens", what the app expects of its requests.
 }

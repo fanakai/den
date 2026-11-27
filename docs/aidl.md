@@ -28,3 +28,4 @@ change in place.
 | 6 | aliases resolved in `openWith` and `plan`; `IOpenCallback.onModel` |
 | 7 | `"hint"` in the options of `openWith` and `plan`: `private` (the phone only) or `cheap` (no cloud); it narrows what the user allows the app |
 | 8 | `"hint": "fast"`: the path that decoded the model fastest on earlier requests first, within what the user allows; the SDK sends it only to version 8 or later |
+| 9 | `"promptTokens"` and `"outputTokens"` in the options of `openWith`: how long the app's prompts and answers are; the paths measured at two prompt lengths go in the order of the time they take for them. Older versions ignore both |

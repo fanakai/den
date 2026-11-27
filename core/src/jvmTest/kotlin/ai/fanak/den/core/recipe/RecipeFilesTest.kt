@@ -14,6 +14,7 @@ import ai.fanak.den.core.model.ModelCatalog
 import ai.fanak.den.core.model.ModelFormat
 import ai.fanak.den.core.model.ModelStore
 import ai.fanak.den.core.model.Variant
+import ai.fanak.den.core.router.Expected
 import ai.fanak.den.core.router.Router
 import ai.fanak.den.core.router.Source
 import java.io.File
@@ -58,8 +59,16 @@ class RecipeFilesTest {
         override suspend fun fetch(variant: Variant) = Artifact(variant, "/m")
     }
 
-    private fun first(device: DeviceProfile, model: String, accels: Set<Accel>) =
-        Router(listOf(Llama(accels)), InMemoryRecipeStore(repoRecipes), catalog, store).plan(model, device).first()
+    private fun first(device: DeviceProfile, model: String, accels: Set<Accel>, recipes: List<Recipe> = repoRecipes) =
+        Router(listOf(Llama(accels)), InMemoryRecipeStore(recipes), catalog, store).plan(model, device).first()
+
+    // Both S25 sizes put the CPU first; with the GPU first at 1.7B, a test sees which ranking a size takes.
+    private val gpuFirstAt17 = repoRecipes.map { r ->
+        if (r.soc != "SM8750") r
+        else r.copy(rankings = r.rankings.map { k ->
+            if (k.model.paramsB != 1.7) k else k.copy(choices = k.choices.sortedBy { it.accel != Accel.GPU })
+        })
+    }
 
     @Test
     fun repoRecipesParse() {
@@ -79,14 +88,14 @@ class RecipeFilesTest {
 
     @Test
     fun sizesBetweenMeasuredOnesTakeTheNearest() {
-        // On a log scale 1.2B is nearer 1.7B (GPU first on the S25), 0.8B nearer 0.6B (CPU first).
-        assertEquals(Accel.GPU, first(s25, "qwen3-1.2b", setOf(Accel.CPU, Accel.GPU)).accel)
-        assertEquals(Accel.CPU, first(s25, "qwen3-0.8b", setOf(Accel.CPU, Accel.GPU)).accel)
+        // On a log scale 1.2B is nearer 1.7B (GPU first here), 0.8B nearer 0.6B (CPU first).
+        assertEquals(Accel.GPU, first(s25, "qwen3-1.2b", setOf(Accel.CPU, Accel.GPU), gpuFirstAt17).accel)
+        assertEquals(Accel.CPU, first(s25, "qwen3-0.8b", setOf(Accel.CPU, Accel.GPU), gpuFirstAt17).accel)
     }
 
     @Test
     fun anotherArchitectureUsesTheNearestSizeToo() {
-        val c = first(s25, "llama-1.1b", setOf(Accel.CPU, Accel.GPU))
+        val c = first(s25, "llama-1.1b", setOf(Accel.CPU, Accel.GPU), gpuFirstAt17)
         assertEquals(Source.RECIPE_SOC, c.source)
         assertEquals(Accel.GPU, c.accel)
     }
@@ -98,12 +107,12 @@ class RecipeFilesTest {
 
     @Test
     fun avoidRemovesAChoiceForThatModelOnly() {
-        val avoid = Avoid(ModelSize("qwen3", 1.7), RecipeChoice("llamacpp", Accel.GPU, ModelFormat.GGUF, "q4_0"), "test")
+        val avoid = Avoid(ModelSize("qwen3", 1.7), RecipeChoice("llamacpp", Accel.CPU, ModelFormat.GGUF, "q4_0"), "test")
         val recipes = repoRecipes.map { r -> if (r.soc == "SM8750") r.copy(avoid = listOf(avoid)) else r }
         fun firstWith(model: String) =
             Router(listOf(Llama(setOf(Accel.CPU, Accel.GPU))), InMemoryRecipeStore(recipes), catalog, store).plan(model, s25).first()
-        assertEquals(Accel.CPU to "q4_0", firstWith("qwen3-1.7b").let { it.accel to it.variant.quant })
-        assertEquals(Accel.GPU, firstWith("llama-1.1b").accel)
+        assertEquals(Accel.GPU to "q4_0", firstWith("qwen3-1.7b").let { it.accel to it.variant.quant })
+        assertEquals(Accel.CPU, firstWith("llama-1.1b").accel)
     }
 
     @Test
@@ -113,7 +122,16 @@ class RecipeFilesTest {
         assertEquals(Accel.CPU to "q4_0", small.accel to small.variant.quant)
 
         val big = first(s25, "qwen3-1.7b", setOf(Accel.CPU, Accel.GPU))
-        assertEquals(Accel.GPU to "q4_0", big.accel to big.variant.quant)
+        assertEquals(Accel.CPU to "q4_0", big.accel to big.variant.quant)
+    }
+
+    @Test
+    fun s25SendsLongPromptsToTheNpu() {
+        val router = Router(listOf(Llama(setOf(Accel.CPU, Accel.GPU, Accel.NPU))), InMemoryRecipeStore(repoRecipes), catalog, store)
+        fun first(e: Expected?) = router.plan("qwen3-0.6b", s25, expected = e).first().accel
+        assertEquals(Accel.CPU, first(null))
+        assertEquals(Accel.NPU, first(Expected(2000, 16)))
+        assertEquals(Accel.CPU, first(Expected(300, 128)))
     }
 
     @Test
