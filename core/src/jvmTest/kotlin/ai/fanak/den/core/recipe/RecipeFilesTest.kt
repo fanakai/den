@@ -135,8 +135,8 @@ class RecipeFilesTest {
         assertEquals(Accel.CPU, first(Expected(300, 128)))
     }
 
-    @Test
-    fun s25ChoosesBetweenLlamaCppAndLiteRtLm() {
+    // llama.cpp and LiteRT-LM on the CPU and the GPU, with a .litertlm file beside the GGUF ones.
+    private fun withLiteRt(): Router {
         val litert = object : DenBackend {
             override val id = "litertlm"
             override fun probe(device: DeviceProfile) = Capabilities(setOf(Accel.CPU, Accel.GPU), setOf(ModelFormat.LITERTLM))
@@ -147,9 +147,25 @@ class RecipeFilesTest {
             override fun variants(model: String) = catalog.variants(model) +
                 Variant(model, ModelFormat.LITERTLM, "int4", 400, 700, arch = "qwen3", params = sizes[model])
         }
-        val plan = Router(listOf(Llama(setOf(Accel.CPU, Accel.GPU)), litert), InMemoryRecipeStore(repoRecipes), both, store)
-            .plan("qwen3-0.6b", s25).map { "${it.backend.id} ${it.accel} ${it.variant.quant}" }
+        return Router(listOf(Llama(setOf(Accel.CPU, Accel.GPU)), litert), InMemoryRecipeStore(repoRecipes), both, store)
+    }
+
+    private fun Router.paths(model: String, device: DeviceProfile, e: Expected? = null) =
+        plan(model, device, expected = e).map { "${it.backend.id} ${it.accel} ${it.variant.quant}" }
+
+    @Test
+    fun s25ChoosesBetweenLlamaCppAndLiteRtLm() {
+        val plan = withLiteRt().paths("qwen3-0.6b", s25)
         assertEquals(listOf("litertlm GPU int4", "llamacpp CPU q4_0", "llamacpp GPU q4_0", "litertlm CPU int4"), plan.take(4))
+    }
+
+    @Test
+    fun a52sSendsLongPromptsToLiteRtLm() {
+        val router = withLiteRt()
+        assertEquals(listOf("llamacpp CPU q4_0", "litertlm GPU int4", "llamacpp CPU q4_k_m"), router.paths("qwen3-0.6b", a52s).take(3))
+        assertEquals("litertlm GPU int4", router.paths("qwen3-0.6b", a52s, Expected(2000, 16)).first())
+        assertEquals("llamacpp CPU q4_0", router.paths("qwen3-0.6b", a52s, Expected(300, 128)).first())
+        assertEquals("llamacpp CPU q4_0", router.paths("qwen3-1.7b", a52s).first())
     }
 
     @Test

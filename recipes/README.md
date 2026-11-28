@@ -55,8 +55,8 @@ In CI, unknown fields are rejected, so a typo fails the build; `RecipeLintTest` 
 | Galaxy A15 (MT6789V) | Qwen3 0.6B | llamacpp, CPU, Q4_0 | llamacpp, CPU, Q4_K_M | 65.9 | 14.6 | 2026-11-21 |
 | Galaxy Z Flip7 (S5E9955) | Qwen3 0.6B | llamacpp, CPU, Q4_0 | llamacpp, CPU, Q4_K_M | 262.0 | 18.3 | 2026-11-21 |
 | Galaxy Z Flip7 (S5E9955) | Qwen3 1.7B | llamacpp, CPU, Q4_0 | llamacpp, CPU, Q4_K_M | 107.0 | 13.7 | 2026-11-21 |
-| Galaxy A52s 5G (SM7325) | Qwen3 0.6B | llamacpp, CPU, Q4_0 | llamacpp, CPU, Q4_K_M | 43.6 | 30.0 | 2026-11-19 |
-| Galaxy A52s 5G (SM7325) | Qwen3 1.7B | llamacpp, CPU, Q4_0 | llamacpp, CPU, Q4_K_M | 33.3 | 12.8 | 2026-11-19 |
+| Galaxy A52s 5G (SM7325) | Qwen3 0.6B | llamacpp, CPU, Q4_0 | litertlm, GPU, INT4; llamacpp, CPU, Q4_K_M | 185.9 | 19.4 | 2026-11-28 |
+| Galaxy A52s 5G (SM7325) | Qwen3 1.7B | llamacpp, CPU, Q4_0 | llamacpp, CPU, Q4_K_M | 75.0 | 10.7 | 2026-11-28 |
 | Galaxy S25 (SM8750) | Qwen3 0.6B | litertlm, GPU, INT4 | llamacpp, CPU, Q4_0; llamacpp, NPU, Q4_0; llamacpp, GPU, Q4_0; litertlm, CPU, INT4; llamacpp, CPU, Q4_K_M | 541.5 | 80.3 | 2026-11-27 |
 | Galaxy S25 (SM8750) | Qwen3 1.7B | litertlm, GPU, INT4 | llamacpp, NPU, Q4_0; llamacpp, GPU, Q4_0; llamacpp, CPU, Q4_0; litertlm, CPU, INT4; llamacpp, CPU, Q4_K_M | 297.5 | 32.8 | 2026-11-28 |
 | ZTE Blade A75 5G (T760) | Qwen3 0.6B | llamacpp, CPU, Q4_0 | llamacpp, CPU, Q4_K_M | 166.4 | 13.6 | 2026-11-20 |
