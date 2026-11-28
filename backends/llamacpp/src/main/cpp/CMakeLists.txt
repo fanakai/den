@@ -45,9 +45,13 @@ set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/../../../llama.cpp/ggml/
     DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../../llama.cpp/ggml/src
     PROPERTIES COMPILE_OPTIONS "-include;${CMAKE_CURRENT_SOURCE_DIR}/fd_open.h")
 
-# JSON schema to grammar, from llama.cpp's common library, with a shim for the three helpers it needs from common.cpp.
+# JSON schema to grammar, from llama.cpp's common library (with its JSON, trie and unicode helpers), and a shim for
+# the three helpers it needs from common.cpp.
 set(DEN_LLAMA ${CMAKE_CURRENT_SOURCE_DIR}/../../../llama.cpp)
-set(DEN_SOURCES engine.cpp threads.cpp common_shim.cpp ${DEN_LLAMA}/common/json-schema-to-grammar.cpp)
+set(DEN_SOURCES engine.cpp threads.cpp common_shim.cpp)
+foreach(f json-schema-to-grammar json json-schema trie unicode)
+    list(APPEND DEN_SOURCES ${DEN_LLAMA}/common/${f}.cpp)
+endforeach()
 if(DEN_SMOKE)
     add_executable(den-smoke ${DEN_SOURCES} smoke.cpp)
     target_link_libraries(den-smoke PRIVATE llama ${DEN_LOG})
