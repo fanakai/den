@@ -1,7 +1,7 @@
 name: release
 
 # A tag v1.2.3 builds the Den app signed with the release key and puts it on a GitHub release, then publishes the
-# libraries (ai.fanak:den, den-core, den-llamacpp, den-openai) to Maven Central. Secrets: docs/releasing.md.
+# libraries (ai.fanak:den, den-core, den-llamacpp, den-litertlm, den-openai) to Maven Central. Secrets: docs/releasing.md.
 on:
   push:
     tags: ["v*"]

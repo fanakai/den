@@ -4,73 +4,105 @@ soc: SM8750
 rankings:
   - model: { arch: qwen3, params_b: 0.6 }
     choices:
+      - { backend: litertlm, accel: gpu, format: litertlm, quant: int4 }
       - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_0 }
-      - { backend: llamacpp, accel: gpu, format: gguf, quant: q4_0 }
       - { backend: llamacpp, accel: npu, format: gguf, quant: q4_0 }
+      - { backend: llamacpp, accel: gpu, format: gguf, quant: q4_0 }
+      - { backend: litertlm, accel: cpu, format: litertlm, quant: int4 }
       - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_k_m }
     measured:
-      prefill_tps: 555.8
-      decode_tps: 59.4
+      prefill_tps: 541.5
+      decode_tps: 80.3
       device: Galaxy S25 (SM-S931B)
       date: 2026-11-27
-      peak_ram_mb: 1338
-      sha256: 33bcc57074ec7b6eada5a90651ee546ec0c2b271002c22baf9f1b2dd1e8f75cb
-      protocol: den bench, 0.14.0-d2462f8f7, automatic threads, 289-token prompt, 128 tokens greedy, 2094-token long prompt, 16 tokens, median of 3 runs, KV cache f16, release build, foreground, screen on, battery 83%, thermal NONE, Hexagon build (-Pden.hexagon)
+      peak_ram_mb: 856
+      sha256: bf1aba9ce8d963124407353c6aa4cbf72eba78db21ae133de983eac672ce83e0
+      protocol: den bench, 0.14.0-d2462f8f7, 0.19.1, automatic threads, 289-token prompt, 128 tokens greedy, 2094-token long prompt, 16 tokens, median of 3 runs, KV cache f16, release build, foreground, screen on, battery 98% charging, thermal NONE, each path after the phone cooled to thermal NONE (at most 10 minutes), Hexagon build (-Pden.hexagon)
     speeds:
+      - choice: { backend: litertlm, accel: gpu, format: litertlm, quant: int4 }
+        prompt_tokens: 163
+        prefill_tps: 541.5
+        decode_tps: 80.3
+        long_prompt_tokens: 2080
+        prefill_long_tps: 1475.2
+        decode_long_tps: 63.7
       - choice: { backend: llamacpp, accel: cpu, format: gguf, quant: q4_0 }
         prompt_tokens: 289
-        prefill_tps: 555.8
-        decode_tps: 59.4
+        prefill_tps: 417.6
+        decode_tps: 59.2
         long_prompt_tokens: 2094
-        prefill_long_tps: 184.6
-        decode_long_tps: 23.0
-      - choice: { backend: llamacpp, accel: gpu, format: gguf, quant: q4_0 }
-        prompt_tokens: 289
-        prefill_tps: 218.6
-        decode_tps: 39.5
-        long_prompt_tokens: 2094
-        prefill_long_tps: 95.8
-        decode_long_tps: 15.4
+        prefill_long_tps: 152.8
+        decode_long_tps: 19.5
       - choice: { backend: llamacpp, accel: npu, format: gguf, quant: q4_0 }
         prompt_tokens: 289
-        prefill_tps: 1445.0
-        decode_tps: 32.8
+        prefill_tps: 1605.6
+        decode_tps: 36.3
         long_prompt_tokens: 2094
-        prefill_long_tps: 1275.3
-        decode_long_tps: 25.6
+        prefill_long_tps: 1362.4
+        decode_long_tps: 25.9
+      - choice: { backend: llamacpp, accel: gpu, format: gguf, quant: q4_0 }
+        prompt_tokens: 289
+        prefill_tps: 210.3
+        decode_tps: 38.1
+        long_prompt_tokens: 2094
+        prefill_long_tps: 94.8
+        decode_long_tps: 15.4
+      - choice: { backend: litertlm, accel: cpu, format: litertlm, quant: int4 }
+        prompt_tokens: 163
+        prefill_tps: 28.3
+        decode_tps: 9.4
+        long_prompt_tokens: 2080
+        prefill_long_tps: 66.0
+        decode_long_tps: 9.2
   - model: { arch: qwen3, params_b: 1.7 }
     choices:
-      - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_0 }
-      - { backend: llamacpp, accel: gpu, format: gguf, quant: q4_0 }
+      - { backend: litertlm, accel: gpu, format: litertlm, quant: int4 }
       - { backend: llamacpp, accel: npu, format: gguf, quant: q4_0 }
+      - { backend: llamacpp, accel: gpu, format: gguf, quant: q4_0 }
+      - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_0 }
+      - { backend: litertlm, accel: cpu, format: litertlm, quant: int4 }
       - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_k_m }
     measured:
-      prefill_tps: 166.7
-      decode_tps: 32.6
+      prefill_tps: 297.5
+      decode_tps: 32.8
       device: Galaxy S25 (SM-S931B)
-      date: 2026-11-27
-      peak_ram_mb: 2630
-      sha256: c876f159707a4e4f70e045106c69db15bfc935a4981706fd4f65c6e7ea1e81c5
-      protocol: den bench, 0.14.0-d2462f8f7, automatic threads, 289-token prompt, 128 tokens greedy, 2094-token long prompt, 16 tokens, median of 3 runs, KV cache f16, release build, foreground, screen on, battery 83%, thermal NONE, Hexagon build (-Pden.hexagon)
+      date: 2026-11-28
+      peak_ram_mb: 1022
+      sha256: 2a72330b504a6596d53a2c00923c57173b10f1b83e6a541213ffec08d1fc5de8
+      protocol: den bench, 0.14.0-d2462f8f7, 0.19.1, automatic threads, 289-token prompt, 128 tokens greedy, 2094-token long prompt, 16 tokens, median of 3 runs, KV cache f16, release build, foreground, screen on, battery 100% charging, thermal NONE, each path after the phone cooled to thermal NONE (at most 10 minutes), Hexagon build (-Pden.hexagon)
     speeds:
-      - choice: { backend: llamacpp, accel: cpu, format: gguf, quant: q4_0 }
-        prompt_tokens: 289
-        prefill_tps: 166.7
-        decode_tps: 32.6
-        long_prompt_tokens: 2094
-        prefill_long_tps: 110.8
-        decode_long_tps: 17.2
-      - choice: { backend: llamacpp, accel: gpu, format: gguf, quant: q4_0 }
-        prompt_tokens: 289
-        prefill_tps: 178.0
-        decode_tps: 23.9
-        long_prompt_tokens: 2094
-        prefill_long_tps: 86.8
-        decode_long_tps: 12.3
+      - choice: { backend: litertlm, accel: gpu, format: litertlm, quant: int4 }
+        prompt_tokens: 288
+        prefill_tps: 297.5
+        decode_tps: 32.8
+        long_prompt_tokens: 2093
+        prefill_long_tps: 484.7
+        decode_long_tps: 28.1
       - choice: { backend: llamacpp, accel: npu, format: gguf, quant: q4_0 }
         prompt_tokens: 289
-        prefill_tps: 656.8
-        decode_tps: 17.1
+        prefill_tps: 1209.2
+        decode_tps: 23.4
         long_prompt_tokens: 2094
-        prefill_long_tps: 569.8
-        decode_long_tps: 15.9
+        prefill_long_tps: 1130.7
+        decode_long_tps: 20.7
+      - choice: { backend: llamacpp, accel: gpu, format: gguf, quant: q4_0 }
+        prompt_tokens: 289
+        prefill_tps: 176.2
+        decode_tps: 21.9
+        long_prompt_tokens: 2094
+        prefill_long_tps: 79.9
+        decode_long_tps: 12.4
+      - choice: { backend: llamacpp, accel: cpu, format: gguf, quant: q4_0 }
+        prompt_tokens: 289
+        prefill_tps: 174.0
+        decode_tps: 18.4
+        long_prompt_tokens: 2094
+        prefill_long_tps: 102.1
+        decode_long_tps: 13.2
+      - choice: { backend: litertlm, accel: cpu, format: litertlm, quant: int4 }
+        prompt_tokens: 288
+        prefill_tps: 35.7
+        decode_tps: 8.2
+        long_prompt_tokens: 2093
+        prefill_long_tps: 39.0
+        decode_long_tps: 7.9

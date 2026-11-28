@@ -14,7 +14,7 @@ class RecipeLintTest {
     private val dir = File(System.getProperty("den.recipes"))
 
     // Backends in this repository; a recipe for another one would never match.
-    private val backends = setOf("llamacpp")
+    private val backends = setOf("llamacpp", "litertlm")
 
     @Test
     fun everyRecipeFollowsTheRules() {

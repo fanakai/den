@@ -152,6 +152,8 @@ class Bench(
     private val full: Boolean = true,
     // The error behind a failed candidate, e.g. an engine crash for the router's failure store.
     private val onFailure: (Candidate, Throwable) -> Unit = { _, _ -> },
+    // Waits before each candidate, e.g. for the phone to cool down after the one before.
+    private val beforeEach: suspend () -> Unit = {},
 ) {
     init {
         require(runs >= 1)
@@ -161,6 +163,7 @@ class Bench(
         val reference = mutableMapOf<Variant, String>()
         // The CPU runs first, so each file has its reference output before the other accelerators run.
         return candidates.sortedBy { it.accel != Accel.CPU }.map { c ->
+            beforeEach()
             check()?.let { throw IllegalStateException("den bench stopped: $it") }
             val label = "${c.backend.id} ${c.accel} ${c.variant.quant}" + if (c.kvCache != KvCache.F16) " kv ${c.kvCache.name.lowercase()}" else ""
             onProgress("bench $label")

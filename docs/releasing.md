@@ -13,6 +13,7 @@ The libraries:
 |---|---|---|
 | `ai.fanak:den` | `sdk/kotlin` | The Android SDK: device probe, catalog, downloads, connected mode. No native code. |
 | `ai.fanak:den-llamacpp` | `backends/llamacpp` | llama.cpp for embedded mode, arm64-v8a. |
+| `ai.fanak:den-litertlm` | `backends/litertlm` | LiteRT-LM for embedded mode: `.litertlm` files on the CPU and the GPU. |
 | `ai.fanak:den-openai` | `backends/openai` | OpenAI-compatible servers on the LAN or in the cloud. |
 | `ai.fanak:den-core` | `core` | Router, backend interface, recipes (Kotlin Multiplatform: JVM and linuxX64). |
 
@@ -49,4 +50,4 @@ The namespace `ai.fanak` must be verified on the Central Portal, with the DNS TX
 ./gradlew publishToMavenLocal -Pden.version=0.1.0
 ```
 
-puts the four libraries in `~/.m2/repository/ai/fanak/`, unsigned. A separate project with `mavenLocal()` in its repositories can then depend on `ai.fanak:den:0.1.0`.
+puts the five libraries in `~/.m2/repository/ai/fanak/`, unsigned. A separate project with `mavenLocal()` in its repositories can then depend on `ai.fanak:den:0.1.0`.

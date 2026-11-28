@@ -197,7 +197,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
 
     // Measured on this phone by the first-run benchmark.
     val localRecipes = LocalRecipeStore(File(context.filesDir, "den/local-recipes"), Build.FINGERPRINT)
-    private val backends: List<DenBackend> = (config.backends ?: defaultBackends()).map { b ->
+    private val backends: List<DenBackend> = (config.backends ?: defaultBackends(context)).map { b ->
         when {
             !config.isolate || Build.VERSION.SDK_INT < 29 -> b
             // A server elsewhere: no engine on the phone to keep apart.
@@ -393,6 +393,7 @@ class Den private constructor(context: Context, private val config: DenConfig) :
             ramMb = ::engineRamMb,
             onProgress = onProgress,
             check = ::notReady,
+            beforeEach = { coolDown(onProgress) },
         ).run(plan)
         val end = conditions()
         val ran = results.firstOrNull { it.ok }
@@ -407,12 +408,22 @@ class Den private constructor(context: Context, private val config: DenConfig) :
             "release build, foreground, screen on",
             "battery ${start.batteryPct}%" + if (start.charging == true) " charging" else "",
             "thermal ${start.thermal}",
+            "each path after the phone cooled to thermal NONE (at most $COOL_MINUTES minutes)",
         ).joinToString(", ")
         val v = plan.first().variant
         return BenchResult(
             model, v.arch, v.params, "${Build.MANUFACTURER} ${Build.MODEL}", device.soc, device.socFamily,
             LocalDate.now().toString(), protocol, start, end, results,
         )
+    }
+
+    // A path measured on a phone the one before heated runs slower; the wait ends after COOL_MINUTES anyway.
+    private suspend fun coolDown(onProgress: (String) -> Unit) {
+        val until = System.currentTimeMillis() + COOL_MINUTES * 60_000L
+        while (probe.thermal() > ThermalState.NONE && System.currentTimeMillis() < until) {
+            onProgress("bench: thermal ${probe.thermal()}, waiting to cool down")
+            kotlinx.coroutines.delay(15_000)
+        }
     }
 
     private fun conditions(): Conditions {
@@ -500,6 +511,9 @@ class Den private constructor(context: Context, private val config: DenConfig) :
     }
 }
 
+// The longest den bench waits for the phone to cool down before a path.
+private const val COOL_MINUTES = 10
+
 // Built-in aliases: the first model of each list that runs on the phone.
 val DEFAULT_ALIASES = mapOf(
     "den.default" to listOf("qwen3-1.7b", "qwen3-0.6b"),
@@ -512,10 +526,10 @@ data class Route(val backend: String, val accel: Accel, val quant: String, val s
 }
 
 // Backends an app may carry; the SDK finds them by class name, so an app that only uses the Den app has no native code.
-internal val DEFAULT_BACKENDS = listOf("ai.fanak.den.backend.llamacpp.LlamaCppBackend")
+internal val DEFAULT_BACKENDS = listOf("ai.fanak.den.backend.llamacpp.LlamaCppBackend", "ai.fanak.den.backend.litertlm.LiteRtLmBackend")
 
-internal fun defaultBackends(): List<DenBackend> = DEFAULT_BACKENDS.mapNotNull { name ->
-    runCatching { Class.forName(name).getDeclaredConstructor().newInstance() as DenBackend }.getOrNull()
+internal fun defaultBackends(context: Context): List<DenBackend> = DEFAULT_BACKENDS.mapNotNull { name ->
+    runCatching { EngineService.create(context, name) }.getOrNull()
 }
 
 abstract class DenModel : AutoCloseable {

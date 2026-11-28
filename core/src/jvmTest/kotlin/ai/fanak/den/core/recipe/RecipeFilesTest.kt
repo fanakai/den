@@ -107,12 +107,12 @@ class RecipeFilesTest {
 
     @Test
     fun avoidRemovesAChoiceForThatModelOnly() {
-        val avoid = Avoid(ModelSize("qwen3", 1.7), RecipeChoice("llamacpp", Accel.CPU, ModelFormat.GGUF, "q4_0"), "test")
+        val avoid = Avoid(ModelSize("qwen3", 1.7), RecipeChoice("llamacpp", Accel.GPU, ModelFormat.GGUF, "q4_0"), "test")
         val recipes = repoRecipes.map { r -> if (r.soc == "SM8750") r.copy(avoid = listOf(avoid)) else r }
         fun firstWith(model: String) =
             Router(listOf(Llama(setOf(Accel.CPU, Accel.GPU))), InMemoryRecipeStore(recipes), catalog, store).plan(model, s25).first()
-        assertEquals(Accel.GPU to "q4_0", firstWith("qwen3-1.7b").let { it.accel to it.variant.quant })
-        assertEquals(Accel.CPU, firstWith("llama-1.1b").accel)
+        assertEquals(Accel.CPU to "q4_0", firstWith("qwen3-1.7b").let { it.accel to it.variant.quant })
+        assertEquals(Accel.GPU, firstWith("llama-1.1b").accel)
     }
 
     @Test
@@ -121,8 +121,9 @@ class RecipeFilesTest {
         assertEquals(Source.RECIPE_SOC, small.source)
         assertEquals(Accel.CPU to "q4_0", small.accel to small.variant.quant)
 
+        // Without LiteRT-LM and the NPU, llama.cpp's GPU is the first of its 1.7B choices left.
         val big = first(s25, "qwen3-1.7b", setOf(Accel.CPU, Accel.GPU))
-        assertEquals(Accel.CPU to "q4_0", big.accel to big.variant.quant)
+        assertEquals(Accel.GPU to "q4_0", big.accel to big.variant.quant)
     }
 
     @Test
@@ -132,6 +133,23 @@ class RecipeFilesTest {
         assertEquals(Accel.CPU, first(null))
         assertEquals(Accel.NPU, first(Expected(2000, 16)))
         assertEquals(Accel.CPU, first(Expected(300, 128)))
+    }
+
+    @Test
+    fun s25ChoosesBetweenLlamaCppAndLiteRtLm() {
+        val litert = object : DenBackend {
+            override val id = "litertlm"
+            override fun probe(device: DeviceProfile) = Capabilities(setOf(Accel.CPU, Accel.GPU), setOf(ModelFormat.LITERTLM))
+            override suspend fun load(artifact: Artifact, opts: LoadOptions): Session = error("not used")
+            override fun health() = Health.Ok
+        }
+        val both = object : ModelCatalog {
+            override fun variants(model: String) = catalog.variants(model) +
+                Variant(model, ModelFormat.LITERTLM, "int4", 400, 700, arch = "qwen3", params = sizes[model])
+        }
+        val plan = Router(listOf(Llama(setOf(Accel.CPU, Accel.GPU)), litert), InMemoryRecipeStore(repoRecipes), both, store)
+            .plan("qwen3-0.6b", s25).map { "${it.backend.id} ${it.accel} ${it.variant.quant}" }
+        assertEquals(listOf("litertlm GPU int4", "llamacpp CPU q4_0", "llamacpp GPU q4_0", "litertlm CPU int4"), plan.take(4))
     }
 
     @Test
