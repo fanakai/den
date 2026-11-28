@@ -65,6 +65,32 @@ class PartsTest {
     }
 
     @Test
+    fun earlierRepliesLoseTheirReasoning() {
+        val t = Turns.of(listOf(
+            ChatMessage(Role.USER, "Hi"),
+            ChatMessage(Role.ASSISTANT, "<think>\nA greeting.\n</think>\n\nHello"),
+            ChatMessage(Role.USER, "Name a colour"),
+        ))
+        assertEquals("Hello", t.history[1].content)
+    }
+
+    @Test
+    fun theThoughtChannelBecomesAThinkBlock() {
+        val tags = ThoughtTags()
+        val out = listOf(tags.piece("Okay", ""), tags.piece(", short.", ""), tags.piece(null, "\n\nRed"), tags.piece(null, "."), tags.end())
+        assertEquals(listOf("<think>Okay", ", short.", "</think>\n\nRed", ".", ""), out)
+        assertEquals("Blue", ThoughtTags().piece(null, "Blue"))
+    }
+
+    @Test
+    fun aReplyThatEndsWhileThinkingIsClosed() {
+        val tags = ThoughtTags()
+        assertEquals("<think>Hmm", tags.piece("Hmm", ""))
+        assertEquals("</think>", tags.end())
+        assertEquals("", tags.end())
+    }
+
+    @Test
     fun aReplyAtTheTokenLimitEndsOnLength() {
         val s = Stats.of(200, 50, 500, 2000, 512, stopped = false)
         assertEquals(400.0, s.prefillTps, 1e-9)

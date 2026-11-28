@@ -113,12 +113,13 @@ private class LiteRtLmSession(private val engine: Engine) : Session {
             )
             engine.createConversation(config).use { conversation ->
                 val stop = StopScan(req.stop)
+                val tags = ThoughtTags()
                 val t0 = System.nanoTime()
                 var first = 0L
                 try {
                     conversation.sendMessageAsync(turns.last, maxOutputToken = req.maxTokens).collect { m ->
                         if (first == 0L) first = System.nanoTime()
-                        stop.add(m.toString())?.let { emit(GenEvent.Text(it)) }
+                        tags.piece(m.channels[THOUGHT], m.toString()).ifEmpty { null }?.let { p -> stop.add(p)?.let { emit(GenEvent.Text(it)) } }
                         if (stop.hit) conversation.cancelProcess()
                     }
                 } catch (e: Exception) {
@@ -126,17 +127,17 @@ private class LiteRtLmSession(private val engine: Engine) : Session {
                     if (!stop.hit) throw e
                 }
                 val end = System.nanoTime()
+                tags.end().ifEmpty { null }?.let { p -> stop.add(p)?.let { emit(GenEvent.Text(it)) } }
                 stop.rest()?.let { emit(GenEvent.Text(it)) }
-                // Output tokens and decode speed from LiteRT-LM's benchmark info (experimental). Its prefill count covers
-                // only the last piece it prefilled, so the prompt is the KV cache's tokens less the output, and the
-                // prefill time is the time to the first piece.
+                // Token counts and decode speed from LiteRT-LM's benchmark info (experimental). The prefill time is
+                // the time to the first piece, which an app waits for: LiteRT-LM's own leaves out about 1.2 s on the
+                // A52s GPU.
                 @OptIn(ExperimentalApi::class)
                 val info = runCatching { conversation.getBenchmarkInfo() }.getOrNull()
-                val total = runCatching { conversation.getTokenCount() }.getOrDefault(0)
                 val output = info?.lastDecodeTokenCount ?: 0
                 val decodeTps = info?.lastDecodeTokensPerSecond ?: 0.0
                 val stats = Stats.of(
-                    prompt = (total - output).coerceAtLeast(0),
+                    prompt = info?.lastPrefillTokenCount ?: 0,
                     output = output,
                     prefillMs = if (first > 0) (first - t0) / 1_000_000 else 0,
                     decodeMs = if (decodeTps > 0) (output * 1000.0 / decodeTps).toLong() else if (first > 0) (end - first) / 1_000_000 else 0,
@@ -151,6 +152,9 @@ private class LiteRtLmSession(private val engine: Engine) : Session {
     override fun unload() = engine.close()
 }
 
+private const val THOUGHT = "thought"
+private val THINK = Regex("""(?s)^\s*<think>.*?</think>""")
+
 private fun sampler(req: GenRequest) = Sampling.of(req).let { SamplerConfig(it.topK, it.topP, it.temperature) }
 
 // A request as LiteRT-LM takes it: the system message, the earlier turns, and the last user message, which is sent.
@@ -160,7 +164,9 @@ internal data class Turns(val system: String?, val history: List<ChatMessage>, v
             val system = messages.filter { it.role == Role.SYSTEM }.joinToString("\n\n") { it.content }.ifEmpty { null }
             val rest = messages.filter { it.role != Role.SYSTEM }
             require(rest.isNotEmpty() && rest.last().role == Role.USER) { "litertlm: the last message must be the user's" }
-            return Turns(system, rest.dropLast(1), rest.last().content)
+            // Earlier replies without their reasoning, as Qwen3's template drops it.
+            val history = rest.dropLast(1).map { if (it.role == Role.ASSISTANT) it.copy(content = it.content.replace(THINK, "").trim()) else it }
+            return Turns(system, history, rest.last().content)
         }
     }
 }

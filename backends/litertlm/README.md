@@ -22,7 +22,7 @@ One conversation runs at a time on a loaded model, so requests on it wait for ea
 - **Sampling:** temperature 0 is greedy (top-k 1); otherwise top-p with a top-k of 40.
 - **Stop strings:** LiteRT-LM does not take them, so the backend scans the streamed text and cancels the generation at the first one.
 - **Not supported:** grammars, JSON schemas and tools are refused (`UnsupportedFeatureException`).
-- **Thinking:** a model's reasoning arrives on LiteRT-LM's `thought` channel and is not passed on; Qwen3's `/no_think` still applies.
+- **Thinking:** a model's reasoning arrives on LiteRT-LM's `thought` channel; the backend passes it on in a leading `<think>` block, as llama.cpp gives it, and the HTTP API moves it to `reasoning_content`. Earlier replies sent back in the history lose their `<think>` block.
 - **Numbers:** token counts and speeds come from `Conversation.getBenchmarkInfo()`, experimental in LiteRT-LM.
 
 ## Files
