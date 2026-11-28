@@ -36,6 +36,30 @@ internal class StopScan(stops: List<String>) {
     fun rest(): String? = held.toString().also { held.clear() }.ifEmpty { null }
 }
 
+/**
+ * LiteRT-LM streams a model's reasoning on its `thought` channel and the reply as text. Den's backends give both in one
+ * text, the reasoning in a leading `<think>` block as llama.cpp does, which the HTTP API moves to `reasoning_content`.
+ */
+internal class ThoughtTags {
+    private var open = false
+
+    fun piece(thought: String?, text: String): String = buildString {
+        if (!thought.isNullOrEmpty()) {
+            if (!open) append("<think>")
+            open = true
+            append(thought)
+        }
+        if (text.isNotEmpty()) {
+            if (open) append("</think>")
+            open = false
+            append(text)
+        }
+    }
+
+    /** Closes a reply that ended while still reasoning. */
+    fun end(): String = if (open) "</think>".also { open = false } else ""
+}
+
 // Greedy at temperature 0, as llama.cpp does; otherwise top-p with a top-k of 40.
 internal data class Sampling(val topK: Int, val topP: Double, val temperature: Double) {
     companion object {
