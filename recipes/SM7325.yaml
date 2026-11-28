@@ -1,24 +1,55 @@
 schema: 1
 soc_family: snapdragon-778g
 soc: SM7325
+# llama.cpp's GPU path crashes the engine (SIGSEGV) on the Adreno 642L, and LiteRT-LM's CPU path is stopped for low
+# memory (2.6 GB RSS for 0.6B), so neither is a choice.
 rankings:
   - model: { arch: qwen3, params_b: 0.6 }
     choices:
       - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_0 }
+      - { backend: litertlm, accel: gpu, format: litertlm, quant: int4 }
       - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_k_m }
     measured:
-      prefill_tps: 43.6
-      decode_tps: 30.0
+      prefill_tps: 185.9
+      decode_tps: 19.4
       device: Galaxy A52s 5G (SM-A528B)
-      date: 2026-11-19
-      protocol: den-smoke, llama.cpp b9590, 300-token prompt, 64 tokens greedy, mean of 2 runs, Termux in background
+      date: 2026-11-28
+      peak_ram_mb: 1276
+      sha256: 33bcc57074ec7b6eada5a90651ee546ec0c2b271002c22baf9f1b2dd1e8f75cb
+      protocol: den bench, 0.14.0-d2462f8f7, 0.19.1, automatic threads, 289-token prompt, 128 tokens greedy, 2094-token long prompt, 16 tokens, median of 3 runs, KV cache f16, release build, foreground, screen on, battery 100% charging, thermal NONE, each path after the phone cooled to thermal NONE (at most 10 minutes)
+    speeds:
+      - choice: { backend: llamacpp, accel: cpu, format: gguf, quant: q4_0 }
+        prompt_tokens: 289
+        prefill_tps: 185.9
+        decode_tps: 19.4
+        long_prompt_tokens: 2094
+        prefill_long_tps: 85.7
+        decode_long_tps: 13.7
+      - choice: { backend: litertlm, accel: gpu, format: litertlm, quant: int4 }
+        prompt_tokens: 163
+        prefill_tps: 134.2
+        decode_tps: 17.9
+        long_prompt_tokens: 2080
+        prefill_long_tps: 321.5
+        decode_long_tps: 13.8
+  # LiteRT-LM's GPU path is also stopped for low memory with 1.7B, with 2.5 GB free before the load.
   - model: { arch: qwen3, params_b: 1.7 }
     choices:
       - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_0 }
       - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_k_m }
     measured:
-      prefill_tps: 33.3
-      decode_tps: 12.8
+      prefill_tps: 75.0
+      decode_tps: 10.7
       device: Galaxy A52s 5G (SM-A528B)
-      date: 2026-11-19
-      protocol: den-smoke, llama.cpp b9590, 300-token prompt, 64 tokens greedy, mean of 2 runs, Termux in background
+      date: 2026-11-28
+      peak_ram_mb: 2370
+      sha256: c876f159707a4e4f70e045106c69db15bfc935a4981706fd4f65c6e7ea1e81c5
+      protocol: den bench, 0.14.0-d2462f8f7, automatic threads, 289-token prompt, 128 tokens greedy, 2094-token long prompt, 16 tokens, median of 3 runs, KV cache f16, release build, foreground, screen on, battery 100% charging, thermal NONE, each path after the phone cooled to thermal NONE (at most 10 minutes)
+    speeds:
+      - choice: { backend: llamacpp, accel: cpu, format: gguf, quant: q4_0 }
+        prompt_tokens: 289
+        prefill_tps: 75.0
+        decode_tps: 10.7
+        long_prompt_tokens: 2094
+        prefill_long_tps: 49.0
+        decode_long_tps: 7.8
