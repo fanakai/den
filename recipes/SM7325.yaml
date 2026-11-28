@@ -6,32 +6,32 @@ soc: SM7325
 rankings:
   - model: { arch: qwen3, params_b: 0.6 }
     choices:
-      - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_0 }
       - { backend: litertlm, accel: gpu, format: litertlm, quant: int4 }
+      - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_0 }
       - { backend: llamacpp, accel: cpu, format: gguf, quant: q4_k_m }
     measured:
-      prefill_tps: 185.9
-      decode_tps: 19.4
+      prefill_tps: 196.6
+      decode_tps: 19.8
       device: Galaxy A52s 5G (SM-A528B)
       date: 2026-11-28
-      peak_ram_mb: 1276
-      sha256: 33bcc57074ec7b6eada5a90651ee546ec0c2b271002c22baf9f1b2dd1e8f75cb
-      protocol: den bench, 0.14.0-d2462f8f7, 0.19.1, automatic threads, 289-token prompt, 128 tokens greedy, 2094-token long prompt, 16 tokens, median of 3 runs, KV cache f16, release build, foreground, screen on, battery 100% charging, thermal NONE, each path after the phone cooled to thermal NONE (at most 10 minutes)
+      peak_ram_mb: 2079
+      sha256: bf1aba9ce8d963124407353c6aa4cbf72eba78db21ae133de983eac672ce83e0
+      protocol: den bench, 0.14.0-d2462f8f7, 0.20.0, automatic threads, 289-token prompt, 128 tokens greedy, 2094-token long prompt, 16 tokens, median of 3 runs, KV cache f16, release build, foreground, screen on, battery 100% charging, thermal NONE, each path after the phone cooled to thermal NONE (at most 10 minutes)
     speeds:
+      - choice: { backend: litertlm, accel: gpu, format: litertlm, quant: int4 }
+        prompt_tokens: 289
+        prefill_tps: 196.6
+        decode_tps: 19.8
+        long_prompt_tokens: 2094
+        prefill_long_tps: 311.0
+        decode_long_tps: 14.6
       - choice: { backend: llamacpp, accel: cpu, format: gguf, quant: q4_0 }
         prompt_tokens: 289
-        prefill_tps: 185.9
-        decode_tps: 19.4
+        prefill_tps: 187.1
+        decode_tps: 18.8
         long_prompt_tokens: 2094
         prefill_long_tps: 85.7
-        decode_long_tps: 13.7
-      - choice: { backend: litertlm, accel: gpu, format: litertlm, quant: int4 }
-        prompt_tokens: 163
-        prefill_tps: 134.2
-        decode_tps: 17.9
-        long_prompt_tokens: 2080
-        prefill_long_tps: 321.5
-        decode_long_tps: 13.8
+        decode_long_tps: 12.8
   # LiteRT-LM's GPU path is also stopped for low memory with 1.7B, with 2.5 GB free before the load.
   - model: { arch: qwen3, params_b: 1.7 }
     choices:
