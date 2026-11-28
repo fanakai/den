@@ -2,10 +2,10 @@
 
 The LiteRT-LM backend: `.litertlm` files on the CPU (XNNPACK) and the GPU (OpenCL), through Google's runtime (`com.google.ai.edge.litertlm:litertlm-android` from Google Maven).
 
-- **Version:** pinned to LiteRT-LM 0.19.1.
+- **Version:** pinned to LiteRT-LM 0.20.0.
   - 0.18 and older cannot read the current Qwen3 files of `litert-community`, and the GPU path of their int4 file needs 0.19.
-  - 0.20 is built for Java 25, which the D8 of our Android Gradle Plugin (8.10) does not read.
-  - 0.19 is built with Kotlin 2.4, hence Kotlin 2.4 in this repository.
+  - 0.20 is built for Java 25: the D8 of Android Gradle Plugin 8.10 rejects it, that of 8.13.2 reads it.
+  - 0.19 and later are built with Kotlin 2.4, hence Kotlin 2.4 in this repository.
 - **Size:** it adds `liblitertlm_jni.so` (22.7 MB, arm64-v8a) and its Kotlin code to an app.
 - **NPU:** not offered. LiteRT-LM's Qualcomm NPU path needs the QAIRT libraries, whose licence is still open (#56).
 
@@ -34,5 +34,5 @@ A recipe or `den bench` decides when LiteRT-LM goes first.
 ## Tests
 
 `PartsTest` covers the parts that need no native code: stop strings, turns, sampling and stats.
-LiteRT-LM's classes are Java 21 bytecode, so the JVM unit tests keep away from them.
+LiteRT-LM's classes are Java 25 bytecode, so the JVM unit tests keep away from them.
 The engine itself is tested on a phone with the test app (`--es quants int4`).

@@ -3,8 +3,8 @@ plugins {
     kotlin("multiplatform") version "2.4.21" apply false
     kotlin("android") version "2.4.21" apply false
     kotlin("plugin.serialization") version "2.4.21" apply false
-    id("com.android.library") version "8.10.1" apply false
-    id("com.android.application") version "8.10.1" apply false
+    id("com.android.library") version "8.13.2" apply false
+    id("com.android.application") version "8.13.2" apply false
     // The public API of core, the SDK and the backend is dumped to <module>/api/*.api and checked by `./gradlew build`:
     // a change to it fails CI until the dump is updated with `./gradlew apiDump` and reviewed in the pull request.
     id("org.jetbrains.kotlinx.binary-compatibility-validator") version "0.16.3"

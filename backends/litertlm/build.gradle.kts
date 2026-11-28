@@ -6,7 +6,7 @@ plugins {
     id("com.vanniktech.maven.publish")
 }
 
-val litertlm = "0.19.1"
+val litertlm = "0.20.0"
 
 mavenPublishing {
     configure(com.vanniktech.maven.publish.AndroidSingleVariantLibrary("release", sourcesJar = true, publishJavadocJar = false))
