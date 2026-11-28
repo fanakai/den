@@ -160,11 +160,11 @@ class RecipeFilesTest {
     }
 
     @Test
-    fun a52sSendsLongPromptsToLiteRtLm() {
+    fun a52sChoosesLiteRtLmFor06bOnly() {
         val router = withLiteRt()
-        assertEquals(listOf("llamacpp CPU q4_0", "litertlm GPU int4", "llamacpp CPU q4_k_m"), router.paths("qwen3-0.6b", a52s).take(3))
+        assertEquals(listOf("litertlm GPU int4", "llamacpp CPU q4_0", "llamacpp CPU q4_k_m"), router.paths("qwen3-0.6b", a52s).take(3))
         assertEquals("litertlm GPU int4", router.paths("qwen3-0.6b", a52s, Expected(2000, 16)).first())
-        assertEquals("llamacpp CPU q4_0", router.paths("qwen3-0.6b", a52s, Expected(300, 128)).first())
+        assertEquals("litertlm GPU int4", router.paths("qwen3-0.6b", a52s, Expected(300, 128)).first())
         assertEquals("llamacpp CPU q4_0", router.paths("qwen3-1.7b", a52s).first())
     }
 
