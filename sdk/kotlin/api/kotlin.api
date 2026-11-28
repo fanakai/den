@@ -300,7 +300,7 @@ public final class ai/fanak/den/LocalFile {
 	public fun toString ()Ljava/lang/String;
 }
 
-public synthetic class ai/fanak/den/LocalFile$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+public final synthetic class ai/fanak/den/LocalFile$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
 	public static final field INSTANCE Lai/fanak/den/LocalFile$$serializer;
 	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
 	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lai/fanak/den/LocalFile;
